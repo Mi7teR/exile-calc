@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<PathOfBuilding>
+	<Build level="94" targetVersion="3_0" className="Ranger" ascendClassName="Deadeye" mainSocketGroup="2" bandit="None" pantheonMajorGod="Lunaris" pantheonMinorGod="None" viewMode="ITEMS">
+		<PlayerStat stat="Life" value="4512"/>
+		<PlayerStat stat="FireResist" value="76"/>
+	</Build>
+	<Tree activeSpec="2">
+		<Spec title="Leveling" treeVersion="3_27" classId="2" ascendClassId="1" secondaryAscendClassId="0" nodes="100,200" masteryEffects="">
+			<URL>https://www.pathofexile.com/passive-skill-tree/AAAA</URL>
+			<Sockets/>
+		</Spec>
+		<Spec title="Endgame" treeVersion="3_27" classId="2" ascendClassId="1" secondaryAscendClassId="3" nodes="100,200,300" masteryEffects="{53188,64875},{6770,38129}">
+			<URL>https://www.pathofexile.com/passive-skill-tree/BBBB</URL>
+			<Sockets>
+				<Socket nodeId="26725" itemId="4"/>
+			</Sockets>
+		</Spec>
+	</Tree>
+	<Items activeItemSet="1" useSecondWeaponSet="false" showStatDifferences="true">
+		<Item id="1" variant="2">
+			Rarity: UNIQUE
+Headhunter
+Leather Belt
+Variant: Pre 3.11.0
+Variant: Current
+Implicits: 1
++(25-40) to maximum Life
++(40-55) to Strength
+<ModRange id="2" range="0.5"/>
+		</Item>
+		<Item id="4">
+			Rarity: RARE
+Gale Eye
+Crimson Jewel
++12% to Fire Resistance
+		</Item>
+		<ItemSet id="1" title="Main" useSecondWeaponSet="false">
+			<Slot name="Belt" itemId="1" itemPbURL=""/>
+			<Slot name="Flask 1" itemId="0" itemPbURL="" active="true"/>
+		</ItemSet>
+	</Items>
+	<Skills activeSkillSet="1" defaultGemLevel="normalMaximum" defaultGemQuality="0" sortGemsByDPS="true" showSupportGemTypes="ALL" sortGemsByDPSField="CombinedDPS" showLegacyGems="false">
+		<SkillSet id="1" title="Bow">
+			<Skill enabled="true" includeInFullDPS="true" slot="Body Armour" mainActiveSkill="1" mainActiveSkillCalcs="1" label="Main">
+				<Gem nameSpec="Tornado Shot" skillId="TornadoShot" gemId="Metadata/Items/Gems/SkillGemTornadoShot" variantId="TornadoShot" level="21" quality="20" enabled="true" enableGlobal1="true" enableGlobal2="false" count="1" skillPart="2"/>
+				<Gem nameSpec="Mirage Archer" skillId="SupportMirageArcher" level="20" quality="0" enabled="false" count="1"/>
+			</Skill>
+		</SkillSet>
+	</Skills>
+	<Config activeConfigSet="1">
+		<ConfigSet id="1" title="Mapping">
+			<Input name="enemyIsBoss" string="Pinnacle"/>
+			<Input name="conditionUsingFlask" boolean="true"/>
+			<Input name="multiplierPowerCharges" number="3.5"/>
+			<Placeholder name="enemyArmour" number="50000"/>
+			<CustomModifierBlock title="Default" enabled="true">+10% to all Elemental Resistances</CustomModifierBlock>
+		</ConfigSet>
+	</Config>
+</PathOfBuilding>
