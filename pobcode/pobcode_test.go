@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"regexp"
 	"strings"
 	"testing"
 )
@@ -266,5 +267,27 @@ func TestRoundTrip(t *testing.T) {
 				t.Fatal("build changed after encode/decode")
 			}
 		})
+	}
+}
+
+func TestXMLUsesOnlyEntitiesPoBDecodes(t *testing.T) {
+	b, err := FromCode(string(readFile(t, "testdata/builds/OccVortex.code")))
+	if err != nil {
+		t.Fatal(err)
+	}
+	b.Items[0].Raw += "\nTaryn's \"Shiver\" <x> & y"
+	x, err := b.XML()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if m := regexp.MustCompile(`&#[0-9xX]+;`).Find(x); m != nil {
+		t.Fatalf("PoB's xml.lua drops numeric entities, found %s", m)
+	}
+	back, err := Parse(x)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if back.Items[0].Raw != b.Items[0].Raw {
+		t.Errorf("item text changed: %q", back.Items[0].Raw)
 	}
 }

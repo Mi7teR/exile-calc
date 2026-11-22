@@ -532,8 +532,15 @@ func (b *Build) XML() ([]byte, error) {
 	if err != nil {
 		return nil, fmt.Errorf("pobcode: xml: %w", err)
 	}
-	return append([]byte(xml.Header), out...), nil
+	return append([]byte(xml.Header), pobEscapes.Replace(string(out))...), nil
 }
+
+// pobEscapes rewrites encoding/xml's numeric character references into what
+// PoB's runtime/lua/xml.lua understands: it decodes only lt, gt, amp, apos
+// and quot, and silently drops any other entity (so "&#xA;" would glue item
+// text lines together). Every "&" in the text is already "&amp;", so these
+// sequences can only be escapes.
+var pobEscapes = strings.NewReplacer("&#xA;", "\n", "&#x9;", "\t", "&#xD;", "\r", "&#39;", "&apos;", "&#34;", "&quot;")
 
 func toXInput(in Input) xInput {
 	out := xInput{Name: in.Name}
