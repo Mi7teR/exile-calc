@@ -7,7 +7,7 @@ Go libraries for Path of Exile game data, ported from
 | Package | What it does | Status |
 | --- | --- | --- |
 | `pobcode` | PoB export code ↔ `Build`: items by slot, gems, passive trees, config | done |
-| `gamedata` | Generated game data (bases, mods, gems, uniques, tree) | planned |
+| `gamedata` | Embedded game data: bases, mods with tiers, gems, uniques, passive tree | done |
 | `itemtext` | Item text → structured item | planned |
 | `modparser` | Mod text → ModDB modifiers | planned |
 | `engine` | Defence/offence calculation, swap and diff | planned |
@@ -21,6 +21,11 @@ weapon := b.Item(set.SlotItem("Weapon 1"))
 
 ```bash
 go test ./...
+go run ./cmd/gamedatagen   # regenerate gamedata/poe1 from the pinned PoB tag
 ```
+
+`cmd/gamedatagen` reads PoB's Lua data files as data with `internal/luadata`
+(no Lua runs). Not exported: `Data/Uniques/Special/Generated.lua` (a program
+that builds Megalomaniac, Forbidden jewels and similar uniques).
 
 License: MIT, see [LICENSE](LICENSE) — it includes the Path of Building Community notice.

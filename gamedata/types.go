@@ -1,0 +1,194 @@
+// Package gamedata holds Path of Exile game data exported from Path of
+// Building Community by cmd/gamedatagen: item bases, mods with tiers, gems,
+// uniques and the passive tree. Data (c) Grinding Gear Games.
+//
+// The `lua` tags name the fields in PoB's src/Data files; they are used only
+// by the generator.
+package gamedata
+
+// Version says which PoB release and tree the data was generated from.
+type Version struct {
+	PoB  string `json:"pob"`  // git tag, e.g. "v2.68.1"
+	Tree string `json:"tree"` // tree directory, e.g. "3_30"
+}
+
+// Base is an item base (Data/Bases/*.lua).
+type Base struct {
+	Name             string            `json:"name"`
+	Type             string            `json:"type" lua:"type"`
+	SubType          string            `json:"subType,omitempty" lua:"subType"`
+	BaseID           string            `json:"baseId" lua:"baseId"`
+	Tags             []string          `json:"tags" lua:"tags,keys"`
+	InfluenceTags    map[string]string `json:"influenceTags,omitempty" lua:"influenceTags"`
+	Implicit         string            `json:"implicit,omitempty" lua:"implicit"`
+	ImplicitModTypes [][]string        `json:"implicitModTypes,omitempty" lua:"implicitModTypes"`
+	SocketLimit      int               `json:"socketLimit,omitempty" lua:"socketLimit"`
+	Hidden           bool              `json:"hidden,omitempty" lua:"hidden"`
+	Req              Requirements      `json:"req" lua:"req"`
+	Weapon           *WeaponStats      `json:"weapon,omitempty" lua:"weapon"`
+	Armour           *ArmourStats      `json:"armour,omitempty" lua:"armour"`
+	Flask            *FlaskStats       `json:"flask,omitempty" lua:"flask"`
+	Tincture         *TinctureStats    `json:"tincture,omitempty" lua:"tincture"`
+}
+
+type Requirements struct {
+	Level int `json:"level,omitempty" lua:"level"`
+	Str   int `json:"str,omitempty" lua:"str"`
+	Dex   int `json:"dex,omitempty" lua:"dex"`
+	Int   int `json:"int,omitempty" lua:"int"`
+}
+
+type WeaponStats struct {
+	PhysicalMin    float64 `json:"physicalMin" lua:"PhysicalMin"`
+	PhysicalMax    float64 `json:"physicalMax" lua:"PhysicalMax"`
+	CritChanceBase float64 `json:"critChanceBase" lua:"CritChanceBase"`
+	AttackRateBase float64 `json:"attackRateBase" lua:"AttackRateBase"`
+	Range          int     `json:"range" lua:"Range"`
+}
+
+type ArmourStats struct {
+	ArmourBaseMin       float64 `json:"armourBaseMin,omitempty" lua:"ArmourBaseMin"`
+	ArmourBaseMax       float64 `json:"armourBaseMax,omitempty" lua:"ArmourBaseMax"`
+	EvasionBaseMin      float64 `json:"evasionBaseMin,omitempty" lua:"EvasionBaseMin"`
+	EvasionBaseMax      float64 `json:"evasionBaseMax,omitempty" lua:"EvasionBaseMax"`
+	EnergyShieldBaseMin float64 `json:"energyShieldBaseMin,omitempty" lua:"EnergyShieldBaseMin"`
+	EnergyShieldBaseMax float64 `json:"energyShieldBaseMax,omitempty" lua:"EnergyShieldBaseMax"`
+	WardBaseMin         float64 `json:"wardBaseMin,omitempty" lua:"WardBaseMin"`
+	WardBaseMax         float64 `json:"wardBaseMax,omitempty" lua:"WardBaseMax"`
+	BlockChance         float64 `json:"blockChance,omitempty" lua:"BlockChance"`
+	MovementPenalty     float64 `json:"movementPenalty,omitempty" lua:"MovementPenalty"`
+}
+
+type FlaskStats struct {
+	Life        float64  `json:"life,omitempty" lua:"life"`
+	Mana        float64  `json:"mana,omitempty" lua:"mana"`
+	Duration    float64  `json:"duration" lua:"duration"`
+	ChargesUsed int      `json:"chargesUsed" lua:"chargesUsed"`
+	ChargesMax  int      `json:"chargesMax" lua:"chargesMax"`
+	Buff        []string `json:"buff,omitempty" lua:"buff"`
+}
+
+type TinctureStats struct {
+	ManaBurn float64 `json:"manaBurn" lua:"manaBurn"`
+	Cooldown float64 `json:"cooldown" lua:"cooldown"`
+}
+
+// Mod is one modifier with its tier data (Data/Mod*.lua).
+type Mod struct {
+	ID     string `json:"id"`
+	Domain string `json:"domain"` // source file: "Explicit", "ItemExclusive", "Corrupted", ...
+	// Type is "Prefix" or "Suffix" for affixes, empty otherwise.
+	Type      string    `json:"type,omitempty" lua:"type"`
+	Affix     string    `json:"affix,omitempty" lua:"affix"`
+	Lines     []string  `json:"lines" lua:",list"`         // mod text, one entry per stat line
+	StatOrder []float64 `json:"statOrder" lua:"statOrder"` // fractional for hybrid lines (418.1)
+	Level     int       `json:"level" lua:"level"`
+	Group     string    `json:"group" lua:"group"`
+	WeightKey []string  `json:"weightKey,omitempty" lua:"weightKey"`
+	WeightVal []int     `json:"weightVal,omitempty" lua:"weightVal"`
+	ModTags   []string  `json:"modTags,omitempty" lua:"modTags"`
+	// TradeHashes maps a trade site stat hash to the mod lines it covers.
+	TradeHashes map[uint32][]string `json:"tradeHashes,omitempty" lua:"tradeHashes"`
+}
+
+// Gem is a skill or support gem (Data/Gems.lua), keyed by its PoB id.
+type Gem struct {
+	ID                       string   `json:"id"`
+	Name                     string   `json:"name" lua:"name"`
+	BaseTypeName             string   `json:"baseTypeName,omitempty" lua:"baseTypeName"`
+	GameID                   string   `json:"gameId" lua:"gameId"`
+	VariantID                string   `json:"variantId" lua:"variantId"`
+	GrantedEffectID          string   `json:"grantedEffectId" lua:"grantedEffectId"`
+	SecondaryGrantedEffectID string   `json:"secondaryGrantedEffectId,omitempty" lua:"secondaryGrantedEffectId"`
+	SecondaryEffectName      string   `json:"secondaryEffectName,omitempty" lua:"secondaryEffectName"`
+	VaalGem                  bool     `json:"vaalGem,omitempty" lua:"vaalGem"`
+	Tags                     []string `json:"tags" lua:"tags,keys"`
+	TagString                string   `json:"tagString" lua:"tagString"`
+	ReqStr                   int      `json:"reqStr" lua:"reqStr"`
+	ReqDex                   int      `json:"reqDex" lua:"reqDex"`
+	ReqInt                   int      `json:"reqInt" lua:"reqInt"`
+	NaturalMaxLevel          int      `json:"naturalMaxLevel" lua:"naturalMaxLevel"`
+}
+
+// Unique is a unique item in PoB's item text format (Data/Uniques/*.lua):
+// name, base, then PoB lines such as "Variant:", "Implicits: N" and mod
+// lines that may carry "{tags:...}" or "{variant:...}" prefixes.
+type Unique struct {
+	Name string `json:"name"`
+	Base string `json:"base"`
+	File string `json:"file"` // e.g. "ring"
+	Raw  string `json:"raw"`
+}
+
+// Tree is the passive skill tree (TreeData/<version>/tree.lua).
+type Tree struct {
+	Classes []Class `json:"classes" lua:"classes"`
+	// Groups[i-1] is the group a node refers to as Group i.
+	Groups []Group `json:"groups" lua:"groups"`
+	// Nodes by id; Root is PoB's virtual "root" node linking to class starts.
+	// The generator fills both (tree.lua mixes the "root" key into nodes).
+	Nodes      map[int]*Node `json:"nodes"`
+	Root       *Node         `json:"root,omitempty"`
+	JewelSlots []int         `json:"jewelSlots" lua:"jewelSlots"`
+	Points     TreePoints    `json:"points" lua:"points"`
+}
+
+// Class is a character class; its index in Tree.Classes is PoB's classId.
+type Class struct {
+	Name         string       `json:"name" lua:"name"`
+	BaseStr      int          `json:"baseStr" lua:"base_str"`
+	BaseDex      int          `json:"baseDex" lua:"base_dex"`
+	BaseInt      int          `json:"baseInt" lua:"base_int"`
+	Ascendancies []Ascendancy `json:"ascendancies" lua:"ascendancies"`
+}
+
+type Ascendancy struct {
+	ID   string `json:"id" lua:"id"`
+	Name string `json:"name" lua:"name"`
+}
+
+type Group struct {
+	X      float64 `json:"x" lua:"x"`
+	Y      float64 `json:"y" lua:"y"`
+	Orbits []int   `json:"orbits" lua:"orbits"`
+	Nodes  []int   `json:"nodes" lua:"nodes"`
+}
+
+type TreePoints struct {
+	TotalPoints      int `json:"totalPoints" lua:"totalPoints"`
+	AscendancyPoints int `json:"ascendancyPoints" lua:"ascendancyPoints"`
+}
+
+type Node struct {
+	ID                     int             `json:"id" lua:"skill"`
+	Name                   string          `json:"name" lua:"name"`
+	Stats                  []string        `json:"stats,omitempty" lua:"stats"`
+	ReminderText           []string        `json:"reminderText,omitempty" lua:"reminderText"`
+	Group                  int             `json:"group,omitempty" lua:"group"`
+	Orbit                  int             `json:"orbit,omitempty" lua:"orbit"`
+	OrbitIndex             int             `json:"orbitIndex,omitempty" lua:"orbitIndex"`
+	Out                    []int           `json:"out,omitempty" lua:"out"`
+	In                     []int           `json:"in,omitempty" lua:"in"`
+	AscendancyName         string          `json:"ascendancyName,omitempty" lua:"ascendancyName"`
+	IsNotable              bool            `json:"isNotable,omitempty" lua:"isNotable"`
+	IsKeystone             bool            `json:"isKeystone,omitempty" lua:"isKeystone"`
+	IsMastery              bool            `json:"isMastery,omitempty" lua:"isMastery"`
+	IsJewelSocket          bool            `json:"isJewelSocket,omitempty" lua:"isJewelSocket"`
+	IsAscendancyStart      bool            `json:"isAscendancyStart,omitempty" lua:"isAscendancyStart"`
+	IsBloodline            bool            `json:"isBloodline,omitempty" lua:"isBloodline"`
+	IsBlighted             bool            `json:"isBlighted,omitempty" lua:"isBlighted"`
+	IsProxy                bool            `json:"isProxy,omitempty" lua:"isProxy"`
+	IsMultipleChoice       bool            `json:"isMultipleChoice,omitempty" lua:"isMultipleChoice"`
+	IsMultipleChoiceOption bool            `json:"isMultipleChoiceOption,omitempty" lua:"isMultipleChoiceOption"`
+	MasteryEffects         []MasteryEffect `json:"masteryEffects,omitempty" lua:"masteryEffects"`
+	GrantedStrength        int             `json:"grantedStrength,omitempty" lua:"grantedStrength"`
+	GrantedDexterity       int             `json:"grantedDexterity,omitempty" lua:"grantedDexterity"`
+	GrantedIntelligence    int             `json:"grantedIntelligence,omitempty" lua:"grantedIntelligence"`
+	GrantedPassivePoints   int             `json:"grantedPassivePoints,omitempty" lua:"grantedPassivePoints"`
+	ClassStartIndex        *int            `json:"classStartIndex,omitempty" lua:"classStartIndex"`
+}
+
+type MasteryEffect struct {
+	Effect int      `json:"effect" lua:"effect"`
+	Stats  []string `json:"stats" lua:"stats"`
+}
