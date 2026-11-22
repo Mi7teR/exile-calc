@@ -9,7 +9,10 @@
 // holding its source text. Anything else is an error with a line number.
 package luadata
 
-import "fmt"
+import (
+	"errors"
+	"fmt"
+)
 
 // Value is nil, Bool, Number, String, *Table, Ref, *Call or *Func.
 type Value any
@@ -35,7 +38,36 @@ type Func struct {
 	params    []string
 	body      []token
 	bodyScope *scope
+	src       string
 }
+
+// Params returns the parameter names of the function.
+func (f *Func) Params() []string { return append([]string(nil), f.params...) }
+
+// Call runs the function body with args bound to its parameters and returns
+// what it returns. It supports the same subset as Eval; anything else is an
+// error. Used to turn simple data-building functions into templates.
+func (f *Func) Call(args []Value, env map[string]Value) (Value, error) {
+	sc := &scope{vars: map[string]Value{}, parent: f.bodyScope}
+	for i, p := range f.params {
+		if i < len(args) {
+			sc.vars[p] = args[i]
+		} else {
+			sc.vars[p] = nil
+		}
+	}
+	e := &evaluator{src: f.src, toks: f.body, sc: sc, root: sc, env: env}
+	v, _, err := e.block(tEOF)
+	return v, err
+}
+
+// Builtin is a Go function callable from evaluated Lua, such as bit.bor.
+// Returning ErrKeepCall leaves the call as a Call value (for example when an
+// argument is still an unresolved Ref).
+type Builtin func(args []Value) (Value, error)
+
+// ErrKeepCall tells the evaluator to keep a builtin call unevaluated.
+var ErrKeepCall = errors.New("luadata: keep call")
 
 // Table is a Lua table: List holds positional entries (Lua indexes 1..n),
 // Keys holds explicit keys in the order they were first set.
@@ -106,6 +138,8 @@ func typeName(v Value) string {
 		return "call"
 	case *Func:
 		return "function"
+	case Builtin:
+		return "builtin function"
 	}
 	return fmt.Sprintf("%T", v)
 }

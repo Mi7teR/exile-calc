@@ -40,13 +40,15 @@ func get(url string) ([]byte, error) {
 // wanted reports whether a repository path is needed for generation.
 func wanted(p, tree string) bool {
 	return (strings.HasPrefix(p, "src/Data/") && strings.HasSuffix(p, ".lua")) ||
-		p == "src/TreeData/"+tree+"/tree.lua"
+		p == "src/TreeData/"+tree+"/tree.lua" || p == "src/Modules/ModParser.lua"
 }
 
 // fetchPoB downloads the needed files of a PoB tag into cacheDir (once) and
 // returns the directory that plays the role of PoB's src.
 func fetchPoB(tag, tree, cacheDir string) (string, error) {
-	root := filepath.Join(cacheDir, "pob-"+tag)
+	// fetchLayout changes whenever wanted() starts selecting more files.
+	const fetchLayout = "2"
+	root := filepath.Join(cacheDir, "pob-"+tag+"-"+fetchLayout)
 	done := filepath.Join(root, ".complete")
 	if _, err := os.Stat(done); err == nil {
 		return filepath.Join(root, "src"), nil

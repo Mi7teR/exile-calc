@@ -37,15 +37,16 @@ var modFiles = []string{
 
 func main() {
 	src := flag.String("src", "", "PoB src directory (default: download "+pobVersion+")")
-	out := flag.String("out", filepath.Join("gamedata", "poe1"), "output directory")
+	out := flag.String("out", filepath.Join("gamedata", "poe1"), "game data output directory")
+	parserOut := flag.String("modparser", "modparser", "modparser package directory (data/ and testdata/)")
 	flag.Parse()
-	if err := run(*src, *out); err != nil {
+	if err := run(*src, *out, *parserOut); err != nil {
 		slog.Error("gamedatagen failed", "err", err)
 		os.Exit(1)
 	}
 }
 
-func run(src, out string) error {
+func run(src, out, parserOut string) error {
 	if src == "" {
 		cache, err := os.UserCacheDir()
 		if err != nil {
@@ -137,6 +138,10 @@ func run(src, out string) error {
 			return fmt.Errorf("%s: %w", name, err)
 		}
 	}
+	if err := writeModParser(read, tree, parserOut); err != nil {
+		return err
+	}
+
 	modCount := 0
 	for _, m := range mods {
 		modCount += len(m)
@@ -164,4 +169,45 @@ func writeGzipJSON(path string, v any) error {
 		return err
 	}
 	return os.WriteFile(path, buf.Bytes(), 0o644)
+}
+
+func writeModParser(read func(string) (string, error), tree *gamedata.Tree, dir string) error {
+	parserSrc, err := read("Modules/ModParser.lua")
+	if err != nil {
+		return err
+	}
+	globalSrc, err := read("Data/Global.lua")
+	if err != nil {
+		return err
+	}
+	clusterSrc, err := read("Data/ClusterJewels.lua")
+	if err != nil {
+		return err
+	}
+	tables, hooks, err := convertParserTables(parserSrc, globalSrc, clusterSrc, tree)
+	if err != nil {
+		return err
+	}
+	cacheSrc, err := read("Data/ModCache.lua")
+	if err != nil {
+		return err
+	}
+	cache, err := convertModCache(cacheSrc)
+	if err != nil {
+		return err
+	}
+	for _, d := range []string{filepath.Join(dir, "data"), filepath.Join(dir, "testdata")} {
+		if err := os.MkdirAll(d, 0o755); err != nil {
+			return err
+		}
+	}
+	data := map[string]any{"pob": pobVersion, "tables": tables, "hooks": hooks}
+	if err := writeGzipJSON(filepath.Join(dir, "data", "poe1.json.gz"), data); err != nil {
+		return err
+	}
+	if err := writeGzipJSON(filepath.Join(dir, "testdata", "modcache.json.gz"), cache); err != nil {
+		return err
+	}
+	slog.Info("modparser data", "tables", len(tables), "templates", templateCount, "hooks", len(hooks), "modCacheLines", len(cache))
+	return nil
 }

@@ -1,6 +1,7 @@
 package luadata
 
 import (
+	"errors"
 	"fmt"
 	"math"
 	"strconv"
@@ -530,12 +531,18 @@ func (e *evaluator) suffixed(asStatement bool) (Value, error) {
 			if err := e.expect(tOp, "]"); err != nil {
 				return nil, err
 			}
-			tb, ok := cur.(*Table)
-			if !ok {
+			switch c := cur.(type) {
+			case *Table:
+				cur = c.Get(k)
+				path = ""
+			case Ref:
+				// An unresolved name stays a name: data.list[k] -> Ref("data.list[k]").
+				ks, _ := toStr(k)
+				cur = Ref(fmt.Sprintf("%s[%s]", c, ks))
+				path = string(cur.(Ref))
+			default:
 				return nil, e.errf("cannot index %s", typeName(cur))
 			}
-			cur = tb.Get(k)
-			path = ""
 		case t.kind == tOp && t.text == ":":
 			return nil, e.errf("method calls are not supported")
 		case (t.kind == tOp && (t.text == "(" || t.text == "{")) || t.kind == tString:
@@ -546,6 +553,16 @@ func (e *evaluator) suffixed(asStatement bool) (Value, error) {
 			switch fn := cur.(type) {
 			case Ref:
 				cur = &Call{Func: string(fn), Args: args}
+			case Builtin:
+				v, err := fn(args)
+				switch {
+				case errors.Is(err, ErrKeepCall):
+					cur = &Call{Func: path, Args: args}
+				case err != nil:
+					return nil, e.errf("%s: %v", path, err)
+				default:
+					cur = v
+				}
 			case *Func:
 				if !asStatement {
 					return nil, e.errf("calling a function for its value is not supported")
@@ -691,6 +708,7 @@ func (e *evaluator) funcRest(start token) (*Func, error) {
 		params:    params,
 		body:      body,
 		bodyScope: e.sc,
+		src:       e.src,
 	}, nil
 }
 

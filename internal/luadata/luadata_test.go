@@ -216,3 +216,78 @@ func TestErrorsHaveLine(t *testing.T) {
 		}
 	}
 }
+
+func TestBuiltins(t *testing.T) {
+	bor := Builtin(func(args []Value) (Value, error) {
+		out := 0
+		for _, a := range args {
+			n, ok := a.(Number)
+			if !ok {
+				return nil, ErrKeepCall
+			}
+			out |= int(n)
+		}
+		return Number(out), nil
+	})
+	env := map[string]Value{"bor": bor, "Flag": &Table{}}
+	env["Flag"].(*Table).Set("A", Number(1))
+	env["Flag"].(*Table).Set("B", Number(4))
+	v, err := Eval(`return { a = bor(Flag.A, Flag.B), b = bor(Flag.A, Other.X) }`, env)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tb := v.(*Table)
+	if tb.Get("a") != Number(5) {
+		t.Errorf("evaluated: %#v", tb.Get("a"))
+	}
+	if c, ok := tb.Get("b").(*Call); !ok || c.Func != "bor" {
+		t.Errorf("kept call: %#v", tb.Get("b"))
+	}
+}
+
+func TestExtractLocalAndGlobals(t *testing.T) {
+	src := `local helper = 1
+local function f() return 1 end
+local formList = { ["^(%d+)%% increased"] = "INC", fn = function(x) return x end }
+for i = 1, 3 do end`
+	v, err := ExtractLocal(src, "formList", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v.(*Table).Get("^(%d+)%% increased") != String("INC") {
+		t.Errorf("formList: %#v", v)
+	}
+	if _, err := ExtractLocal(src, "missing", nil); err == nil {
+		t.Error("missing local must fail")
+	}
+	g, err := EvalGlobals("ModFlag = { }\nModFlag.Attack = 0x01\nModFlag.Hit = 0x04", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if g["ModFlag"].(*Table).Get("Hit") != Number(4) {
+		t.Errorf("globals: %#v", g)
+	}
+}
+
+func TestIndexUnresolvedName(t *testing.T) {
+	v := eval(t, `return { a = data.list["x"], b = data.list[2].name }`).(*Table)
+	if v.Get("a") != Ref("data.list[x]") || v.Get("b") != Ref("data.list[2].name") {
+		t.Errorf("refs: %#v %#v", v.Get("a"), v.Get("b"))
+	}
+}
+
+func TestFuncCall(t *testing.T) {
+	v := eval(t, `return { f = function(num, kind) return { mod = { "Life", num }, kind = kind } end, g = function(n) if n then return 1 end end }`).(*Table)
+	f := v.Get("f").(*Func)
+	out, err := f.Call([]Value{Ref("$arg:1"), String("x")}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tb := out.(*Table)
+	if tb.Get("kind") != String("x") || tb.Get("mod").(*Table).List[1] != Ref("$arg:1") {
+		t.Errorf("call result: %#v", tb)
+	}
+	if _, err := v.Get("g").(*Func).Call(nil, nil); err == nil {
+		t.Error("if statements are not supported and must fail")
+	}
+}
