@@ -92,6 +92,8 @@ Gold Ring
 Implicits: 1
 +(6-15)% to Item Rarity
 ]],[[
+Item Class: Rings
+Rarity: Unique
 Astral Projector
 Topaz Ring
 ]],
@@ -101,6 +103,9 @@ Topaz Ring
 	}
 	if len(uniques) != 2 || uniques[0].Name != "Andvarius" || uniques[0].Base != "Gold Ring" || uniques[0].File != "ring" {
 		t.Fatalf("uniques: %+v", uniques)
+	}
+	if uniques[1].Name != "Astral Projector" || uniques[1].Base != "Topaz Ring" {
+		t.Errorf("header lines must be skipped: %+v", uniques[1])
 	}
 	if uniques[0].Raw != "Andvarius\nGold Ring\nImplicits: 1\n+(6-15)% to Item Rarity" {
 		t.Errorf("raw: %q", uniques[0].Raw)

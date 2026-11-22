@@ -100,6 +100,10 @@ func convertUniques(files map[string]string) ([]*gamedata.Unique, error) {
 					lines = append(lines, l)
 				}
 			}
+			// A few entries are written as game text with these header lines.
+			for len(lines) > 0 && (strings.HasPrefix(lines[0], "Item Class:") || strings.HasPrefix(lines[0], "Rarity:")) {
+				lines = lines[1:]
+			}
 			if len(lines) < 2 {
 				return nil, fmt.Errorf("%s: unique #%d has no name and base", name, i+1)
 			}

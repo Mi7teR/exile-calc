@@ -8,7 +8,7 @@ Go libraries for Path of Exile game data, ported from
 | --- | --- | --- |
 | `pobcode` | PoB export code ↔ `Build`: items by slot, gems, passive trees, config | done |
 | `gamedata` | Embedded game data: bases, mods with tiers, gems, uniques, passive tree | done |
-| `itemtext` | Item text → structured item | planned |
+| `itemtext` | Item text (game Ctrl+C, Ctrl+Alt+C, PoB format) → base, sockets, enchants, implicits, explicits | done |
 | `modparser` | Mod text → ModDB modifiers | planned |
 | `engine` | Defence/offence calculation, swap and diff | planned |
 
