@@ -62,23 +62,42 @@ func (p *Parser) Parse(line string) Result {
 // parseRaw returns mods in the generic encoding used by the data and the
 // tests: nil = not recognised; extra = leftover text ("" = none).
 func (p *Parser) parseRaw(line string) ([]any, string) {
-	var missingHook bool
-	mods, extra := p.parseOrdered(line, &missingHook)
+	mods, extra, _ := p.parseTracked(line)
+	return mods, extra
+}
+
+// missInfo records the first unported hook a line needed.
+type missInfo struct {
+	hit  bool
+	name string
+}
+
+func (m *missInfo) set(v any) {
+	m.hit = true
+	if mm, ok := v.(map[string]any); ok && m.name == "" {
+		m.name, _ = mm["$hook"].(string)
+	}
+}
+
+// parseTracked is parseRaw that also returns the missing hook, if any.
+func (p *Parser) parseTracked(line string) ([]any, string, string) {
+	miss := &missInfo{}
+	mods, extra := p.parseOrdered(line, miss)
 	// A missing hook means PoB would have parsed the line: do not retry with
 	// rewritten wording, which could parse it differently.
-	if !missingHook && (mods == nil || extra != "") {
+	if !miss.hit && (mods == nil || extra != "") {
 		// ModParser.lua: 3.30 replaced "nearby" with distances; retry with the old wording.
 		lower := asciiLower(line)
 		if withinMetre.MatchString(lower) {
 			for _, rw := range nearbyRewrites {
 				lower = rw.re.ReplaceAllString(lower, rw.repl)
 			}
-			if m, e := p.parseOrdered(lower, &missingHook); m != nil && e == "" {
-				return m, ""
+			if m, e := p.parseOrdered(lower, miss); m != nil && e == "" {
+				return m, "", ""
 			}
 		}
 	}
-	return mods, extra
+	return mods, extra, miss.name
 }
 
 var withinMetre = regexp.MustCompile(`within [0-9.]+ metre`)
@@ -111,7 +130,7 @@ var nearbyRewrites = func() []struct {
 }()
 
 // parseModOrdered
-func (p *Parser) parseOrdered(line string, miss *bool) ([]any, string) {
+func (p *Parser) parseOrdered(line string, miss *missInfo) ([]any, string) {
 	mods, extra := p.parseMod(line, 1, miss)
 	if mods != nil && extra != "" {
 		mods, extra = p.parseMod(line, 2, miss)
@@ -197,7 +216,7 @@ func capArgs(caps []string) []any {
 var hasDigit = regexp.MustCompile(`\d+`)
 
 // parseMod ports ModParser.lua parseMod(line, order).
-func (p *Parser) parseMod(line string, order int, miss *bool) ([]any, string) {
+func (p *Parser) parseMod(line string, order int, miss *missInfo) ([]any, string) {
 	lower := asciiLower(line)
 	// jewelFuncList (radius jewel functions) is code in ModParser.lua and is
 	// not exported yet.
@@ -210,11 +229,12 @@ func (p *Parser) parseMod(line string, order int, miss *bool) ([]any, string) {
 	if special, rest, caps, ok := p.scan(line, "specialModList"); ok && rest == "" {
 		n, _ := luaNumber(first(caps))
 		args := append([]any{nilIfNaN(n, first(caps))}, capArgs(caps)...)
-		out, ok := call(special, args)
+		out, ok := p.call(special, args)
 		if !ok {
-			*miss = true
+			miss.set(special)
 		}
-		if !ok || unresolved(out) {
+		// A Lua function that returns nil leaves the line unparsed.
+		if !ok || out == nil || unresolved(out) {
 			return nil, line
 		}
 		return asList(deepCopy(out)), ""
@@ -228,16 +248,16 @@ func (p *Parser) parseMod(line string, order int, miss *bool) ([]any, string) {
 	preFlag, rest, caps, _ := p.scan(line, "preFlagList")
 	line = rest
 	if isFunc(preFlag) {
-		out, ok := call(preFlag, capArgs(caps))
+		out, ok := p.call(preFlag, capArgs(caps))
 		if !ok {
-			*miss = true
+			miss.set(preFlag)
 			return nil, line
 		}
 		preFlag = out
 	}
 
-	// preSkillNameList is built from gem data by code; not exported yet.
-	var skillTag any
+	// Skill name at the start of the line.
+	skillTag, line, _, _ := p.scan(line, "preSkillNameList")
 
 	modForm, rest, formCaps, ok := p.scan(line, "formList")
 	line = rest
@@ -250,13 +270,13 @@ func (p *Parser) parseMod(line string, order int, miss *bool) ([]any, string) {
 	if v, rest, tagCaps, ok := p.scan(line, "modTagList"); ok {
 		line = rest
 		if modTag, ok = p.tagValue(v, tagCaps); !ok {
-			*miss = true
+			miss.set(v)
 			return nil, line
 		}
 		if v2, rest2, tagCaps2, ok2 := p.scan(line, "modTagList"); ok2 {
 			line = rest2
 			if modTag2, ok = p.tagValue(v2, tagCaps2); !ok {
-				*miss = true
+				miss.set(v2)
 				return nil, line
 			}
 		}
@@ -444,7 +464,7 @@ func (p *Parser) tagValue(v any, caps []string) (any, bool) {
 		n, _ := luaNumber(first(caps))
 		firstArg = n
 	}
-	return call(v, append([]any{firstArg}, capArgs(caps)...))
+	return p.call(v, append([]any{firstArg}, capArgs(caps)...))
 }
 
 func first(s []string) string {

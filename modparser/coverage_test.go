@@ -47,7 +47,7 @@ var knownDifferences = map[string]string{
 
 // Ratchet: raise these as hooks and fixes land; never lower them.
 const (
-	minMatched = 15715 // of 19265 lines PoB v2.68.1 parses fully (81.6%)
+	minMatched = 18390 // of 19265 lines PoB v2.68.1 parses fully (95.5%)
 	maxWrong   = 0
 )
 
@@ -71,12 +71,16 @@ func TestModCacheCoverage(t *testing.T) {
 	matched, unsupported := 0, 0
 	var wrong []string
 	unsupportedForms := map[string]int{}
+	missingHooks := map[string]int{}
 	for _, line := range lines {
 		want := cache[line][0]
-		got, extra := p.parseRaw(line)
+		got, extra, hook := p.parseTracked(line)
 		switch {
 		case got == nil || extra != "":
 			unsupported++
+			if hook != "" {
+				missingHooks[hook]++
+			}
 			unsupportedForms[numbers.ReplaceAllString(line, "#")]++
 		case equalMods(got, want):
 			matched++
@@ -113,6 +117,24 @@ func TestModCacheCoverage(t *testing.T) {
 			break
 		}
 		t.Logf("unsupported x%d: %s", f.n, f.text)
+	}
+	var hooksByCount []form
+	for h, n := range missingHooks {
+		hooksByCount = append(hooksByCount, form{h, n})
+	}
+	sort.Slice(hooksByCount, func(i, j int) bool {
+		return hooksByCount[i].n > hooksByCount[j].n || (hooksByCount[i].n == hooksByCount[j].n && hooksByCount[i].text < hooksByCount[j].text)
+	})
+	blocked := 0
+	for _, h := range hooksByCount {
+		blocked += h.n
+	}
+	t.Logf("lines blocked by %d unported hooks: %d", len(hooksByCount), blocked)
+	for i, h := range hooksByCount {
+		if i == 25 {
+			break
+		}
+		t.Logf("hook x%d: %s", h.n, h.text)
 	}
 	if matched < minMatched {
 		t.Errorf("matched %d < ratchet %d", matched, minMatched)

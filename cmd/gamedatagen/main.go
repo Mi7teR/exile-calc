@@ -19,6 +19,7 @@ import (
 	"path/filepath"
 
 	"github.com/Mi7teR/poe-lib/gamedata"
+	"github.com/Mi7teR/poe-lib/internal/luadata"
 )
 
 // Pinned PoB release and passive tree.
@@ -138,7 +139,7 @@ func run(src, out, parserOut string) error {
 			return fmt.Errorf("%s: %w", name, err)
 		}
 	}
-	if err := writeModParser(read, tree, parserOut); err != nil {
+	if err := writeModParser(read, tree, gems, parserOut); err != nil {
 		return err
 	}
 
@@ -171,7 +172,7 @@ func writeGzipJSON(path string, v any) error {
 	return os.WriteFile(path, buf.Bytes(), 0o644)
 }
 
-func writeModParser(read func(string) (string, error), tree *gamedata.Tree, dir string) error {
+func writeModParser(read func(string) (string, error), tree *gamedata.Tree, gems map[string]*gamedata.Gem, dir string) error {
 	parserSrc, err := read("Modules/ModParser.lua")
 	if err != nil {
 		return err
@@ -188,6 +189,21 @@ func writeModParser(read func(string) (string, error), tree *gamedata.Tree, dir 
 	if err != nil {
 		return err
 	}
+	env, err := parserEnv(globalSrc)
+	if err != nil {
+		return err
+	}
+	skills, err := loadSkills(read, env)
+	if err != nil {
+		return err
+	}
+	skillType := env["SkillType"].(*luadata.Table)
+	keywordFlag := env["KeywordFlag"].(*luadata.Table)
+	buff, _ := skillType.Get("Buff").(luadata.Number)
+	arrow, _ := keywordFlag.Get("Arrow").(luadata.Number)
+	addSkillTables(tables, gems, skills, float64(buff), float64(arrow))
+	addSkillLookups(tables, gems, skills)
+
 	cacheSrc, err := read("Data/ModCache.lua")
 	if err != nil {
 		return err
