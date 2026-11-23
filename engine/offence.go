@@ -214,6 +214,7 @@ func (c *Calculator) offence(actor *ModDB, s *activeSkill, w1 hitSource, w2 *hit
 	}
 	c.offenceStatConversions(actor, s, w1, w2, out)
 	preSkillTypeFunc(s)
+	projectileStats(s, out)
 	costs := map[string]float64{}
 	skillCosts(actor, s, costs)
 	for k, v := range costs {
@@ -231,7 +232,7 @@ func (c *Calculator) offence(actor *ModDB, s *activeSkill, w1 hitSource, w2 *hit
 		list.Add(Mod{Name: "ChaosMin", Type: "BASE", Value: add, Source: "Sacrifice Support"})
 		list.Add(Mod{Name: "ChaosMax", Type: "BASE", Value: add, Source: "Sacrifice Support"})
 	}
-	preDamageFunc(actor, s)
+	preDamageFunc(actor, s, out)
 	// Corpse and enemy explosions: base damage from the monster's life.
 	monsterLife := 100.0
 	if v, ok := num(data["corpseLife"]); ok {
@@ -896,9 +897,39 @@ func playerWeapons(db *ModDB, gear map[string][]modparser.Mod, classID int) (hit
 
 // preDamageFunc ports the skills' preDamageFunc (Data/Skills/*.lua) that
 // set skill data before the damage passes.
-func preDamageFunc(actor *ModDB, s *activeSkill) {
+func preDamageFunc(actor *ModDB, s *activeSkill, out map[string]float64) {
 	data := s.data
+	proj := out["ProjectileCount"]
+	mulDPS := func(m float64) { data["dpsMultiplier"] = numOr(data["dpsMultiplier"], 1) * m }
 	switch s.active.ge.Name {
+	case "Barrage", "Barrage of Volley Fire", "Blast Rain", "Vaal Lightning Arrow":
+		if s.part == 2 {
+			data["dpsMultiplier"] = proj
+		}
+	case "Blazing Salvo":
+		if s.part == 2 {
+			mulDPS(proj)
+		}
+	case "Forbidden Rite", "Forbidden Rite of Soul Sacrifice":
+		if s.part == 2 {
+			mulDPS(proj + 1)
+		}
+	case "Ice Spear", "Ice Spear of Splitting":
+		if s.part == 3 || s.part == 4 {
+			mulDPS(proj)
+		}
+	case "Toxic Rain", "Toxic Rain of Sporeburst", "Toxic Rain of Withering":
+		data["dpsMultiplier"] = math.Min(numOr(data["podOverlapMultiplier"], 1), proj)
+	case "Shrapnel Ballista", "Shrapnel Ballista of Steel":
+		if !s.mods.Flag("SequentialProjectiles") {
+			overlap := 1.0
+			if v, ok := num(data["ShrapnelBallistaProjectileOverlap"]); ok {
+				overlap = v
+			} else if s.types[89] { // Rain
+				overlap = proj
+			}
+			mulDPS(math.Min(overlap, proj))
+		}
 	case "Bodyswap", "Bodyswap of Sacrifice":
 		if s.part == 1 {
 			m, _ := num(data["selfFireExplosionLifeMultiplier"])
@@ -1166,4 +1197,32 @@ func preSkillTypeFunc(s *activeSkill) {
 			list.NewMod("Multiplier:RageSacrificed", "BASE", stacks, "Skill:RageVortex")
 		}
 	}
+}
+
+// projectileStats is the projectile part of calcs.offence's skill type
+// stats: Point Blank, Far Shot and ProjectileCount.
+func projectileStats(s *activeSkill, out map[string]float64) {
+	if !s.flags["projectile"] {
+		return
+	}
+	list, cfg := s.mods, s.cfg
+	if list.Flag("PointBlank") {
+		list.Add(Mod{Name: "Damage", Type: "MORE", Value: 30.0, Flags: mfAttack | mfProjectile, Source: "Point Blank",
+			Tags: []map[string]any{{"type": "DistanceRamp", "ramp": []any{[]any{10.0, 1.0}, []any{35.0, 0.0}, []any{120.0, -1.0}}}}})
+	}
+	if list.Flag("FarShot") {
+		list.Add(Mod{Name: "Damage", Type: "MORE", Value: 100.0, Flags: mfAttack | mfProjectile, Source: "Far Shot",
+			Tags: []map[string]any{{"type": "DistanceRamp", "ramp": []any{[]any{10.0, -0.2}, []any{25.0, 0.0}, []any{70.0, 0.6}}}}})
+	}
+	if list.FlagCfg(cfg, "NoAdditionalProjectiles") || list.FlagCfg(cfg, "SingleProjectile") {
+		out["ProjectileCount"] = 1
+		return
+	}
+	projMin := list.SumCfg(cfg, "BASE", "ProjectileCountMinimum")
+	projMax, ok := list.OverrideCfg(cfg, "ProjectileCountMaximum")
+	if !ok {
+		projMax = math.Inf(1)
+	}
+	proj := math.Floor(list.SumCfg(cfg, "BASE", "ProjectileCount") * list.MoreCfg(cfg, "ProjectileCount"))
+	out["ProjectileCount"] = math.Max(math.Min(proj, projMax), projMin)
 }
