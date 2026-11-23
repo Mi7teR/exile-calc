@@ -130,6 +130,7 @@ type Tree struct {
 	Nodes      map[int]*Node `json:"nodes"`
 	Root       *Node         `json:"root,omitempty"`
 	JewelSlots []int         `json:"jewelSlots" lua:"jewelSlots"`
+	Constants  TreeConstants `json:"constants" lua:"constants"`
 	Points     TreePoints    `json:"points" lua:"points"`
 }
 
@@ -148,10 +149,17 @@ type Ascendancy struct {
 }
 
 type Group struct {
-	X      float64 `json:"x" lua:"x"`
-	Y      float64 `json:"y" lua:"y"`
-	Orbits []int   `json:"orbits" lua:"orbits"`
-	Nodes  []int   `json:"nodes" lua:"nodes"`
+	X       float64 `json:"x" lua:"x"`
+	Y       float64 `json:"y" lua:"y"`
+	Orbits  []int   `json:"orbits" lua:"orbits"`
+	Nodes   []int   `json:"nodes" lua:"nodes"`
+	IsProxy bool    `json:"isProxy,omitempty" lua:"isProxy"`
+}
+
+// TreeConstants positions nodes on their orbits (PassiveTree.lua ProcessNode).
+type TreeConstants struct {
+	OrbitRadii     []float64 `json:"orbitRadii" lua:"orbitRadii"`
+	SkillsPerOrbit []int     `json:"skillsPerOrbit" lua:"skillsPerOrbit"`
 }
 
 type TreePoints struct {
