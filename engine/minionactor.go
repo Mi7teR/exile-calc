@@ -27,6 +27,7 @@ func minionBaseMods(mdb *ModDB) {
 	mdb.NewMod("SpellBlockChanceMax", "BASE", 75, "Base")
 	chargeBaseMods(mdb)
 	initConditionMods(mdb)
+	shrineBaseMods(mdb)
 }
 
 // initMinionDB is initMinionModDB (CalcPerform.lua): the minion's base
@@ -248,6 +249,7 @@ func (c *Calculator) mainMinion(db *ModDB, skills []*activeSkill, buffs map[stri
 	addMinionModifiers(mdb, s.mods.List(s.cfg, "MinionModifier"), m.typ)
 	c.mergeKeystones(mdb, map[string]bool{}, res)
 	c.attributes(mdb)
+	shrineBuffs(mdb)
 	c.lifeMana(mdb)
 	mb := minionBuffs(db, skills, mdb)
 	for _, l := range buffMinionModifiers(buffs, s.cfg) {

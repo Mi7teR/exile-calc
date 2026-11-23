@@ -164,6 +164,7 @@ func (c *Calculator) minionLife(db *ModDB, s *activeSkill, m *skillMinion, buffs
 	}
 	c.mergeKeystones(mdb, map[string]bool{}, res)
 	c.attributes(mdb)
+	shrineBuffs(mdb)
 	c.lifeMana(mdb)
 	return mdb.output["Life"]
 }
