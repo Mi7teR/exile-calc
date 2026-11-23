@@ -158,11 +158,12 @@ func enemyMaxResistFor(configMax float64) float64 {
 }
 
 // offence computes a skill's hit DPS into out: Speed, HitChance,
-// CritChance, CritMultiplier, AverageHit, AverageDamage, TotalDPS.
-func (c *Calculator) offence(actor *ModDB, s *activeSkill, weapon hitSource) map[string]float64 {
+// CritChance, CritMultiplier, AverageHit, AverageDamage, TotalDPS. An
+// attack runs a pass per weapon (w2 nil: no off hand pass), combined as
+// calcs.offence's combineStat does.
+func (c *Calculator) offence(actor *ModDB, s *activeSkill, w1 hitSource, w2 *hitSource) map[string]float64 {
 	out := map[string]float64{}
 	list, cfg, data := s.mods, s.cfg, s.data
-	enemy := actor.enemy
 	if s.disabled {
 		out["CombinedDPS"] = 0
 		return out
@@ -171,21 +172,100 @@ func (c *Calculator) offence(actor *ModDB, s *activeSkill, weapon hitSource) map
 		skillData(data, e.Value)
 	}
 	isAttack := s.flags["attack"]
-	p := &hitPass{cfg: cfg, out: out}
+	var passes []*hitPass
 	if isAttack {
-		if !s.flags["weapon1Attack"] {
+		if s.flags["weapon1Attack"] {
+			passes = append(passes, &hitPass{src: w1, cfg: s.weapon1Cfg, out: map[string]float64{}})
+		}
+		if s.flags["weapon2Attack"] && w2 != nil {
+			src := *w2
+			if cc, ok := num(data["CritChance"]); ok {
+				src.critChance = cc
+			}
+			if at, ok := num(data["attackTime"]); ok && at != 0 {
+				src.attackRate = 1000 / at
+			}
+			passes = append(passes, &hitPass{src: src, cfg: s.weapon2Cfg, out: map[string]float64{}})
+		}
+		if len(passes) == 0 {
 			return out
 		}
-		p.src, p.cfg = weapon, s.weapon1Cfg
 	} else {
-		p.src = hitSource{min: map[string]float64{}, max: map[string]float64{}}
+		src := hitSource{min: map[string]float64{}, max: map[string]float64{}}
+		if cc, ok := num(data["CritChance"]); ok {
+			src.critChance = cc
+		}
+		passes = append(passes, &hitPass{src: src, cfg: cfg, out: out})
 	}
-	if cc, ok := num(data["CritChance"]); ok && !isAttack {
-		p.src.critChance = cc
+	both := len(passes) == 2
+	// combineStat: AVERAGE, HARMONICMEAN and DPS modes.
+	combine := func(stat, mode string) {
+		if !isAttack {
+			return
+		}
+		if !both {
+			out[stat] = passes[0].out[stat]
+			return
+		}
+		mh, oh := passes[0].out[stat], passes[1].out[stat]
+		switch mode {
+		case "AVERAGE":
+			out[stat] = (mh + oh) / 2
+		case "HARMONICMEAN":
+			if mh == 0 || oh == 0 {
+				out[stat] = 0
+			} else {
+				out[stat] = 2 / (1/mh + 1/oh)
+			}
+		case "DPS":
+			out[stat] = mh + oh
+			if !truthy(data["doubleHitsWhenDualWielding"]) {
+				out[stat] /= 2
+			}
+		}
 	}
-	p.conv = conversionTable(list, p.cfg)
+	for _, p := range passes {
+		p.conv = conversionTable(list, p.cfg)
+		c.hitAndSpeed(actor, s, p)
+	}
+	combine("AccuracyHitChance", "AVERAGE")
+	combine("HitChance", "AVERAGE")
+	combine("Speed", "HARMONICMEAN")
+	if out["Speed"] != 0 {
+		out["Time"] = 1 / out["Speed"]
+	}
+	dpsMult := 1.0
+	if v, ok := num(data["dpsMultiplier"]); ok {
+		dpsMult = v
+	}
+	dpsMult *= (1 + list.SumCfg(cfg, "INC", "DPS")/100) * list.MoreCfg(cfg, "DPS")
+	quantity := math.Max(list.SumCfg(cfg, "BASE", "QuantityMultiplier"), 1)
+	for _, p := range passes {
+		c.hitDamage(actor, s, p)
+		p.out["TotalDPS"] = p.out["AverageDamage"] * out["Speed"] * dpsMult * quantity
+	}
+	combine("CritChance", "AVERAGE")
+	combine("CritMultiplier", "AVERAGE")
+	combine("AverageDamage", "DPS")
+	combine("TotalDPS", "DPS")
+	if isAttack {
+		out["AverageHit"] = passes[0].out["AverageHit"]
+		for k, v := range passes[0].out {
+			if _, ok := out[k]; !ok {
+				out[k] = v
+			}
+		}
+	}
+	out["CombinedDPS"] = out["TotalDPS"]
+	return out
+}
 
-	// Hit chance.
+// hitAndSpeed is the hit chance and attack/cast speed part of
+// calcs.offence for one pass.
+func (c *Calculator) hitAndSpeed(actor *ModDB, s *activeSkill, p *hitPass) {
+	list, cfg, data, out := s.mods, s.cfg, s.data, p.out
+	enemy := actor.enemy
+	isAttack := s.flags["attack"]
 	accVsEnemy := math.Max(0, math.Floor(list.SumCfg(p.cfg, "BASE", "Accuracy", "AccuracyVsEnemy")*
 		(1+list.SumCfg(p.cfg, "INC", "Accuracy", "AccuracyVsEnemy")/100)*list.MoreCfg(p.cfg, "Accuracy", "AccuracyVsEnemy")))
 	if !isAttack || list.FlagCfg(p.cfg, "CannotBeEvaded") || truthy(data["cannotBeEvaded"]) || enemy.Flag("CannotEvade") {
@@ -200,52 +280,48 @@ func (c *Calculator) offence(actor *ModDB, s *activeSkill, weapon hitSource) map
 	}
 	out["HitChance"] = out["AccuracyHitChance"] * (1 - block/100)
 
-	// Attack/cast speed.
 	ge := s.active.ge
-	switch {
-	case ge.CastTime == 0 && data["castTimeOverride"] == nil && !truthy(data["triggered"]):
+	if ge.CastTime == 0 && data["castTimeOverride"] == nil && !truthy(data["triggered"]) {
 		out["Speed"] = 0
-	default:
-		var baseTime float64
-		if isAttack {
-			rate := p.src.attackRate
-			if m, ok := num(data["attackSpeedMultiplier"]); ok && rate != 0 {
-				rate *= 1 + m/100
-			}
-			if rate == 0 {
-				rate = 1
-			}
-			baseTime = 1/rate + list.SumCfg(p.cfg, "BASE", "Speed")
-			if m := calcMod(list, cfg, "SkillAttackTime"); m > 0 {
-				baseTime *= m
-			}
-		} else {
-			baseTime = ge.CastTime
-			if v, ok := num(data["castTimeOverride"]); ok {
-				baseTime = v
-			}
+		return
+	}
+	var baseTime float64
+	if isAttack {
+		rate := p.src.attackRate
+		if m, ok := num(data["attackSpeedMultiplier"]); ok && rate != 0 {
+			rate *= 1 + m/100
 		}
-		inc := list.SumCfg(p.cfg, "INC", "Speed")
-		more := list.MoreCfg(p.cfg, "Speed")
-		out["Speed"] = 1 / (baseTime/round((1+inc/100)*more, 2) + list.SumCfg(p.cfg, "BASE", "TotalAttackTime") + list.SumCfg(p.cfg, "BASE", "TotalCastTime"))
-		if s.flags["selfCast"] {
-			out["Speed"] *= actor.output["ActionSpeedMod"]
+		if rate == 0 {
+			rate = 1
 		}
-		if !s.types[stChannel] {
-			out["Speed"] = math.Min(out["Speed"], serverTickRate)
+		baseTime = 1/rate + list.SumCfg(p.cfg, "BASE", "Speed")
+		if m := calcMod(list, cfg, "SkillAttackTime"); m > 0 {
+			baseTime *= m
+		}
+	} else {
+		baseTime = ge.CastTime
+		if v, ok := num(data["castTimeOverride"]); ok {
+			baseTime = v
 		}
 	}
-	if out["Speed"] != 0 {
-		out["Time"] = 1 / out["Speed"]
+	inc := list.SumCfg(p.cfg, "INC", "Speed")
+	more := list.MoreCfg(p.cfg, "Speed")
+	out["Speed"] = 1 / (baseTime/round((1+inc/100)*more, 2) + list.SumCfg(p.cfg, "BASE", "TotalAttackTime") + list.SumCfg(p.cfg, "BASE", "TotalCastTime"))
+	if s.flags["selfCast"] {
+		out["Speed"] *= actor.output["ActionSpeedMod"]
 	}
-	dpsMult := 1.0
-	if v, ok := num(data["dpsMultiplier"]); ok {
-		dpsMult = v
+	if !s.types[stChannel] {
+		out["Speed"] = math.Min(out["Speed"], serverTickRate)
 	}
-	dpsMult *= (1 + list.SumCfg(cfg, "INC", "DPS")/100) * list.MoreCfg(cfg, "DPS")
-	quantity := math.Max(list.SumCfg(cfg, "BASE", "QuantityMultiplier"), 1)
+}
 
-	// Crit.
+// hitDamage is the crit and hit damage part of calcs.offence for one pass:
+// AverageHit and AverageDamage.
+func (c *Calculator) hitDamage(actor *ModDB, s *activeSkill, p *hitPass) {
+	list, cfg, data, out := s.mods, s.cfg, s.data, p.out
+	enemy := actor.enemy
+	ge := s.active.ge
+
 	c.crit(list, p, enemy)
 
 	// Double and triple damage.
@@ -344,9 +420,6 @@ func (c *Calculator) offence(actor *ModDB, s *activeSkill, weapon hitSource) map
 
 	out["AverageHit"] = totalHitAvg*(1-out["CritChance"]/100) + totalCritAvg*out["CritChance"]/100
 	out["AverageDamage"] = out["AverageHit"] * out["HitChance"] / 100
-	out["TotalDPS"] = out["AverageDamage"] * out["Speed"] * dpsMult * quantity
-	out["CombinedDPS"] = out["TotalDPS"]
-	return out
 }
 
 // crit is the crit chance and multiplier part of calcs.offence.

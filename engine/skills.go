@@ -242,8 +242,9 @@ type activeSkill struct {
 	// is the summoning skill of a minion's skill (activeSkill.summonSkill).
 	supportList []*skillEffect
 	summon      *activeSkill
-	// weapon1Cfg is the skill cfg of a main hand attack (weapon flags).
-	weapon1Cfg *Cfg
+	// weapon1Cfg and weapon2Cfg are the skill cfgs of main and off hand
+	// attacks (weapon flags).
+	weapon1Cfg, weapon2Cfg *Cfg
 }
 
 // modFlagByName is the weapon part of Data/Global.lua ModFlag.
@@ -1147,8 +1148,8 @@ func (c *Calculator) buildSkillMods(db *ModDB, s *activeSkill, res *Result) {
 	// Weapon flags of a minion's attack: its weapon type, and minion skills
 	// ignore weapon types ("None" when unknown). The player's weapon flags
 	// (weaponTypes checks, off hand) are not ported yet.
-	var w1Flags uint64
-	w1Attack := false
+	var w1Flags, w2Flags uint64
+	w1Attack, w2Attack := false, false
 	if s.summon != nil && flags["attack"] {
 		f, ok := weaponFlags(s.weapons[0])
 		if !ok {
@@ -1163,6 +1164,10 @@ func (c *Calculator) buildSkillMods(db *ModDB, s *activeSkill, res *Result) {
 			delete(flags, "melee")
 		}
 		flags["weapon1Attack"] = true
+		if f, ok := weaponFlags(s.weapons[1]); ok && s.weapons[1] != "" {
+			w2Flags, w2Attack = f, true
+			flags["weapon2Attack"] = true
+		}
 	}
 	summonName := ""
 	if s.summon != nil {
@@ -1177,6 +1182,12 @@ func (c *Calculator) buildSkillMods(db *ModDB, s *activeSkill, res *Result) {
 		w := *s.cfg
 		w.SkillCond = map[string]bool{"MainHandAttack": true}
 		s.weapon1Cfg = &w
+	}
+	if w2Attack {
+		w := *s.cfg
+		w.Flags = modFlags | w2Flags
+		w.SkillCond = map[string]bool{"OffHandAttack": true}
+		s.weapon2Cfg = &w
 	}
 	if s.active.cfg != nil {
 		s.cfg.SlotName, s.cfg.SocketColor, s.cfg.SocketNum = s.active.cfg.SlotName, s.active.cfg.SocketColor, s.active.cfg.SocketNum
