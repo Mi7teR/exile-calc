@@ -165,7 +165,13 @@ func (c *Calculator) conquests(spec *pobcode.Spec, b *pobcode.Build, alloc map[i
 				continue
 			}
 			cq, ok := readConquest(m.Value)
-			if !ok || cq.jewelType >= 7 {
+			if !ok {
+				continue
+			}
+			if cq.jewelType >= 7 {
+				// The abyssal timeless jewels of 3.30 use split lookup tables
+				// (DataLegionLookUpTableHelper.lua) that are not ported.
+				res.Incomplete = append(res.Incomplete, "abyssal timeless jewel conquest: "+it.Name)
 				continue
 			}
 			r, ok := radiusByLabel(it.Radius)

@@ -184,7 +184,8 @@ func (c *Calculator) Calc(b *pobcode.Build) (*Result, error) {
 		it   *itemtext.Item
 	}
 	var kalandra []reflect
-	var reflected []*itemtext.Item // the other ring of each Kalandra's Touch
+	gearMods := map[string][]modparser.Mod{} // all parsed mods of each gear slot
+	var reflected []*itemtext.Item           // the other ring of each Kalandra's Touch
 	useSwap := false
 	if set := b.ActiveItems(); set != nil {
 		useSwap = set.UseSecondWeaponSet
@@ -233,6 +234,7 @@ func (c *Calculator) Calc(b *pobcode.Build) (*Result, error) {
 			}
 			it, mods := c.addItem(db, res, b.Item(slot.ItemID), 1, slot.Name)
 			if it != nil {
+				gearMods[slot.Name] = mods
 				gear = append(gear, equipped{slot.Name, it})
 				db.items[slot.Name] = it
 				parents[slot.Name] = it
@@ -352,6 +354,17 @@ func (c *Calculator) Calc(b *pobcode.Build) (*Result, error) {
 	keystones := map[string]bool{}
 	c.applyFlasks(db, res, flasks)
 	c.mergeKeystones(db, keystones, res)
+	// CalcPerform.lua: "gain maximum life instead of maximum energy shield
+	// from equipped armour items".
+	if db.Flag("ConvertArmourESToLife") {
+		for _, slot := range esToLifeSlots {
+			if it := db.items[slot]; it != nil {
+				if es := itemEnergyShield(it, gearMods[slot]); es > 0 {
+					db.NewMod("Life", "BASE", es, slot+" ES to Life Conversion")
+				}
+			}
+		}
+	}
 	c.attributes(db)
 	shrineBuffs(db)
 	c.lifeMana(db)

@@ -85,6 +85,11 @@ type Item struct {
 	// Radius is a jewel's radius label ("Large", "Variable", ...).
 	Radius string
 
+	// ArmourData holds the defence spec lines (Item.lua armourData): the
+	// values "Armour", "Evasion", "EnergyShield", "Ward" and their
+	// "<name>BasePercentile" rolls.
+	ArmourData map[string]float64
+
 	Variants []string // "Variant:" lines of a unique
 	Variant  int      // selected variant, 1-based; the last one by default
 
@@ -400,6 +405,15 @@ func (p *Parser) Parse(text string) (*Item, error) {
 				it.ItemLevel = specNumber(specVal)
 			case "Quality":
 				it.Quality = specNumber(specVal)
+			case "Armour", "Evasion Rating", "Evasion", "Energy Shield", "Ward":
+				key := map[string]string{"Evasion Rating": "Evasion", "Energy Shield": "EnergyShield"}[specName]
+				if key == "" {
+					key = specName
+				}
+				if it.ArmourData == nil {
+					it.ArmourData = map[string]float64{}
+				}
+				it.ArmourData[key] = float64(specNumber(specVal))
 			case "Sockets":
 				group := 0
 				for i := 0; i < len(specVal); i++ {
@@ -453,7 +467,13 @@ func (p *Parser) Parse(text string) (*Item, error) {
 					// Game text: "Quality (Resistance Modifiers): +20%".
 					it.CatalystQuality = specNumber(specVal)
 					it.Catalyst = catalystByDescriptor[m[1]]
-				} else if !knownSpecs[specName] && !strings.Contains(specName, "BasePercentile") &&
+				} else if strings.Contains(specName, "BasePercentile") {
+					if it.ArmourData == nil {
+						it.ArmourData = map[string]float64{}
+					}
+					f, _ := strconv.ParseFloat(numberRe.FindString(specVal), 64)
+					it.ArmourData[specName] = f
+				} else if !knownSpecs[specName] &&
 					!(strings.Contains(it.Name, specName) && strings.Contains(it.Name, specVal)) {
 					foundExplicit, st = true, explicitStage
 				}
