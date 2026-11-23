@@ -185,6 +185,9 @@ func isRadiusFuncLine(line string) bool {
 	if _, ok := collectPatterns[l]; ok {
 		return true
 	}
+	if _, ok := selfFuncs[l]; ok {
+		return true
+	}
 	for _, p := range radiusPatterns {
 		if p.re.MatchString(l) {
 			return true
@@ -201,6 +204,7 @@ func asciiLowerTrim(s string) string { return strings.ToLower(strings.TrimSpace(
 // runs with node = nil.
 type radiusJewels struct {
 	byNode   map[int][]radiusFunc
+	second   map[int][]secondPassFunc // Self and SelfUnalloc functions
 	inRadius map[int]bool
 	finals   []func() []Mod
 }
@@ -234,7 +238,7 @@ var collectPatterns = map[string]string{
 // radiusFuncs collects the radius functions of the jewels socketed in
 // allocated sockets.
 func (c *Calculator) radiusFuncs(spec *pobcode.Spec, b *pobcode.Build, alloc map[int]bool, res *Result) radiusJewels {
-	out := radiusJewels{byNode: map[int][]radiusFunc{}, inRadius: map[int]bool{}}
+	out := radiusJewels{byNode: map[int][]radiusFunc{}, second: map[int][]secondPassFunc{}, inRadius: map[int]bool{}}
 	var pos map[int]point
 	for _, s := range spec.Sockets {
 		if s.ItemID == 0 || !alloc[s.NodeID] {
@@ -254,6 +258,7 @@ func (c *Calculator) radiusFuncs(spec *pobcode.Spec, b *pobcode.Build, alloc map
 		}
 		src := fmt.Sprintf("Tree:%d", s.NodeID)
 		var funcs []radiusFunc
+		var seconds []secondPassFunc
 		for i := 0; i < len(lines); i++ {
 			l := asciiLowerTrim(lines[i])
 			// Two-line jewel mods are matched together (ItemClass:ParseRaw).
@@ -271,15 +276,25 @@ func (c *Calculator) radiusFuncs(spec *pobcode.Spec, b *pobcode.Build, alloc map
 				funcs = append(funcs, f)
 				out.finals = append(out.finals, final)
 			}
+			if p, ok := selfFuncs[l]; ok {
+				f, final := newPerStat(p, src)
+				seconds = append(seconds, f)
+				out.finals = append(out.finals, final)
+			}
 		}
-		if len(funcs) == 0 {
+		if len(funcs) == 0 && len(seconds) == 0 {
 			continue
 		}
 		if pos == nil {
 			pos = nodePositions(c.data.Tree)
 		}
 		for _, id := range nodesInRadius(c.data.Tree, pos, s.NodeID, r) {
-			out.byNode[id] = append(out.byNode[id], funcs...)
+			if len(funcs) > 0 {
+				out.byNode[id] = append(out.byNode[id], funcs...)
+			}
+			if len(seconds) > 0 {
+				out.second[id] = append(out.second[id], seconds...)
+			}
 			out.inRadius[id] = true
 		}
 	}

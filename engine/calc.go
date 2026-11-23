@@ -173,14 +173,17 @@ func (c *Calculator) Calc(b *pobcode.Build) (*Result, error) {
 			stats, source, _ = c.conqueredStats(node, id, cq, res)
 		}
 		var funcs []radiusFunc
+		var second []secondPassFunc
 		if !isConquered { // jewelFuncList: nodes changed by timeless jewels are left alone
-			funcs = radiusFuncs.byNode[id]
+			funcs, second = radiusFuncs.byNode[id], radiusFuncs.second[id]
 		}
+		mods := finishNode(c.nodeMods(res, stats, 0, source, node, funcs), add, node, second)
 		if !add {
-			c.nodeMods(res, stats, 0, source, node, funcs)
 			return
 		}
-		c.addNode(db, res, stats, 0, source, node, funcs)
+		for _, m := range mods {
+			db.Add(m)
+		}
 	}
 	for _, id := range spec.Nodes {
 		addTreeNode(id, true)
@@ -508,19 +511,36 @@ func (c *Calculator) nodeLines(stats []string, res *Result) []modparser.Mod {
 // (CalcSetup.lua buildModListForNode: calcLib.mod(modList, nil, "PassiveSkillEffect")).
 // incEffect is the cluster jewel's "increased Effect" of small passives.
 func (c *Calculator) addNode(db *ModDB, res *Result, stats []string, incEffect float64, source string, tn *gamedata.Node, funcs []radiusFunc) {
-	mods := c.nodeMods(res, stats, incEffect, source, tn, funcs)
+	for _, m := range finishNode(c.nodeMods(res, stats, incEffect, source, tn, funcs), true, tn, nil) {
+		db.Add(m)
+	}
+}
+
+// finishNode is the rest of buildModListForNode: a node that "grants
+// nothing" loses its mods, the rest is scaled by passive skill effect, then
+// the second-pass radius functions see the result (Self on allocated
+// nodes, SelfUnalloc on unallocated ones).
+func finishNode(mods []Mod, allocated bool, tn *gamedata.Node, second []secondPassFunc) []Mod {
 	node := NewModDB()
 	for _, m := range mods {
 		node.Add(m)
 	}
-	// buildModListForNode: a node that "grants nothing" loses its mods.
-	if node.Flag("PassiveSkillHasNoEffect") || node.Flag("AllocatedPassiveSkillHasNoEffect") {
-		return
+	if node.Flag("PassiveSkillHasNoEffect") || (allocated && node.Flag("AllocatedPassiveSkillHasNoEffect")) {
+		mods = nil
 	}
 	scale := (1 + node.Sum("INC", "PassiveSkillEffect")/100) * node.More("PassiveSkillEffect")
+	out := make([]Mod, 0, len(mods))
 	for _, m := range mods {
-		db.Add(scaleMod(m, scale))
+		out = append(out, scaleMod(m, scale))
 	}
+	if tn != nil && nodeType(tn) != "Mastery" {
+		for _, f := range second {
+			if f.unalloc != allocated {
+				f.f(tn, out)
+			}
+		}
+	}
+	return out
 }
 
 // nodeMods is a node's own mods plus what the first-pass radius functions add.
