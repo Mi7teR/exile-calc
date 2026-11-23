@@ -1134,6 +1134,8 @@ func (c *Calculator) buildSkillMods(db *ModDB, s *activeSkill, res *Result) {
 		kw |= kfTrap
 	case flags["mine"]:
 		kw |= kfMine
+	case !types[stTriggered]:
+		flags["selfCast"] = true
 	}
 	if types[stAttack] {
 		kw |= kfAttack
