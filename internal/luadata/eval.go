@@ -28,6 +28,8 @@ type evaluator struct {
 	sc   *scope
 	root *scope // chunk scope: where unknown globals are created
 	env  map[string]Value
+
+	endedWithCall bool // the last suffixed expression ended in a call
 }
 
 // Eval evaluates a data file and returns what it returns. If the file returns
@@ -113,29 +115,143 @@ func (e *evaluator) expect(kind tokKind, text string) error {
 // block runs statements until the terminator (EOF for a chunk) and returns
 // the value of a return statement, if any.
 func (e *evaluator) block(term tokKind) (Value, bool, error) {
-	for e.tok().kind != term {
+	return e.stmts(func(t token) bool { return t.kind == term })
+}
+
+// stmts runs statements until stop matches the next token. A return, also
+// one inside an if, ends the run; the remaining tokens are left unread.
+func (e *evaluator) stmts(stop func(token) bool) (Value, bool, error) {
+	for !stop(e.tok()) {
+		if e.tok().kind == tEOF {
+			return nil, false, e.errf("unexpected end of input")
+		}
 		if e.accept(tOp, ";") {
 			continue
 		}
 		if e.accept(tKeyword, "return") {
 			var v Value
-			if e.tok().kind != term && !e.is(tOp, ";") {
+			if !stop(e.tok()) && !e.is(tOp, ";") {
 				var err error
 				if v, err = e.expr(); err != nil {
 					return nil, false, err
 				}
 			}
 			e.accept(tOp, ";")
-			if e.tok().kind != term {
+			if !stop(e.tok()) {
 				return nil, false, e.errf("statements after return")
 			}
 			return v, true, nil
+		}
+		if e.is(tKeyword, "if") {
+			v, returned, err := e.ifStatement()
+			if err != nil || returned {
+				return v, returned, err
+			}
+			continue
 		}
 		if err := e.statement(); err != nil {
 			return nil, false, err
 		}
 	}
 	return nil, false, nil
+}
+
+func isKeyword(t token, words ...string) bool {
+	if t.kind != tKeyword {
+		return false
+	}
+	for _, w := range words {
+		if t.text == w {
+			return true
+		}
+	}
+	return false
+}
+
+// ifStatement runs "if c then ... {elseif c then ...} [else ...] end".
+func (e *evaluator) ifStatement() (Value, bool, error) {
+	e.i++ // "if"
+	branchEnd := func(t token) bool { return isKeyword(t, "elseif", "else", "end") }
+	taken := false
+	for {
+		cond, err := e.expr()
+		if err != nil {
+			return nil, false, err
+		}
+		b, err := e.truthy(cond)
+		if err != nil {
+			return nil, false, err
+		}
+		if err := e.expect(tKeyword, "then"); err != nil {
+			return nil, false, err
+		}
+		if b {
+			taken = true
+			v, returned, err := e.stmts(branchEnd)
+			if err != nil || returned {
+				return v, returned, err
+			}
+		} else if err := e.skipBranch(); err != nil {
+			return nil, false, err
+		}
+		if taken || !e.is(tKeyword, "elseif") {
+			break
+		}
+		e.i++ // "elseif"
+	}
+	for !e.is(tKeyword, "end") {
+		switch {
+		case e.is(tKeyword, "else") && !taken:
+			e.i++
+			v, returned, err := e.stmts(func(t token) bool { return isKeyword(t, "end") })
+			if err != nil || returned {
+				return v, returned, err
+			}
+		default:
+			e.i++ // "elseif" or "else" of a branch not run
+			if err := e.skipBranch(); err != nil {
+				return nil, false, err
+			}
+		}
+	}
+	e.i++ // "end"
+	return nil, false, nil
+}
+
+// skipBranch moves to the next elseif, else or end of the current if.
+func (e *evaluator) skipBranch() error {
+	depth := 0
+	for {
+		t := e.tok()
+		switch {
+		case t.kind == tEOF:
+			return e.errf("if is missing its end")
+		case isKeyword(t, "function", "if", "do", "repeat"):
+			depth++
+		case isKeyword(t, "end", "until"):
+			if depth == 0 {
+				return nil
+			}
+			depth--
+		case isKeyword(t, "elseif", "else") && depth == 0:
+			return nil
+		}
+		e.i++
+	}
+}
+
+// truthy is Lua truthiness. Unresolved names and calls are errors: their
+// value is not known here.
+func (e *evaluator) truthy(v Value) (bool, error) {
+	switch x := v.(type) {
+	case nil:
+		return false, nil
+	case Bool:
+		return bool(x), nil
+	case Ref, *Call:
+		return false, e.errf("truth value of unresolved %s", typeName(v))
+	}
+	return true, nil
 }
 
 func (e *evaluator) statement() error {
@@ -216,11 +332,12 @@ func (e *evaluator) exprStatement() error {
 			return err
 		}
 	}
+	e.endedWithCall = false
 	v, err := e.suffixed(true)
 	if err != nil {
 		return err
 	}
-	if _, ok := v.(callResult); !ok {
+	if _, ok := v.(callResult); !ok && !e.endedWithCall {
 		return e.errf("expression is not a statement")
 	}
 	return nil
@@ -312,22 +429,107 @@ func vivify(tb *Table, k Value) *Table {
 // callResult marks the value of a call used as a statement.
 type callResult struct{}
 
+// expr parses or > and > comparison > concat. Both operands of and/or
+// are evaluated (no short circuit), so an error in either fails the whole.
 func (e *evaluator) expr() (Value, error) {
-	v, err := e.concat()
-	if err != nil {
-		return nil, err
-	}
-	t := e.tok()
-	if t.kind == tOp {
-		switch t.text {
-		case "==", "~=", "<", ">", "<=", ">=":
-			return nil, e.errf("unsupported operator %q", t.text)
+	l, err := e.andExpr()
+	for err == nil && e.is(tKeyword, "or") {
+		e.i++
+		var r Value
+		if r, err = e.andExpr(); err != nil {
+			break
+		}
+		var b bool
+		if b, err = e.truthy(l); err == nil && !b {
+			l = r
 		}
 	}
-	if t.kind == tKeyword && (t.text == "and" || t.text == "or") {
-		return nil, e.errf("unsupported operator %q", t.text)
+	return l, err
+}
+
+func (e *evaluator) andExpr() (Value, error) {
+	l, err := e.comparison()
+	for err == nil && e.is(tKeyword, "and") {
+		e.i++
+		var r Value
+		if r, err = e.comparison(); err != nil {
+			break
+		}
+		var b bool
+		if b, err = e.truthy(l); err == nil && b {
+			l = r
+		}
 	}
-	return v, nil
+	return l, err
+}
+
+func (e *evaluator) comparison() (Value, error) {
+	l, err := e.concat()
+	for err == nil && e.tok().kind == tOp {
+		op := e.tok().text
+		switch op {
+		case "==", "~=", "<", ">", "<=", ">=":
+		default:
+			return l, nil
+		}
+		e.i++
+		var r Value
+		if r, err = e.concat(); err != nil {
+			break
+		}
+		l, err = e.compare(op, l, r)
+	}
+	return l, err
+}
+
+// compare supports nil, booleans, numbers and strings; tables, functions,
+// unresolved names and calls are errors.
+func (e *evaluator) compare(op string, l, r Value) (Value, error) {
+	plain := func(v Value) bool {
+		switch v.(type) {
+		case nil, Bool, Number, String:
+			return true
+		}
+		return false
+	}
+	if !plain(l) || !plain(r) {
+		return nil, e.errf("cannot compare %s and %s", typeName(l), typeName(r))
+	}
+	switch op {
+	case "==":
+		return Bool(l == r), nil
+	case "~=":
+		return Bool(l != r), nil
+	}
+	if a, ok := l.(Number); ok {
+		if b, ok := r.(Number); ok {
+			switch op {
+			case "<":
+				return Bool(a < b), nil
+			case ">":
+				return Bool(a > b), nil
+			case "<=":
+				return Bool(a <= b), nil
+			case ">=":
+				return Bool(a >= b), nil
+			}
+		}
+	}
+	if a, ok := l.(String); ok {
+		if b, ok := r.(String); ok {
+			switch op {
+			case "<":
+				return Bool(a < b), nil
+			case ">":
+				return Bool(a > b), nil
+			case "<=":
+				return Bool(a <= b), nil
+			case ">=":
+				return Bool(a >= b), nil
+			}
+		}
+	}
+	return nil, e.errf("cannot compare %s and %s", typeName(l), typeName(r))
 }
 
 func (e *evaluator) concat() (Value, error) {
@@ -417,7 +619,18 @@ func (e *evaluator) unary() (Value, error) {
 		}
 		return -n, nil
 	}
-	if e.is(tKeyword, "not") || e.is(tOp, "#") {
+	if e.accept(tKeyword, "not") {
+		v, err := e.unary()
+		if err != nil {
+			return nil, err
+		}
+		b, err := e.truthy(v)
+		if err != nil {
+			return nil, err
+		}
+		return Bool(!b), nil
+	}
+	if e.is(tOp, "#") {
 		return nil, e.errf("unsupported operator %q", e.tok().text)
 	}
 	v, err := e.primary()
@@ -501,6 +714,9 @@ func (e *evaluator) suffixed(asStatement bool) (Value, error) {
 	}
 	for {
 		t := e.tok()
+		if t.kind == tOp && (t.text == "." || t.text == "[") {
+			e.endedWithCall = false
+		}
 		switch {
 		case t.kind == tOp && t.text == ".":
 			e.i++
@@ -544,7 +760,36 @@ func (e *evaluator) suffixed(asStatement bool) (Value, error) {
 				return nil, e.errf("cannot index %s", typeName(cur))
 			}
 		case t.kind == tOp && t.text == ":":
-			return nil, e.errf("method calls are not supported")
+			// obj:name(args) is obj.name(obj, args); only builtins run.
+			e.i++
+			n := e.tok()
+			if n.kind != tName {
+				return nil, e.errf("expected method name")
+			}
+			e.i++
+			args, err := e.callArgs()
+			if err != nil {
+				return nil, err
+			}
+			switch obj := cur.(type) {
+			case *Table:
+				fn, ok := obj.Get(String(n.text)).(Builtin)
+				if !ok {
+					return nil, e.errf("%s:%s is not a builtin", path, n.text)
+				}
+				v, err := fn(append([]Value{obj}, args...))
+				if err != nil {
+					return nil, e.errf("%s:%s: %v", path, n.text, err)
+				}
+				cur = v
+			case Ref:
+				cur = &Call{Func: string(obj) + ":" + n.text, Args: args}
+			default:
+				return nil, e.errf("cannot call method on %s", typeName(cur))
+			}
+			path = ""
+			e.endedWithCall = true
+			continue
 		case (t.kind == tOp && (t.text == "(" || t.text == "{")) || t.kind == tString:
 			args, err := e.callArgs()
 			if err != nil {
@@ -554,6 +799,7 @@ func (e *evaluator) suffixed(asStatement bool) (Value, error) {
 			case Ref:
 				cur = &Call{Func: string(fn), Args: args}
 			case Builtin:
+				e.endedWithCall = true
 				v, err := fn(args)
 				switch {
 				case errors.Is(err, ErrKeepCall):

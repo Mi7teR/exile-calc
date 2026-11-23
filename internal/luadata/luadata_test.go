@@ -1,6 +1,7 @@
 package luadata
 
 import (
+	"fmt"
 	"reflect"
 	"strings"
 	"testing"
@@ -203,7 +204,7 @@ func TestErrorsHaveLine(t *testing.T) {
 	for _, src := range []string{
 		"return {\n a = ,\n}",
 		"return \"unterminated",
-		"return {\n x = 1 < 2 }",
+		"return {\n x = 1 < {} }",
 		"while true do end",
 	} {
 		_, err := Eval(src, nil)
@@ -287,7 +288,58 @@ func TestFuncCall(t *testing.T) {
 	if tb.Get("kind") != String("x") || tb.Get("mod").(*Table).List[1] != Ref("$arg:1") {
 		t.Errorf("call result: %#v", tb)
 	}
-	if _, err := v.Get("g").(*Func).Call(nil, nil); err == nil {
-		t.Error("if statements are not supported and must fail")
+	// A condition on an unresolved name (a template placeholder) must fail.
+	if _, err := v.Get("g").(*Func).Call([]Value{Ref("$arg:1")}, nil); err == nil {
+		t.Error("if on an unresolved name must fail")
+	}
+	if got, err := v.Get("g").(*Func).Call([]Value{Bool(true)}, nil); err != nil || got != Number(1) {
+		t.Errorf("if with a known value: %v %v", got, err)
+	}
+}
+
+func TestControlFlowAndMethods(t *testing.T) {
+	v := eval(t, `return { f = function(val, modList)
+		local x = val > 10 and "big" or "small"
+		if val == 5 then
+			modList:Add("five", x)
+		elseif not (val < 20) then
+			modList:Add("large", x)
+			return "early"
+		else
+			if val ~= 7 then modList:Add("other", x) end
+		end
+		modList:Add("after", val * 2)
+	end }`)
+	f, ok := v.(*Table).Get("f").(*Func)
+	if !ok {
+		t.Fatalf("got %T", v)
+	}
+	run := func(val float64) ([]string, Value) {
+		var got []string
+		ml := &Table{}
+		ml.Set("Add", Builtin(func(a []Value) (Value, error) {
+			if a[0] != Value(ml) {
+				t.Error("method call must pass self")
+			}
+			got = append(got, fmt.Sprint(a[1], "=", a[2]))
+			return nil, nil
+		}))
+		r, err := f.Call([]Value{Number(val), ml}, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return got, r
+	}
+	if got, _ := run(5); strings.Join(got, ",") != "five=small,after=10" {
+		t.Errorf("5: %v", got)
+	}
+	if got, r := run(30); strings.Join(got, ",") != "large=big" || r != String("early") {
+		t.Errorf("30: %v %v", got, r)
+	}
+	if got, _ := run(7); strings.Join(got, ",") != "after=14" {
+		t.Errorf("7: %v", got)
+	}
+	if got, _ := run(8); strings.Join(got, ",") != "other=small,after=16" {
+		t.Errorf("8: %v", got)
 	}
 }
