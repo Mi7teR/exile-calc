@@ -372,3 +372,61 @@ func TestClassRestriction(t *testing.T) {
 		t.Errorf("Requires Class lines must not be mods: %+v", it.Explicits)
 	}
 }
+
+func TestVariantGroups(t *testing.T) {
+	text := `Rarity: UNIQUE
+Zana's Ingenuity
+Prismatic Ring
+Variant: Life
+Variant: Energy Shield
+Variant: Mana
+Variant: Reflect Immune
+Selected Variant Group: 1=2
+Selected Variant Group: 2=2
+Implicits: 0
+{variant:2}{group:1}20% increased maximum Energy Shield
+{variant:1}{group:1}10% increased maximum Life
+{variant:4}{group:2}Damage cannot be Reflected
++10% to all Elemental Resistances`
+	it, err := parser(t).Parse(text)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got []string
+	for _, l := range it.ActiveExplicits() {
+		got = append(got, l.Text)
+	}
+	// Group 2 cannot take variant 2 (used by group 1): its first free
+	// eligible variant is 4.
+	want := []string{"20% increased maximum Energy Shield", "Damage cannot be Reflected", "+10% to all Elemental Resistances"}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("got %q, want %q", got, want)
+	}
+}
+
+func TestAltVariant(t *testing.T) {
+	text := `Rarity: UNIQUE
+Watcher's Eye
+Prismatic Jewel
+Variant: A
+Variant: B
+Variant: C
+Selected Variant: 1
+Has Alt Variant: true
+Selected Alt Variant: 3
+Implicits: 0
+{variant:1}line a
+{variant:2}line b
+{variant:3}line c`
+	it, err := parser(t).Parse(text)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got []string
+	for _, l := range it.ActiveExplicits() {
+		got = append(got, l.Text)
+	}
+	if want := []string{"line a", "line c"}; !reflect.DeepEqual(got, want) {
+		t.Errorf("got %q, want %q", got, want)
+	}
+}

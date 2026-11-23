@@ -18,6 +18,7 @@ import (
 	"errors"
 	"fmt"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -50,6 +51,8 @@ type ModLine struct {
 	HasRange bool     // from {range:x} or an advanced copy "48(40-49)"
 	Tags     []string // {tags:...} or advanced copy header tags
 	Variants []int    // {variant:1,2}: shown only for those variants
+	Groups   []int    // {group:1}: variant groups the line belongs to
+	Versions []int    // {version:1}: versions the line exists in
 
 	Crafted, Implicit, Enchant, Fractured, Scourge, Crucible, Custom,
 	Mutated, Synthesis, Eater, Exarch, Unscalable, Disabled bool
@@ -92,6 +95,16 @@ type Item struct {
 
 	Variants []string // "Variant:" lines of a unique
 	Variant  int      // selected variant, 1-based; the last one by default
+	// VariantAlt are the "Selected Alt Variant[ Two..Five]" picks, used when
+	// HasAltVariant is set for that slot.
+	VariantAlt    [5]int
+	HasAltVariant [5]bool
+	// UsesVariantGroups: the item selects one variant per group ("Selected
+	// Variant Group: g=v") and optionally a version, instead of Variant.
+	UsesVariantGroups bool
+	GroupSelections   map[int]int
+	SelectedVersion   int
+	versionCount      int
 
 	classRestriction string    // "Requires Class" spec line
 	classLines       []ModLine // "{variant:n}Requires Class X" lines
@@ -122,11 +135,121 @@ func (it *Item) ActiveExplicits() []ModLine { return it.active(it.Explicits) }
 func (it *Item) active(lines []ModLine) []ModLine {
 	var out []ModLine
 	for _, l := range lines {
-		if len(l.Variants) == 0 || containsInt(l.Variants, it.Variant) {
+		if it.LineActive(l) {
 			out = append(out, l)
 		}
 	}
 	return out
+}
+
+// LineActive is ItemClass:CheckModLineVariant: whether a line belongs to
+// the selected variant, alt variants, variant groups and version.
+func (it *Item) LineActive(l ModLine) bool {
+	if it.UsesVariantGroups {
+		if len(l.Versions) > 0 && (it.SelectedVersion == 0 || !containsInt(l.Versions, it.SelectedVersion)) {
+			return false
+		}
+		if len(l.Groups) > 0 {
+			if len(l.Variants) == 0 {
+				return false
+			}
+			for _, g := range l.Groups {
+				if v, ok := it.GroupSelections[g]; ok && containsInt(l.Variants, v) {
+					return true
+				}
+			}
+			return false
+		}
+		return len(l.Variants) == 0
+	}
+	if len(l.Variants) == 0 || containsInt(l.Variants, it.Variant) {
+		return true
+	}
+	for i, has := range it.HasAltVariant {
+		if has && containsInt(l.Variants, it.VariantAlt[i]) {
+			return true
+		}
+	}
+	return false
+}
+
+// normaliseVariantGroups is ItemClass:NormaliseVariantSelections: a group
+// keeps a selection that is eligible and not used by an earlier group,
+// otherwise it takes its first eligible variant not used yet.
+func (it *Item) normaliseVariantGroups(lines []ModLine) {
+	if it.versionCount > 0 {
+		if it.SelectedVersion == 0 {
+			it.SelectedVersion = it.versionCount
+		}
+		it.SelectedVersion = max(1, min(it.versionCount, it.SelectedVersion))
+	} else {
+		it.SelectedVersion = 0
+	}
+	// variantGroups[group][variant] = versions (0: any)
+	groups := map[int]map[int]map[int]bool{}
+	for _, l := range lines {
+		for _, g := range l.Groups {
+			if groups[g] == nil {
+				groups[g] = map[int]map[int]bool{}
+			}
+			for _, v := range l.Variants {
+				if v < 1 || v > len(it.Variants) {
+					continue
+				}
+				if groups[g][v] == nil {
+					groups[g][v] = map[int]bool{}
+				}
+				if len(l.Versions) == 0 {
+					groups[g][v][0] = true
+				}
+				for _, ver := range l.Versions {
+					if ver >= 1 && ver <= it.versionCount {
+						groups[g][v][ver] = true
+					}
+				}
+			}
+		}
+	}
+	eligible := func(g, v int) bool {
+		vers := groups[g][v]
+		return vers != nil && (vers[0] || (it.SelectedVersion != 0 && vers[it.SelectedVersion]))
+	}
+	var ids []int
+	for g := range groups {
+		ids = append(ids, g)
+	}
+	sort.Ints(ids)
+	for g := range it.GroupSelections {
+		if groups[g] == nil {
+			delete(it.GroupSelections, g)
+		}
+	}
+	used := map[int]bool{}
+	var needs []int
+	for _, g := range ids {
+		any := false
+		for v := 1; v <= len(it.Variants); v++ {
+			any = any || eligible(g, v)
+		}
+		if !any {
+			continue
+		}
+		if sel, ok := it.GroupSelections[g]; ok && eligible(g, sel) && !used[sel] {
+			used[sel] = true
+		} else {
+			needs = append(needs, g)
+		}
+	}
+	for _, g := range needs {
+		delete(it.GroupSelections, g)
+		for v := 1; v <= len(it.Variants); v++ {
+			if eligible(g, v) && !used[v] {
+				it.GroupSelections[g] = v
+				used[v] = true
+				break
+			}
+		}
+	}
 }
 
 func containsInt(s []int, v int) bool {
@@ -163,6 +286,23 @@ var influenceLines = map[string]string{
 
 // Spec lines ParseRaw reads or ignores; any other "Name: value" line is a mod
 // with a colon in it (Item.lua: "Anything else is an explicit with a colon").
+var variantGroupRe = regexp.MustCompile(`^(\d+)\s*=\s*(\d+)$`)
+
+// altIndex maps "Has Alt Variant[ Two..Five]" and "Selected Alt Variant[ ...]" to 0-4.
+func altIndex(spec string) int {
+	switch {
+	case strings.HasSuffix(spec, "Two"):
+		return 1
+	case strings.HasSuffix(spec, "Three"):
+		return 2
+	case strings.HasSuffix(spec, "Four"):
+		return 3
+	case strings.HasSuffix(spec, "Five"):
+		return 4
+	}
+	return 0
+}
+
 var knownSpecs = map[string]bool{
 	"Unique ID": true, "Item Level": true, "Memory Strands": true, "Requires Class": true,
 	"Quality": true, "Sockets": true, "Radius": true, "Limited to": true, "Version": true,
@@ -436,6 +576,23 @@ func (p *Parser) Parse(text string) (*Item, error) {
 				it.Variants = append(it.Variants, specVal)
 			case "Selected Variant":
 				it.Variant = specNumber(specVal)
+			case "Selected Version":
+				it.SelectedVersion, it.UsesVariantGroups = specNumber(specVal), true
+			case "Version":
+				it.versionCount++
+			case "Selected Variant Group":
+				if m := variantGroupRe.FindStringSubmatch(specVal); m != nil {
+					g, _ := strconv.Atoi(m[1])
+					v, _ := strconv.Atoi(m[2])
+					if it.GroupSelections == nil {
+						it.GroupSelections = map[int]int{}
+					}
+					it.GroupSelections[g], it.UsesVariantGroups = v, true
+				}
+			case "Has Alt Variant", "Has Alt Variant Two", "Has Alt Variant Three", "Has Alt Variant Four", "Has Alt Variant Five":
+				it.HasAltVariant[altIndex(specName)] = true
+			case "Selected Alt Variant", "Selected Alt Variant Two", "Selected Alt Variant Three", "Selected Alt Variant Four", "Selected Alt Variant Five":
+				it.VariantAlt[altIndex(specName)] = specNumber(specVal)
 			case "Has Variants", "Selected Variants":
 				l++ // Item.lua skips the next line (old Watcher's Eye format)
 			case "Requires Class":
@@ -496,6 +653,19 @@ func (p *Parser) Parse(text string) (*Item, error) {
 					n, _ := strconv.Atoi(d)
 					mod.Variants = append(mod.Variants, n)
 				}
+			case k == "group":
+				for _, d := range digitsRe.FindAllString(val, -1) {
+					if n, _ := strconv.Atoi(d); n > 0 {
+						mod.Groups = append(mod.Groups, n)
+					}
+				}
+				it.UsesVariantGroups = true
+			case k == "version":
+				for _, d := range digitsRe.FindAllString(val, -1) {
+					n, _ := strconv.Atoi(d)
+					mod.Versions = append(mod.Versions, n)
+				}
+				it.UsesVariantGroups = true
 			case k == "tags":
 				mod.Tags = append(mod.Tags, tagRe.FindAllString(val, -1)...)
 			case k == "range":
@@ -602,6 +772,21 @@ func (p *Parser) Parse(text string) (*Item, error) {
 	}
 	if len(it.Variants) > 0 && (it.Variant == 0 || it.Variant > len(it.Variants)) {
 		it.Variant = len(it.Variants)
+	}
+	for i := range it.VariantAlt {
+		if len(it.Variants) > 0 && (it.VariantAlt[i] == 0 || it.VariantAlt[i] > len(it.Variants)) {
+			it.VariantAlt[i] = len(it.Variants)
+		}
+	}
+	if it.UsesVariantGroups {
+		if it.GroupSelections == nil {
+			it.GroupSelections = map[int]int{}
+		}
+		var all []ModLine
+		for _, g := range [][]ModLine{it.Enchants, it.Scourge, it.Implicits, it.Explicits, it.Crucible} {
+			all = append(all, g...)
+		}
+		it.normaliseVariantGroups(all)
 	}
 	if !levelSet {
 		switch {

@@ -604,6 +604,11 @@ func (c *Calculator) itemLines(item *pobcode.Item, res *Result) (*itemtext.Item,
 	if item.Variant > 0 {
 		it.Variant = item.Variant
 	}
+	for i, v := range item.VariantAlt { // ItemsTab: variantAlt.. attributes
+		if v > 0 {
+			it.VariantAlt[i] = v
+		}
+	}
 	ranges := map[int]float64{}
 	for _, mr := range item.ModRanges {
 		ranges[mr.ID] = mr.Range
@@ -613,7 +618,7 @@ func (c *Calculator) itemLines(item *pobcode.Item, res *Result) (*itemtext.Item,
 	for _, group := range [][]itemtext.ModLine{it.Enchants, it.Scourge, it.Implicits, it.Explicits, it.Crucible} {
 		for _, l := range group {
 			id++
-			if len(l.Variants) > 0 && !containsInt(l.Variants, it.Variant) {
+			if !it.LineActive(l) {
 				continue
 			}
 			r := defaultAffixQuality

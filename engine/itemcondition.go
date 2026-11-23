@@ -47,21 +47,13 @@ func variantLines(it *itemtext.Item, lines []itemtext.ModLine) []itemtext.ModLin
 		if l.Disabled {
 			continue
 		}
-		if len(l.Variants) == 0 || containsVariant(l.Variants, it.Variant) {
+		if it.LineActive(l) {
 			out = append(out, l)
 		}
 	}
 	return out
 }
 
-func containsVariant(vs []int, v int) bool {
-	for _, x := range vs {
-		if x == v {
-			return true
-		}
-	}
-	return false
-}
 
 // findModifierSubstring ports ItemClass:FindModifierSubstring (Item.lua).
 func (t itemTags) findModifierSubstring(it *itemtext.Item, substring, slot string) bool {
