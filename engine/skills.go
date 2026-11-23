@@ -1383,6 +1383,22 @@ func (c *Calculator) buildSkillMods(db *ModDB, s *activeSkill, res *Result) {
 	if lv := ge.Levels[a.level]; lv != nil && lv.Cooldown != 0 {
 		s.data["cooldown"] = lv.Cooldown
 	}
+	// Skill stages (Multiplier:<Name>MaxStages): the gem's stage count or
+	// the maximum.
+	stageName := strings.Join(strings.Fields(ge.Name), "")
+	if limit := list.SumCfg(s.cfg, "BASE", "Multiplier:"+stageName+"MaxStages"); limit > 0 {
+		flags["multiStage"] = true
+		s.data["stagesMax"] = limit
+		count := limit
+		if s.gem != nil && s.gem.SkillStageCount > 0 {
+			count = float64(s.gem.SkillStageCount)
+		}
+		count = math.Max(count, 1+list.SumCfg(s.cfg, "BASE", "Multiplier:"+stageName+"MinimumStage"))
+		if count > 0 {
+			list.NewMod("Multiplier:"+stageName+"Stage", "BASE", math.Min(limit, count), "Base")
+			list.NewMod("Multiplier:"+stageName+"StageAfterFirst", "BASE", math.Min(limit-1, count-1), "Base")
+		}
+	}
 	// env.modDB: the player's SkillData, also for a minion's skills.
 	player := db
 	if db.owner != nil {
@@ -1674,6 +1690,7 @@ func (c *Calculator) applyBuffs(db *ModDB, skills []*activeSkill, res *Result) (
 				break
 			}
 		}
+		c.minionAurasOnPlayer(db, s, add, res)
 	}
 	// Guard buffs: a Vaal Molten Shell alone, else every Vaal guard and the
 	// first other guard (in PoB's pairs order; here the order of skills).
@@ -1986,4 +2003,56 @@ func scaleMods(l []Mod, scale float64) []Mod {
 		out[i] = scaleMod(m, scale)
 	}
 	return out
+}
+
+// minionAurasOnPlayer is the player part of calcs.perform's minion skill
+// buffs: the auras and ally buffs of a skill's minion's own skills (the
+// Elemental Relic's Anger, Hatred and Wrath). The minion's ModDB is a bare
+// one here: its own aura effect mods are not read.
+func (c *Calculator) minionAurasOnPlayer(db *ModDB, s *activeSkill, add func([]Mod, string), res *Result) {
+	if s.summon != nil || db.enemyEnv == nil {
+		return
+	}
+	m := c.minionOf(s, int(db.multipliers["Level"]), db.enemyEnv.level)
+	if m == nil || m.data.Hostile {
+		return
+	}
+	casting := NewModDB()
+	casting.enemy, casting.owner, casting.build, casting.enemyEnv = db.enemy, db, db.build, db.enemyEnv
+	for _, ms := range c.createMinionSkills(casting, s, m, [2]string{m.data.WeaponType1}, res) {
+		if ms.disabled || !truthy(ms.data["enable"]) {
+			continue
+		}
+		list, cfg := ms.mods, ms.cfg
+		for _, b := range ms.buffs {
+			name := strings.ReplaceAll(b.name, " ", "")
+			switch b.typ {
+			case "Buff":
+				if !b.applyAllies {
+					continue
+				}
+				store, bcfg := casting, (*Cfg)(nil)
+				if b.activeSkillBuff {
+					store, bcfg = list, cfg
+				}
+				db.conditions["AffectedBy"+name] = true
+				inc := store.SumCfg(bcfg, "INC", "BuffEffect", "BuffEffectOnPlayer") + db.Sum("INC", "BuffEffectOnSelf")
+				more := store.MoreCfg(bcfg, "BuffEffect", "BuffEffectOnPlayer") * db.More("BuffEffectOnSelf")
+				add(scaleMods(b.mods, (1+inc/100)*more), b.name)
+			case "Aura":
+				if casting.Flag("SelfAurasCannotAffectAllies", "SelfAurasOnlyAffectYou", "SelfAuraSkillsCannotAffectAllies") ||
+					list.FlagCfg(cfg, "SelfAurasAffectYouAndLinkedTarget") || db.Flag("AlliesAurasCannotAffectSelf") || db.conditions["AffectedBy"+name] {
+					continue
+				}
+				inc := list.SumCfg(cfg, "INC", "AuraEffect", "BuffEffect", "BuffEffectOnPlayer", "AuraBuffEffect") + db.SumCfg(cfg, "INC", "BuffEffectOnSelf", "AuraEffectOnSelf")
+				more := list.MoreCfg(cfg, "AuraEffect", "BuffEffect", "AuraBuffEffect") * db.MoreCfg(cfg, "BuffEffectOnSelf", "AuraEffectOnSelf")
+				db.conditions["AffectedByAura"] = true
+				if strings.HasPrefix(b.name, "Vaal") && len(b.name) > 5 {
+					db.conditions["AffectedBy"+strings.ReplaceAll(b.name[5:], " ", "")] = true
+				}
+				db.conditions["AffectedBy"+name] = true
+				add(scaleMods(b.mods, (1+inc/100)*more), b.name)
+			}
+		}
+	}
 }
