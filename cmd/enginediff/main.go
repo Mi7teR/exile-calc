@@ -62,6 +62,20 @@ type skillRow struct {
 	} `json:"rows"`
 }
 
+// key is the row without the oracle's buff mod lines, buffs sorted, for
+// comparing.
+func (r skillRow) key() string {
+	var buffs []string
+	for _, b := range r.Buffs {
+		if !strings.HasPrefix(b, "  ") {
+			buffs = append(buffs, b)
+		}
+	}
+	sort.Strings(buffs)
+	r.Buffs = buffs
+	return r.String()
+}
+
 func (r skillRow) String() string {
 	return fmt.Sprintf("%-28s lvl %-2d q %-2d dis %-5v inc %-5g more %-5g %v", r.Name, r.Level, r.Quality, r.Disabled, r.AuraInc, r.AuraMore, r.Buffs)
 }
@@ -156,7 +170,7 @@ func run(ids string, stats []string, oracle string) error {
 					o = oursSkills[r.Name][i]
 				}
 				mark := " "
-				if o.String() != p.String() {
+				if o.key() != p.key() {
 					mark = "!"
 				}
 				fmt.Printf("%s pob  %s\n  ours %s\n", mark, p, o)

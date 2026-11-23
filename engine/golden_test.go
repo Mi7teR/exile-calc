@@ -20,16 +20,14 @@ var goldenStats = []string{
 	"Str", "Dex", "Int", "Life", "Mana",
 	"FireResist", "ColdResist", "LightningResist", "ChaosResist",
 	"Armour", "Evasion", "EnergyShield", "Ward", "BlockChance", "SpellBlockChance",
+	"SpellSuppressionChance", "AttackDodgeChance", "SpellDodgeChance",
+	"LifeRegenRecovery", "EnergyShieldRegenRecovery", "EnergyShieldRecharge",
 }
 
 const tolerance = 0.005
 
 // reportStats are compared and logged but not part of the ratchet yet.
-var reportStats = []string{
-	"SpellSuppressionChance", "AttackDodgeChance", "SpellDodgeChance",
-	"LifeRegenRecovery", "ManaRegenRecovery", "EnergyShieldRegenRecovery",
-	"EnergyShieldRecharge", "MovementSpeedMod",
-}
+var reportStats = []string{"ManaRegenRecovery", "MovementSpeedMod"}
 
 // Ratchet: builds where every stat above is within tolerance. Raise it as
 // the engine improves; never lower it.

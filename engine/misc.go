@@ -3,6 +3,8 @@ package engine
 import (
 	"math"
 	"strings"
+
+	"github.com/Mi7teR/poe-lib/itemtext"
 )
 
 const fortifyBaseDuration = 6.0 // Data.lua data.misc.FortifyBaseDuration
@@ -372,4 +374,34 @@ func totemCounts(db *ModDB, skills []*activeSkill) {
 		}
 		db.enemy.multipliers["TotemsSummoned"] = math.Max(out["TotemsSummoned"], db.enemy.multipliers["TotemsSummoned"])
 	}
+}
+
+// abyssCounts is CalcSetup.lua's abyss jewel bookkeeping: Have<Base> and
+// the jewel counts by type, rarity and parent item slot.
+func abyssCounts(db *ModDB, it *itemtext.Item, parent string) {
+	if it.Base == nil || it.Base.Type != "Jewel" || it.Base.SubType != "Abyss" {
+		return
+	}
+	base := strings.ReplaceAll(it.BaseName, " ", "")
+	cond := "Have" + base
+	if !db.conditions[cond] {
+		db.conditions[cond] = true
+		db.multipliers["AbyssJewelType"]++
+	}
+	if parent != "" {
+		db.conditions[cond+"In"+parent] = true
+		db.multipliers[base+"In"+parent]++
+	}
+	db.multipliers["AbyssJewel"]++
+	switch it.Rarity {
+	case itemtext.Normal:
+		db.multipliers["NormalAbyssJewels"]++
+	case itemtext.Magic:
+		db.multipliers["MagicAbyssJewels"]++
+	case itemtext.Rare:
+		db.multipliers["RareAbyssJewels"]++
+	case itemtext.Unique, itemtext.Relic:
+		db.multipliers["UniqueAbyssJewels"]++
+	}
+	db.multipliers[base]++
 }

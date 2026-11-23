@@ -320,10 +320,17 @@ func (c *Calculator) Calc(b *pobcode.Build) (*Result, error) {
 			}
 			if it, _ := c.addItem(db, res, a.item, 1+jewelEffect[a.parent]/100, ""); it != nil {
 				db.items[a.slot] = it
+				abyssCounts(db, it, a.parent)
 			}
 		}
 	}
 	corruptedEffect := c.adornedEffect(spec, b, allocated, res)
+	if v, ok := corruptedEffect[itemtext.Magic]; ok {
+		db.multipliers["CorruptedMagicJewelEffect"] = v
+	}
+	if v, ok := corruptedEffect[itemtext.Rare]; ok {
+		db.multipliers["CorruptedRareJewelEffect"] = v
+	}
 	for _, s := range spec.Sockets {
 		if s.ItemID != 0 && allocated[s.NodeID] {
 			scale := 1.0
@@ -333,6 +340,7 @@ func (c *Calculator) Calc(b *pobcode.Build) (*Result, error) {
 			}
 			if it, _ := c.addItem(db, res, b.Item(s.ItemID), scale, ""); it != nil {
 				db.items["Jewel "+strconv.Itoa(s.NodeID)] = it
+				abyssCounts(db, it, "")
 			}
 		}
 	}
@@ -390,7 +398,7 @@ func (c *Calculator) Calc(b *pobcode.Build) (*Result, error) {
 		c.buildSkillMods(db, s, res)
 	}
 	keystones := map[string]bool{}
-	silverFlask, silverFlaskInc := c.applyFlasks(db, res, flasks)
+	flaskSt := c.applyFlasks(db, res, flasks)
 	c.mergeKeystones(db, keystones, res)
 	banners(db)
 	// CalcPerform.lua: "gain maximum life instead of maximum energy shield
@@ -417,7 +425,8 @@ func (c *Calculator) Calc(b *pobcode.Build) (*Result, error) {
 	c.mergeKeystones(db, keystones, res)
 	defenceForConditionals(db, gearMods)
 	charges(db)
-	actorMisc(db, mainSkill(skills), silverFlask, silverFlaskInc)
+	flaskRecovery(db, flaskSt)
+	actorMisc(db, mainSkill(skills), flaskSt.silver, flaskSt.silverInc)
 	rage(db, mainCfg(skills))
 	res.Skills = skillInfo(skills)
 	c.resistances(db)

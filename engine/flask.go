@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/Mi7teR/poe-lib/itemtext"
+	"github.com/Mi7teR/poe-lib/modparser"
 	"github.com/Mi7teR/poe-lib/pobcode"
 )
 
@@ -66,13 +67,15 @@ func (c *Calculator) activeFlasks(db *ModDB, slots []flaskSlot) []*pobcode.Item 
 	return out
 }
 
-// It returns whether a Silver Flask is active and the highest such flask's
-// increased effect as a fraction, for Onslaught in actorMisc.
-func (c *Calculator) applyFlasks(db *ModDB, res *Result, slots []flaskSlot) (silver bool, silverInc float64) {
-	silverInc = -100 // as in doActorMisc
+// It returns what later steps need: the Silver Flask's effect for
+// Onslaught (actorMisc) and the recovery flasks (flaskRecovery).
+func (c *Calculator) applyFlasks(db *ModDB, res *Result, slots []flaskSlot) *flaskState {
+	st := &flaskState{silverInc: -100, // as in doActorMisc
+		durInc: db.Sum("INC", "FlaskDuration"), totalRateInc: db.Sum("INC", "FlaskRecoveryRate")}
 	flasks := c.activeFlasks(db, slots)
 	player := &Cfg{Actor: "player"}
 	effectInc := db.SumCfg(player, "INC", "FlaskEffect")
+	st.effectInc = effectInc
 	effectIncMagic := db.SumCfg(player, "INC", "MagicUtilityFlaskEffect")
 	merged := map[string][]Mod{}
 	var keys []string
@@ -128,8 +131,11 @@ func (c *Calculator) applyFlasks(db *ModDB, res *Result, slots []flaskSlot) (sil
 		}
 		scale := 1 + inc/100
 		if strings.Contains(it.BaseName, "Silver Flask") {
-			silver = true
-			silverInc = math.Max(silverInc, inc/100)
+			st.silver = true
+			st.silverInc = math.Max(st.silverInc, inc/100)
+		}
+		if recovery {
+			st.recovery = append(st.recovery, recoveryFlask(it, item, mods, scale))
 		}
 		source := itemSource(item, it)
 
@@ -160,7 +166,127 @@ func (c *Calculator) applyFlasks(db *ModDB, res *Result, slots []flaskSlot) (sil
 			db.Add(m)
 		}
 	}
-	return
+	return st
+}
+
+// flaskState carries mergeFlasks' locals to the recovery pass.
+type flaskState struct {
+	silver               bool
+	silverInc            float64
+	effectInc            float64 // FlaskEffect on the player
+	durInc, totalRateInc float64 // FlaskDuration, FlaskRecoveryRate
+	recovery             []flaskData
+}
+
+// flaskData is the part of Item.lua's flaskData that calcFlaskRecovery reads.
+type flaskData struct {
+	name                           string
+	life, mana                     bool
+	lifeBase, manaBase, duration   float64
+	instantPerc, instantLowLife    float64
+	lifeNotRemoved, manaNotRemoved bool
+	effectMod                      float64 // calcFlaskMods' effectMod
+}
+
+func recoveryFlask(it *itemtext.Item, item *pobcode.Item, mods []modparser.Mod, effectMod float64) flaskData {
+	f := it.Base.Flask
+	local := func(name, typ string) float64 { return calcLocal(mods, name, typ) }
+	more := 1.0
+	flag := func(name string) bool {
+		for _, m := range mods {
+			if m.Name == name && m.Type == "FLAG" && truthy(m.Value) {
+				return true
+			}
+		}
+		return false
+	}
+	for _, m := range mods {
+		if m.Name == "Duration" && m.Type == "MORE" && m.Flags == 0 && m.KeywordFlags == 0 && len(m.Tags) == 0 {
+			if v, ok := num(m.Value); ok {
+				more *= 1 + v/100
+			}
+		}
+	}
+	recoveryMod := 1 + local("FlaskRecovery", "INC")/100
+	rateMod := 1 + local("FlaskRecoveryRate", "INC")/100
+	q := 1 + float64(it.Quality)/100
+	d := flaskData{name: itemSource(item, it), life: f.Life > 0, mana: f.Mana > 0,
+		duration:       round(f.Duration*(1+local("Duration", "INC")/100)/rateMod*more, 1),
+		instantPerc:    local("FlaskInstantRecovery", "BASE"),
+		instantLowLife: local("FlaskLowLifeInstantRecovery", "BASE"),
+		lifeBase:       f.Life * q * recoveryMod, manaBase: f.Mana * q * recoveryMod,
+		lifeNotRemoved: flag("LifeFlaskEffectNotRemoved"), manaNotRemoved: flag("ManaFlaskEffectNotRemoved"),
+		effectMod: effectMod}
+	return d
+}
+
+// flaskRecovery is the second mergeFlasks pass (onlyRecovery): flasks whose
+// effect is not removed at full recover over their duration
+// (calcFlaskRecovery); the highest flask of each kind applies.
+func flaskRecovery(db *ModDB, st *flaskState) {
+	if st == nil || db.Flag("FlasksDoNotApplyToPlayer") {
+		return
+	}
+	merged := map[string][]Mod{}
+	add := func(key string, m Mod) {
+		for i, d := range merged[key] {
+			if sameParams(m, d) {
+				a, _ := num(m.Value)
+				b, _ := num(d.Value)
+				if a > b {
+					merged[key][i] = m
+				}
+				return
+			}
+		}
+		merged[key] = append(merged[key], m)
+	}
+	for _, fd := range st.recovery {
+		instant := fd.instantPerc
+		if db.Flag("Condition:LowLife") {
+			instant += fd.instantLowLife
+		}
+		if fd.life {
+			instant += db.Sum("BASE", "LifeFlaskInstantRecovery")
+		}
+		if fd.mana {
+			instant += db.Sum("BASE", "ManaFlaskInstantRecovery")
+		}
+		instant = math.Min(100, instant)
+		for _, x := range []struct {
+			typ         string
+			has, notRem bool
+			base        float64
+		}{{"Life", fd.life && !db.Flag("CannotRecoverLifeOutsideLeech"), fd.lifeNotRemoved, fd.lifeBase},
+			{"Mana", fd.mana, fd.manaNotRemoved, fd.manaBase}} {
+			if !x.has || !(x.notRem || db.Flag(x.typ+"FlaskEffectNotRemoved")) {
+				continue
+			}
+			total := x.base * (1 - instant/100) * (1 + db.Sum("INC", "Flask"+x.typ+"Recovery")/100) *
+				db.More("Flask"+x.typ+"Recovery") * (1 + st.durInc/100)
+			dur := fd.duration * (1 + st.durInc/100) / (1 + st.totalRateInc/100) /
+				(1 + db.Sum("INC", "Flask"+x.typ+"RecoveryRate")/100) / db.More("Flask"+x.typ+"RecoveryRate")
+			if low := db.More("FlaskLifeRecoveryLowLife"); low > 1 && x.typ == "Life" {
+				total *= (low-1)/(1+st.effectInc/100) + 1
+			}
+			rate := total / dur
+			out := []Mod{{Name: x.typ + "Recovery", Type: "BASE", Value: rate, Source: fd.name}}
+			if db.Flag(x.typ + "FlaskAppliesToEnergyShield") {
+				out = append(out, Mod{Name: "EnergyShieldRecovery", Type: "BASE", Value: rate, Source: fd.name})
+			}
+			if db.Flag(x.typ + "FlaskAppliesToLife") {
+				out = append(out, Mod{Name: "LifeRecovery", Type: "BASE", Value: rate, Source: fd.name})
+			}
+			for _, m := range out {
+				add(x.typ+"Flask", scaleMod(m, fd.effectMod))
+			}
+		}
+	}
+	for _, k := range []string{"LifeFlask", "ManaFlask"} {
+		for _, m := range merged[k] {
+			db.Add(m)
+		}
+	}
 }
 
 // highPrecisionMods is Data.lua data.highPrecisionMods: the decimal places
