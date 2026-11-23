@@ -845,18 +845,67 @@ func (c *Calculator) enemyEffMult(actor, list *ModDB, cfg *Cfg, s *activeSkill, 
 			}
 		}
 	} else {
-		configMax := 0.0
-		if actor.enemyEnv != nil {
-			configMax, _ = actor.enemyEnv.num("enemy" + t + "Resist")
+		resistOf := func(t string) float64 {
+			cm := 0.0
+			if actor.enemyEnv != nil {
+				cm, _ = actor.enemyEnv.num("enemy" + t + "Resist")
+			}
+			if _, ok := enemy.OverrideCfg(cfg, t+"Resist"); !ok && actor.Flag("Enemy"+t+"ResistEqualToYours") {
+				return math.Max(math.Min(actor.output[t+"Resist"], enemyMaxResistFor(cm)), resistFloor)
+			}
+			return calcResistForType(enemy, cfg, t, cm)
 		}
-		resist = calcResistForType(enemy, cfg, t, configMax)
-		switch {
-		case isElemental[t]:
-			pen = list.SumCfg(cfg, "BASE", t+"Penetration", "ElementalPenetration")
-			takenInc += enemy.SumCfg(cfg, "INC", "ElementalDamageTaken")
-		case t == "Chaos":
-			pen = list.SumCfg(cfg, "BASE", "ChaosPenetration")
+		resist = resistOf(t)
+		ignores := func(e string) bool {
+			names := []string{"Ignore" + e + "Resistance"}
+			if isElemental[e] {
+				names = append(names, "IgnoreElementalResistances")
+			}
+			if list.FlagCfg(cfg, names...) || enemy.Flag("SelfIgnore"+e+"Resistance") {
+				return true
+			}
+			ch := []string{"ChanceToIgnore" + e + "Resistance"}
+			if isElemental[e] {
+				ch = append(ch, "ChanceToIgnoreElementalResistances")
+			}
+			return math.Min(math.Max(list.SumCfg(cfg, "BASE", ch...), 0), 100) >= 100
 		}
+		lowestChaos := t == "Chaos" && (list.FlagCfg(cfg, "ChaosDamageUsesLowestResistance") || list.FlagCfg(cfg, "ChaosDamageUsesHighestResistance"))
+		if lowestChaos || (isElemental[t] && list.FlagCfg(cfg, "ElementalDamageUsesLowestResistance")) {
+			used := t
+			if isElemental[t] {
+				takenInc += enemy.SumCfg(cfg, "INC", "ElementalDamageTaken")
+			}
+			highest := list.FlagCfg(cfg, "ChaosDamageUsesHighestResistance")
+			for _, e := range dmgTypeList {
+				if !isElemental[e] || e == t || ignores(e) {
+					continue
+				}
+				r := resistOf(e)
+				if (highest && resist < r) || (!highest && resist > r) {
+					resist, used = r, e
+				}
+			}
+			if isElemental[used] {
+				pen = list.SumCfg(cfg, "BASE", used+"Penetration", "ElementalPenetration")
+			} else if used == "Chaos" {
+				pen = list.SumCfg(cfg, "BASE", "ChaosPenetration")
+			}
+		} else {
+			switch {
+			case isElemental[t]:
+				pen = list.SumCfg(cfg, "BASE", t+"Penetration", "ElementalPenetration")
+				takenInc += enemy.SumCfg(cfg, "INC", "ElementalDamageTaken")
+			case t == "Chaos":
+				pen = list.SumCfg(cfg, "BASE", "ChaosPenetration")
+			}
+		}
+	}
+	invert := 0.0
+	if isElemental[t] {
+		invert = math.Max(math.Min(list.SumCfg(cfg, "CHANCE", "HitsInvertEleResChance", "HitsInvert"+t+"ResChance"), 1), 0)
+	} else if t == "Chaos" {
+		invert = math.Max(math.Min(list.SumCfg(cfg, "CHANCE", "HitsInvertChaosResChance"), 1), 0)
 	}
 	if s.flags["projectile"] {
 		takenInc += enemy.Sum("INC", "ProjectileDamageTaken")
@@ -868,8 +917,19 @@ func (c *Calculator) enemyEffMult(actor, list *ModDB, cfg *Cfg, s *activeSkill, 
 		takenInc += enemy.Sum("INC", "TrapMineDamageTaken")
 	}
 	eff := (1 + takenInc/100) * takenMore
-	if useResChance > 0 {
-		eff *= 1 - (resist-pen)*useResChance/100
+	switch {
+	case isElemental[t] && list.FlagCfg(cfg, "CannotElePenIgnore"):
+		r := resist
+		if invert > 0 {
+			r = resist - 2*invert*resist
+		}
+		eff *= 1 - r/100
+	case useResChance > 0:
+		r := (resist - pen) * useResChance
+		if invert > 0 {
+			r = ((resist-pen)*(1-invert) + (-resist-pen)*invert) * useResChance
+		}
+		eff *= 1 - r/100
 	}
 	return eff
 }
