@@ -1239,7 +1239,19 @@ func (c *Calculator) buildSkillMods(db *ModDB, s *activeSkill, res *Result) {
 	if s.summon != nil {
 		summonName = s.summon.active.ge.Name
 	}
+	// Distance to the enemy (CalcActiveSkill.lua effectiveRange), for
+	// DistanceRamp and MeleeProximity tags.
+	dist, distVar := 40.0, "projectileDistance"
+	if flags["melee"] {
+		dist, distVar = 15, "meleeDistance"
+	}
+	if db.build != nil {
+		if in, ok := configInput(db.build.ActiveConfig(), distVar); ok && in.Kind == pobcode.KindNumber {
+			dist = in.Number
+		}
+	}
 	s.cfg = &Cfg{
+		SkillDist: dist, HasSkillDist: true,
 		Flags: modFlags | w1Flags, KeywordFlags: kw, SkillName: strings.TrimPrefix(ge.Name, "Vaal "),
 		SkillID: s.active.id, BaseFlags: baseFlags, SkillTypes: types, SkillGem: s.active.gem,
 		SlotName: s.cfg.SlotName, SummonSkillName: summonName, SkillPart: s.part,

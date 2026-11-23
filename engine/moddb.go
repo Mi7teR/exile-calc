@@ -119,6 +119,8 @@ type Cfg struct {
 	GemCounts           map[string]int  // strengthGems, dexterityGems, intelligenceGems
 	Actor               string          // cfg.actor: an ActorCondition without var matches it
 	SkillCond           map[string]bool // cfg.skillCond: conditions of this query (CriticalStrike, MainHandAttack)
+	SkillDist           float64         // cfg.skillDist: melee or projectile distance to the enemy
+	HasSkillDist        bool
 }
 
 const keywordMatchAll = 0x40000000 // KeywordFlag.MatchAll
@@ -525,6 +527,58 @@ func (db *ModDB) eval(m *Mod, cfg *Cfg) (any, bool) {
 			if (tagBool(t, "upper") && stat > threshold) || (!tagBool(t, "upper") && stat < threshold) {
 				return nil, false
 			}
+		case "DistanceRamp":
+			if cfg == nil || !cfg.HasSkillDist {
+				return nil, false
+			}
+			ramp, _ := t["ramp"].([]any)
+			pt := func(i int) (float64, float64) {
+				p, _ := ramp[i].([]any)
+				if len(p) < 2 {
+					return 0, 0
+				}
+				a, _ := num(p[0])
+				b, _ := num(p[1])
+				return a, b
+			}
+			if len(ramp) == 0 {
+				break
+			}
+			d := cfg.SkillDist
+			d0, v0 := pt(0)
+			dn, vn := pt(len(ramp) - 1)
+			switch {
+			case d <= d0:
+				scale(v0, nil)
+			case d >= dn:
+				scale(vn, nil)
+			default:
+				for i := 0; i+1 < len(ramp); i++ {
+					a, av := pt(i)
+					b, bv := pt(i + 1)
+					if d <= b {
+						scale(av+(bv-av)*(d-a)/(b-a), nil)
+						break
+					}
+				}
+			}
+		case "MeleeProximity":
+			if cfg == nil || !cfg.HasSkillDist {
+				return nil, false
+			}
+			ramp, _ := t["ramp"].([]any)
+			mx := 0.0
+			if len(ramp) > 0 {
+				mx, _ = num(ramp[0])
+			}
+			switch d := cfg.SkillDist; {
+			case d <= 15:
+				scale(mx, nil)
+			case d >= 16 && d <= 39:
+				scale(mx-(mx/25)*(d-15), nil)
+			case d >= 40:
+				scale(0, nil)
+			}
 		case "Limit":
 			limit, ok := tagNum(t, "limit")
 			if !ok {
@@ -688,7 +742,7 @@ func (db *ModDB) eval(m *Mod, cfg *Cfg) (any, bool) {
 
 // unportedTags are the remaining tag types ModStoreClass:EvalMod handles.
 var unportedTags = map[string]bool{
-	"DistanceRamp": true, "MeleeProximity": true, "MonsterTag": true,
+	"MonsterTag": true,
 }
 
 // round is PoB's round(v, places) (Modules/Common.lua): floor(v*10^p + 0.5).
