@@ -368,17 +368,20 @@ func (db *ModDB) eval(m *Mod, cfg *Cfg) (any, bool) {
 			if tagBool(t, "noFloor") {
 				mult = base / div
 			}
-			if limit, ok := tagNum(t, "limit"); ok && !tagBool(t, "limitTotal") && !tagBool(t, "limitNegTotal") {
+			limit, hasLimit := tagNum(t, "limit")
+			if lv := tagStr(t, "limitVar"); !hasLimit && lv != "" {
+				limit, hasLimit = target.getMultiplier(lv, cfg, false), true
+			} else if ls := tagStr(t, "limitStat"); !hasLimit && ls != "" {
+				limit, hasLimit = target.GetStat(ls), true
+			}
+			if hasLimit && !tagBool(t, "limitTotal") && !tagBool(t, "limitNegTotal") {
 				mult = math.Min(mult, limit)
 			}
 			scale(mult, t)
-			if limit, ok := tagNum(t, "limit"); ok && tagBool(t, "limitTotal") {
-				if f, isNum := num(value); isNum {
+			if f, isNum := num(value); isNum && hasLimit {
+				if tagBool(t, "limitTotal") {
 					value = math.Min(f, limit)
-				}
-			}
-			if limit, ok := tagNum(t, "limit"); ok && tagBool(t, "limitNegTotal") {
-				if f, isNum := num(value); isNum {
+				} else if tagBool(t, "limitNegTotal") {
 					value = math.Max(f, limit)
 				}
 			}
@@ -420,11 +423,15 @@ func (db *ModDB) eval(m *Mod, cfg *Cfg) (any, bool) {
 				div = 1
 			}
 			mult := math.Floor(base/div + 0.0001)
-			if limit, ok := tagNum(t, "limit"); ok && !tagBool(t, "limitTotal") {
+			limit, hasLimit := tagNum(t, "limit")
+			if lv := tagStr(t, "limitVar"); !hasLimit && lv != "" {
+				limit, hasLimit = db.getMultiplier(lv, cfg, false), true
+			}
+			if hasLimit && !tagBool(t, "limitTotal") {
 				mult = math.Min(mult, limit)
 			}
 			scale(mult, t)
-			if limit, ok := tagNum(t, "limit"); ok && tagBool(t, "limitTotal") {
+			if hasLimit && tagBool(t, "limitTotal") {
 				if f, isNum := num(value); isNum {
 					value = math.Min(f, limit)
 				}

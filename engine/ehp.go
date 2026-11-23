@@ -362,6 +362,31 @@ func incomingHitMultipliers(db *ModDB, category string) {
 	}
 }
 
+// allyLifePools is CalcDefence.lua's allyLifePoolList: the allies that take
+// damage before you, in drain order (life output, mitigation output).
+// Minion, sentinel, spectre, totem, void spawn and golem life are not
+// computed yet, so only Soul Link and Frost Shield can apply.
+var allyLifePools = [][2]string{
+	{"TotalMinionLife", "MinionAllyDamageMitigation"}, {"TotalRadianceSentinelLife", "RadianceSentinelAllyDamageMitigation"},
+	{"TotalSpectreLife", "SpectreAllyDamageMitigation"}, {"TotalTotemLife", "TotemAllyDamageMitigation"},
+	{"TotalVaalRejuvenationTotemLife", "VaalRejuvenationTotemAllyDamageMitigation"}, {"TotalVoidSpawnLife", "VoidSpawnAllyDamageMitigation"},
+	{"TotalStoneGolemLife", "StoneGolemAllyDamageMitigation"}, {"AlliedEnergyShield", "SoulLinkMitigation"},
+	{"FrostShieldLife", "FrostShieldDamageMitigation"},
+}
+
+// allyPool is buildAllyLifePools' entry.
+type allyPool struct{ remaining, percent float64 }
+
+func buildAllyPools(out map[string]float64) map[string]*allyPool {
+	pools := map[string]*allyPool{}
+	for _, a := range allyLifePools {
+		if life, m := out[a[0]], out[a[1]]; life > 0 && m > 0 {
+			pools[a[0]] = &allyPool{remaining: life, percent: math.Min(m, 100) / 100}
+		}
+	}
+	return pools
+}
+
 // lifeHitPoolWithLossPrevention is calcLifeHitPoolWithLossPrevention.
 func lifeHitPoolWithLossPrevention(life, maxLife, prevented, belowHalfPrevented float64) float64 {
 	half := maxLife * 0.5
@@ -558,6 +583,7 @@ func (est *defenceEstimations) takenHitFromDamage(db *ModDB, raw float64, t stri
 
 // poolState is the pool table of calcs.reducePoolsByDamage.
 type poolState struct {
+	allies                          map[string]*allyPool
 	aegis, guard                    map[string]float64
 	ward, wardActiveChance          float64
 	energyShield, mana, life        float64
@@ -572,7 +598,7 @@ func newPoolState(out map[string]float64) *poolState {
 	p := &poolState{aegis: map[string]float64{"shared": out["sharedAegis"], "sharedElemental": out["sharedElementalAegis"]},
 		guard: map[string]float64{"shared": out["sharedGuardAbsorb"]}, ward: out["Ward"],
 		energyShield: out["EnergyShieldRecoveryCap"], mana: out["ManaUnreserved"], life: out["LifeRecoverable"],
-		recoupable: map[string]float64{}}
+		recoupable: map[string]float64{}, allies: buildAllyPools(out)}
 	for _, t := range dmgTypes {
 		p.aegis[t] = out[t+"Aegis"]
 		p.guard[t] = out[t+"GuardAbsorb"]
@@ -654,6 +680,13 @@ func reducePoolsByDamage(db *ModDB, in *poolState, damage map[string]float64) *p
 		rem, ok := dmg[t]
 		if !ok {
 			continue
+		}
+		for _, a := range allyLifePools {
+			if ap := in.allies[a[0]]; ap != nil && ap.remaining > 0 {
+				d := math.Min(rem*ap.percent, ap.remaining)
+				ap.remaining = math.Floor(ap.remaining - d)
+				rem -= d
+			}
 		}
 		recoup[t] += rem
 		take := func(pool *float64, amount float64) {
@@ -772,7 +805,7 @@ func reducePoolsByDamage(db *ModDB, in *poolState, damage map[string]float64) *p
 	if !math.IsInf(esRemaining, 1) {
 		hitPool += esRemaining
 	}
-	res := &poolState{aegis: aegis, guard: guard, energyShield: math.Floor(es), mana: math.Floor(mana), life: math.Floor(life),
+	res := &poolState{allies: in.allies, aegis: aegis, guard: guard, energyShield: math.Floor(es), mana: math.Floor(mana), life: math.Floor(life),
 		recoupable: recoup, lifeLossLost: math.Ceil(lost), lifeBelowHalfLost: math.Ceil(belowLost),
 		overkill: math.Ceil(overkill), hitPoolRemaining: math.Floor(hitPool), hasWardActiveChance: true}
 	res.ward = math.Floor(ward)
@@ -814,6 +847,19 @@ func (est *defenceEstimations) maximumHitTaken(db *ModDB) {
 			} else {
 				protected := absorb / (rate / 100) * (1 - rate/100)
 				out[k] = math.Max(out[k]-protected, 0) + math.Min(out[k], protected)/(1-rate/100)
+			}
+		}
+		for i := len(allyLifePools) - 1; i >= 0; i-- {
+			life, m := out[allyLifePools[i][0]], out[allyLifePools[i][1]]
+			if life <= 0 || m <= 0 {
+				continue
+			}
+			m = math.Min(m, 100)
+			if m == 100 {
+				out[k] += life
+			} else {
+				protected := life / (m / 100) * (1 - m/100)
+				out[k] = math.Max(out[k]-protected, 0) + math.Min(out[k], protected)/(1-m/100)
 			}
 		}
 	}

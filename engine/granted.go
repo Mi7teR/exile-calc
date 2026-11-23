@@ -19,6 +19,21 @@ func notableMaps(tree *gamedata.Tree) (notable, ascendancy map[string]*gamedata.
 		ids = append(ids, id)
 	}
 	sort.Ints(ids) // PoB walks a hash table; any fixed order will do
+	// Legacy ascendancy nodes share names with current ones (3.30 Warden is
+	// ascendancy id "Raider"; old "Warden" nodes remain in the data). PoB's
+	// hash order lands on the current node; prefer it explicitly.
+	current := map[string]bool{}
+	for _, cl := range tree.Classes {
+		for _, a := range cl.Ascendancies {
+			current[a.ID] = true
+		}
+	}
+	setAscendancy := func(name string, n *gamedata.Node) {
+		if prev := ascendancy[name]; prev != nil && current[prev.AscendancyName] && !current[n.AscendancyName] {
+			return
+		}
+		ascendancy[name] = n
+	}
 	for _, id := range ids {
 		n := tree.Nodes[id]
 		if n.IsMastery || n.IsJewelSocket || n.IsKeystone {
@@ -27,7 +42,7 @@ func notableMaps(tree *gamedata.Tree) (notable, ascendancy map[string]*gamedata.
 		name := strings.ToLower(n.Name)
 		if n.IsNotable {
 			if n.AscendancyName != "" {
-				ascendancy[name] = n
+				setAscendancy(name, n)
 			} else if _, dup := notable[name]; !dup || n.Group != 0 {
 				notable[name] = n
 			}
@@ -38,7 +53,7 @@ func notableMaps(tree *gamedata.Tree) (notable, ascendancy map[string]*gamedata.
 			!strings.Contains(n.Name, "Strength") && !strings.Contains(n.Name, "Passive")
 		option := n.IsMultipleChoiceOption && n.AscendancyName != ""
 		if (ascendantNode || option) && n.AscendancyName != "Reliquarian" && n.AscendancyName != "Luminary" {
-			ascendancy[name] = n
+			setAscendancy(name, n)
 		}
 	}
 	return notable, ascendancy
