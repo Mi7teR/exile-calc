@@ -376,7 +376,7 @@ func (c *Calculator) createMinionSkills(mdb *ModDB, s *activeSkill, m *skillMini
 				level = l
 			}
 		}
-		eff := &skillEffect{id: id, ge: ge, level: level}
+		eff := &skillEffect{id: id, ge: ge, level: level, actorLevel: float64(m.level)}
 		ms := c.createActiveSkill(eff, s.supportList, nil, [2]string{weapon}, s)
 		ms.cfg = &Cfg{}
 		c.buildSkillMods(mdb, ms, res)

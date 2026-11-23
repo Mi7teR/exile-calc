@@ -364,6 +364,7 @@ type Skill struct {
 	MinionList               []string            `json:"minionList,omitempty"`
 	AddMinionList            []string            `json:"addMinionList,omitempty"`
 	MinionHasItemSet         bool                `json:"minionHasItemSet,omitempty"`
+	CastTime                 float64             `json:"castTime,omitempty"`
 	MinionUses               []string            `json:"minionUses,omitempty"` // item slots the minion uses
 }
 
@@ -401,6 +402,14 @@ type SkillLevel struct {
 	LifeReservationPercent float64   `json:"lifeReservationPercent,omitempty"`
 	LifeReservationFlat    float64   `json:"lifeReservationFlat,omitempty"`
 	Cooldown               float64   `json:"cooldown,omitempty"`
+	// Offence: base crit chance, base and added damage multipliers, the
+	// attack damage multiplier (Damage MORE), attack time and speed.
+	CritChance            float64 `json:"critChance,omitempty"`
+	BaseMultiplier        float64 `json:"baseMultiplier,omitempty"`
+	DamageEffectiveness   float64 `json:"damageEffectiveness,omitempty"`
+	DamageMultiplier      float64 `json:"damageMultiplier,omitempty"`
+	AttackTime            float64 `json:"attackTime,omitempty"`
+	AttackSpeedMultiplier float64 `json:"attackSpeedMultiplier,omitempty"`
 }
 
 // Minion is an entry of Data/Minions.lua or Data/Spectres.lua (data.minions);

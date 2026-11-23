@@ -88,6 +88,7 @@ func convertSkill(t *luadata.Table) (*gamedata.Skill, error) {
 	s.BaseEffectiveness, s.IncrementalEffectiveness = f("baseEffectiveness"), f("incrementalEffectiveness")
 	s.SkillTotemID = int(f("skillTotemId"))
 	s.MinionHasItemSet = b("minionHasItemSet")
+	s.CastTime = f("castTime")
 	if uses, ok := t.Get("minionUses").(*luadata.Table); ok {
 		for _, k := range uses.Keys {
 			s.MinionUses = append(s.MinionUses, keyText(k))
@@ -270,6 +271,9 @@ func skillLevels(v luadata.Value) (map[int]*gamedata.SkillLevel, error) {
 		l.LifeReservationPercent = num("lifeReservationPercent")
 		l.LifeReservationFlat = num("lifeReservationFlat")
 		l.Cooldown = num("cooldown")
+		l.CritChance, l.BaseMultiplier = num("critChance"), num("baseMultiplier")
+		l.DamageEffectiveness, l.DamageMultiplier = num("damageEffectiveness"), num("damageMultiplier")
+		l.AttackTime, l.AttackSpeedMultiplier = num("attackTime"), num("attackSpeedMultiplier")
 		out[n] = l
 		return nil
 	}

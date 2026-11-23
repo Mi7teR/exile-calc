@@ -204,6 +204,7 @@ type skillEffect struct {
 	props            []gemProperty
 	fromItem         bool // set on supports granted by items (ExtraSupport)
 	appliesToGranted bool
+	actorLevel       float64 // activeEffect.actorLevel: the minion's level for minion skills
 }
 
 // skillBuff is an entry of activeSkill.buffList.
@@ -239,6 +240,46 @@ type activeSkill struct {
 	// is the summoning skill of a minion's skill (activeSkill.summonSkill).
 	supportList []*skillEffect
 	summon      *activeSkill
+	// weapon1Cfg is the skill cfg of a main hand attack (weapon flags).
+	weapon1Cfg *Cfg
+}
+
+// modFlagByName is the weapon part of Data/Global.lua ModFlag.
+var modFlagByName = map[string]uint64{
+	"Axe": 0x10000, "Bow": 0x20000, "Claw": 0x40000, "Dagger": 0x80000, "Mace": 0x100000,
+	"Staff": 0x200000, "Sword": 0x400000, "Wand": 0x800000, "Unarmed": 0x1000000, "Fishing": 0x2000000,
+}
+
+const (
+	mfWeapon       = 0x2000
+	mfWeaponMelee  = 0x4000000
+	mfWeaponRanged = 0x8000000
+	mfWeapon1H     = 0x10000000
+	mfWeapon2H     = 0x20000000
+)
+
+// weaponFlags is CalcActiveSkill.lua getWeaponFlags without weaponTypes
+// checks (minion skills ignore them): the ModFlags of a weapon type.
+func weaponFlags(typ string) (uint64, bool) {
+	info, ok := weaponTypeInfo[typ]
+	if !ok {
+		return 0, false
+	}
+	f := modFlagByName[info.flag]
+	if typ != "None" {
+		f |= mfWeapon
+		if info.oneHand {
+			f |= mfWeapon1H
+		} else {
+			f |= mfWeapon2H
+		}
+		if info.melee {
+			f |= mfWeaponMelee
+		} else {
+			f |= mfWeaponRanged
+		}
+	}
+	return f, true
 }
 
 // resolveGem ports SkillsTabClass:LoadSkill and ProcessSocketGroup: the
@@ -991,7 +1032,7 @@ func scalar(p *float64, def float64) float64 {
 // mergeSkillInstanceMods is calcs.mergeSkillInstanceMods.
 func (c *Calculator) mergeSkillInstanceMods(list *ModDB, e *skillEffect, extra []ListEntry) {
 	e.level = validateLevel(e.level, e.ge, e.gem)
-	stats := skillStats(e, 0)
+	stats := skillStats(e, e.actorLevel)
 	for _, x := range extra {
 		v, _ := x.Value.(map[string]any)
 		k, _ := v["key"].(string)
@@ -1101,10 +1142,38 @@ func (c *Calculator) buildSkillMods(db *ModDB, s *activeSkill, res *Result) {
 	for _, f := range ge.BaseFlags {
 		baseFlags[f] = true
 	}
+	// Weapon flags of a minion's attack: its weapon type, and minion skills
+	// ignore weapon types ("None" when unknown). The player's weapon flags
+	// (weaponTypes checks, off hand) are not ported yet.
+	var w1Flags uint64
+	w1Attack := false
+	if s.summon != nil && flags["attack"] {
+		f, ok := weaponFlags(s.weapons[0])
+		if !ok {
+			f, _ = weaponFlags("None")
+		}
+		w1Flags, w1Attack = f, true
+		if info := weaponTypeInfo[s.weapons[0]]; info.melee || s.weapons[0] == "" {
+			if flags["melee"] {
+				delete(flags, "projectile")
+			}
+		} else if flags["projectile"] {
+			delete(flags, "melee")
+		}
+		flags["weapon1Attack"] = true
+	}
+	summonName := ""
+	if s.summon != nil {
+		summonName = s.summon.active.ge.Name
+	}
 	s.cfg = &Cfg{
-		Flags: modFlags, KeywordFlags: kw, SkillName: strings.TrimPrefix(ge.Name, "Vaal "),
+		Flags: modFlags | w1Flags, KeywordFlags: kw, SkillName: strings.TrimPrefix(ge.Name, "Vaal "),
 		SkillID: s.active.id, BaseFlags: baseFlags, SkillTypes: types, SkillGem: s.active.gem,
-		SlotName: s.cfg.SlotName,
+		SlotName: s.cfg.SlotName, SummonSkillName: summonName,
+	}
+	if w1Attack {
+		w := *s.cfg
+		s.weapon1Cfg = &w
 	}
 	if s.active.cfg != nil {
 		s.cfg.SlotName, s.cfg.SocketColor, s.cfg.SocketNum = s.active.cfg.SlotName, s.active.cfg.SocketColor, s.active.cfg.SocketNum
@@ -1162,6 +1231,21 @@ func (c *Calculator) buildSkillMods(db *ModDB, s *activeSkill, res *Result) {
 		list.Add(Mod{Name: "Gem" + p.sourceType + upperFirst(p.key), Type: "BASE", Value: p.value, Source: p.mod.Source, Tags: tags})
 	}
 	c.mergeSkillInstanceMods(list, a, list.List(s.cfg, "ExtraSkillStat"))
+	// Extra modifiers from the granted effect level.
+	if lv := ge.Levels[a.level]; lv != nil {
+		if lv.CritChance != 0 {
+			s.data["CritChance"] = lv.CritChance
+		}
+		if lv.DamageMultiplier != 0 {
+			list.Add(Mod{Name: "Damage", Type: "MORE", Value: lv.DamageMultiplier, Flags: mfAttack, Source: "Skill:" + a.id})
+		}
+		if lv.AttackTime != 0 {
+			s.data["attackTime"] = lv.AttackTime
+		}
+		if lv.AttackSpeedMultiplier != 0 {
+			s.data["attackSpeedMultiplier"] = lv.AttackSpeedMultiplier
+		}
+	}
 	for _, e := range list.List(s.cfg, "ExtraSkillMod") {
 		v, _ := e.Value.(map[string]any)
 		if m, ok := v["mod"].(map[string]any); ok {
