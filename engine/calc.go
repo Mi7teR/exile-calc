@@ -380,6 +380,7 @@ func (c *Calculator) Calc(b *pobcode.Build) (*Result, error) {
 	c.lifeMana(db)
 	charges(db) // early, for stats that depend on charges
 	c.applyBuffs(db, skills, res)
+	extraAuras(db)
 	c.mergeKeystones(db, keystones, res)
 	charges(db)
 	rage(db, mainCfg(skills))

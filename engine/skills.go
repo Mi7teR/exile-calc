@@ -1189,6 +1189,8 @@ func mergeBuff(src []Mod, dest map[string][]Mod, key string) {
 // and adds the merged buffs to the ModDB.
 func (c *Calculator) applyBuffs(db *ModDB, skills []*activeSkill, res *Result) {
 	buffs := map[string][]Mod{}
+	guards := map[string][]Mod{}
+	var guardOrder []string
 	notBuff := map[string]bool{}
 	var order []string
 	add := func(src []Mod, name string) {
@@ -1266,10 +1268,46 @@ func (c *Calculator) applyBuffs(db *ModDB, skills []*activeSkill, res *Result) {
 				if db.Flag("AurasAffectEnemies") {
 					res.Incomplete = append(res.Incomplete, "auras affecting enemies: "+b.name)
 				}
-			case "Guard", "Warcry", "Link":
+			case "Guard":
+				if s.flags["totem"] && !b.allowTotemBuff || b.applyNotPlayer {
+					continue
+				}
+				store, bcfg := db, (*Cfg)(nil)
+				if b.activeSkillBuff {
+					store, bcfg = list, cfg
+				}
+				inc := store.SumCfg(bcfg, "INC", "BuffEffect", "BuffEffectOnSelf", "BuffEffectOnPlayer")
+				more := store.MoreCfg(bcfg, "BuffEffect", "BuffEffectOnSelf")
+				if _, ok := guards[b.name]; !ok {
+					guardOrder = append(guardOrder, b.name)
+				}
+				mergeBuff(scaleMods(b.mods, (1+inc/100)*more), guards, b.name)
+			case "Warcry", "Link":
 				res.Incomplete = append(res.Incomplete, fmt.Sprintf("%s buff not applied: %s", strings.ToLower(b.typ), b.name))
 			}
 		}
+	}
+	// Guard buffs: a Vaal Molten Shell alone, else every Vaal guard and the
+	// first other guard (in PoB's pairs order; here the order of skills).
+	var slots []string
+	nonVaal := false
+	for _, name := range guardOrder {
+		if name == "Vaal Molten Shell" {
+			slots, nonVaal = []string{name}, false
+			break
+		} else if strings.HasPrefix(name, "Vaal") {
+			slots = append(slots, name)
+		} else if !nonVaal {
+			slots, nonVaal = append(slots, name), true
+		}
+	}
+	if nonVaal {
+		db.conditions["AffectedByNonVaalGuardSkill"] = true
+	}
+	for _, name := range slots {
+		db.conditions["AffectedByGuardSkill"] = true
+		db.conditions["AffectedBy"+strings.ReplaceAll(name, " ", "")] = true
+		add(guards[name], name)
 	}
 	for _, name := range order {
 		for _, m := range buffs[name] {
@@ -1297,6 +1335,24 @@ func skillInfo(skills []*activeSkill) []SkillInfo {
 		out = append(out, info)
 	}
 	return out
+}
+
+// extraAuras ports the ExtraAura loop of calcs.perform: aura mods granted
+// by other mods ("you and nearby allies have ...") apply to the player
+// scaled by buff and aura effect on self.
+func extraAuras(db *ModDB) {
+	scale := (1 + db.Sum("INC", "BuffEffectOnSelf", "AuraEffectOnSelf")/100) * db.More("BuffEffectOnSelf", "AuraEffectOnSelf")
+	for _, e := range db.List(nil, "ExtraAura") {
+		v, _ := e.Value.(map[string]any)
+		mm, ok := v["mod"].(map[string]any)
+		if !ok || truthy(v["onlyAllies"]) || (truthy(v["fromAllies"]) && db.Flag("AlliesAurasCannotAffectSelf")) {
+			continue
+		}
+		db.Add(scaleMod(modFromMap(mm, e.Mod.Source), scale))
+		if !truthy(v["notBuff"]) {
+			db.multipliers["BuffOnSelf"]++
+		}
+	}
 }
 
 func scaleMods(l []Mod, scale float64) []Mod {
