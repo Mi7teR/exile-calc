@@ -81,13 +81,12 @@ const matchingSocketQualityBonus = 10 // Data.lua data.misc.MatchingSocketQualit
 type gemIndex struct {
 	gems        map[string]*gamedata.Gem
 	byGameID    map[string]map[string]*gamedata.Gem // gemsByGameId[gameId][variantId]
-	forSkill    map[string]string                   // gemForSkill: granted effect id -> gem id
 	forBaseName map[string]string                   // gemForBaseName: lower-case name -> gem id
 	vaalBase    map[string]string                   // gemVaalGemIdForBaseGemId
 }
 
 func newGemIndex(d *gamedata.Data) *gemIndex {
-	x := &gemIndex{gems: d.Gems, byGameID: map[string]map[string]*gamedata.Gem{}, forSkill: map[string]string{},
+	x := &gemIndex{gems: d.Gems, byGameID: map[string]map[string]*gamedata.Gem{},
 		forBaseName: map[string]string{}, vaalBase: map[string]string{}}
 	ids := make([]string, 0, len(d.Gems))
 	for id := range d.Gems {
@@ -96,7 +95,6 @@ func newGemIndex(d *gamedata.Data) *gemIndex {
 	sort.Strings(ids)
 	for _, id := range ids {
 		g := d.Gems[id]
-		x.forSkill[g.GrantedEffectID] = id
 		if x.byGameID[g.GameID] == nil {
 			x.byGameID[g.GameID] = map[string]*gamedata.Gem{}
 		}
