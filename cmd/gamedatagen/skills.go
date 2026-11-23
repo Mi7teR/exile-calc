@@ -274,6 +274,7 @@ func skillLevels(v luadata.Value) (map[int]*gamedata.SkillLevel, error) {
 		l.CritChance, l.BaseMultiplier = num("critChance"), num("baseMultiplier")
 		l.DamageEffectiveness, l.DamageMultiplier = num("damageEffectiveness"), num("damageMultiplier")
 		l.AttackTime, l.AttackSpeedMultiplier = num("attackTime"), num("attackSpeedMultiplier")
+		l.StoredUses = num("storedUses")
 		out[n] = l
 		return nil
 	}

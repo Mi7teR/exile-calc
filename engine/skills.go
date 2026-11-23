@@ -1261,6 +1261,9 @@ func (c *Calculator) buildSkillMods(db *ModDB, s *activeSkill, res *Result) {
 		if lv.AttackSpeedMultiplier != 0 {
 			s.data["attackSpeedMultiplier"] = lv.AttackSpeedMultiplier
 		}
+		if lv.StoredUses != 0 {
+			s.data["storedUses"] = lv.StoredUses
+		}
 	}
 	for _, e := range list.List(s.cfg, "ExtraSkillMod") {
 		v, _ := e.Value.(map[string]any)

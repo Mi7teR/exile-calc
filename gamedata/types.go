@@ -410,6 +410,7 @@ type SkillLevel struct {
 	DamageMultiplier      float64 `json:"damageMultiplier,omitempty"`
 	AttackTime            float64 `json:"attackTime,omitempty"`
 	AttackSpeedMultiplier float64 `json:"attackSpeedMultiplier,omitempty"`
+	StoredUses            float64 `json:"storedUses,omitempty"`
 }
 
 // Minion is an entry of Data/Minions.lua or Data/Spectres.lua (data.minions);

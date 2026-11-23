@@ -191,7 +191,16 @@ func (c *Calculator) offence(actor *ModDB, s *activeSkill, w1 hitSource, w2 *hit
 			return out
 		}
 	} else {
+		// The skill pass's source is skillData: spell base damage
+		// (skill("FireMin")) and crit chance.
 		src := hitSource{min: map[string]float64{}, max: map[string]float64{}}
+		for _, t := range dmgTypeList {
+			mn, _ := num(data[t+"Min"])
+			mx, _ := num(data[t+"Max"])
+			bmn, _ := num(data[t+"BonusMin"])
+			bmx, _ := num(data[t+"BonusMax"])
+			src.min[t], src.max[t] = mn+bmn, mx+bmx
+		}
 		if cc, ok := num(data["CritChance"]); ok {
 			src.critChance = cc
 		}
@@ -224,9 +233,16 @@ func (c *Calculator) offence(actor *ModDB, s *activeSkill, w1 hitSource, w2 *hit
 			}
 		}
 	}
+	cooldown, hasCooldown := skillCooldown(list, cfg, data)
+	if hasCooldown {
+		out["Cooldown"] = cooldown
+	}
 	for _, p := range passes {
 		p.conv = conversionTable(list, p.cfg)
 		c.hitAndSpeed(actor, s, p)
+		if hasCooldown && cooldown > 0 && p.out["Speed"] != 0 {
+			p.out["Speed"] = math.Min(p.out["Speed"], 1/cooldown) // * Repeats (1)
+		}
 	}
 	combine("AccuracyHitChance", "AVERAGE")
 	combine("HitChance", "AVERAGE")
@@ -258,6 +274,26 @@ func (c *Calculator) offence(actor *ModDB, s *activeSkill, w1 hitSource, w2 *hit
 	}
 	out["CombinedDPS"] = out["TotalDPS"]
 	return out
+}
+
+// skillCooldown is calcSkillCooldown, for skills with a cooldown (the
+// "Calculate skill type stats" branch of calcs.offence; trap cooldowns are
+// not ported).
+func skillCooldown(list *ModDB, cfg *Cfg, data map[string]any) (float64, bool) {
+	base, has := num(data["cooldown"])
+	added := list.SumCfg(cfg, "BASE", "CooldownRecovery")
+	if !has && added == 0 {
+		return 0, false
+	}
+	if o, ok := list.OverrideCfg(cfg, "CooldownRecovery"); ok {
+		return o, true
+	}
+	cd := (base + added) / math.Max(0, calcMod(list, cfg, "CooldownRecovery"))
+	stored, _ := num(data["storedUses"])
+	if stored > 1 || list.SumCfg(cfg, "BASE", "AdditionalCooldownUses") > 0 {
+		return cd, true
+	}
+	return math.Ceil(cd*serverTickRate) / serverTickRate, true
 }
 
 // hitAndSpeed is the hit chance and attack/cast speed part of
