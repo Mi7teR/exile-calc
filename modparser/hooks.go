@@ -59,6 +59,15 @@ var hooks = map[string]Hook{
 		return []any{withTags(newMod("GemProperty", "LIST", map[string]any{"keyword": typ, "key": argS(a, 2), "value": arg(a, 0)}, 0, 0),
 			map[string]any{"type": "SocketedIn", "slotName": "{SlotName}"})}
 	},
+	// ["([%a%s]+) has (%d+)%% increased effect"] = function(_, skill, num)
+	//   return { mod("BuffEffect", "INC", num, { type = "SkillId", skillId = gemIdLookup[skill]}) } end
+	"specialModList[^([%a%s]+) has (%d+)%% increased effect$]": func(p *Parser, a []any) any {
+		tag := map[string]any{"type": "SkillId"}
+		if id, ok := p.t.exact["gemIdLookup"][argS(a, 1)]; ok {
+			tag["skillId"] = id
+		}
+		return []any{withTags(newMod("BuffEffect", "INC", arg(a, 2), 0, 0), tag)}
+	},
 	// ["grants level (%d+) (.+)"] = function(num, _, skill) return grantedExtraSkill(skill, num) end
 	"specialModList[^grants level (%d+) (.+)$]": func(p *Parser, a []any) any {
 		return p.grantedExtraSkill(argS(a, 2), arg(a, 0), nil)
