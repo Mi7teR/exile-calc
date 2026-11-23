@@ -228,7 +228,7 @@ func (c *Calculator) Calc(b *pobcode.Build) (*Result, error) {
 	var kalandra []reflect
 	gearMods := map[string][]modparser.Mod{} // all parsed mods of each gear slot
 	db.gearMods = gearMods
-	var reflected []*itemtext.Item           // the other ring of each Kalandra's Touch
+	var reflected []*itemtext.Item // the other ring of each Kalandra's Touch
 	useSwap := false
 	if set := b.ActiveItems(); set != nil {
 		useSwap = set.UseSecondWeaponSet
