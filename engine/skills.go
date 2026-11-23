@@ -450,8 +450,24 @@ func (c *Calculator) setupSkills(db *ModDB, b *pobcode.Build, useSwap bool, res 
 	}
 	skills := c.data.Skills.Effects
 	mainGroup := min(max(len(set.Groups), 1), max(b.MainSocketGroup, 1))
-	if len(db.List(nil, "LinkedSupport")) > 0 {
-		res.Incomplete = append(res.Incomplete, "linked supports (LinkedSupport) not applied")
+	// CalcSetup.lua crossLinkedSupportGroups: the slot of the item with
+	// LinkedSupport (The Squire) -> the slots its socketed supports support.
+	crossLinked := map[string][]string{}
+	if items := b.ActiveItems(); items != nil {
+		for _, e := range db.List(nil, "LinkedSupport") {
+			v, _ := e.Value.(map[string]any)
+			target, _ := v["targetSlotName"].(string)
+			for _, sl := range items.Slots {
+				if sl.ItemID != 0 && strings.HasPrefix(e.Mod.Source, fmt.Sprintf("Item:%d:", sl.ItemID)) {
+					src := sl.Name
+					if items.UseSecondWeaponSet {
+						src = strings.Replace(src, " Swap", "", 1)
+					}
+					crossLinked[src] = append(crossLinked[src], target)
+					break
+				}
+			}
+		}
 	}
 
 	var weapons [2]string
@@ -642,6 +658,19 @@ func (c *Calculator) setupSkills(db *ModDB, b *pobcode.Build, useSwap bool, res 
 					// Skills granted by an item take the supports of every group in its slot.
 					for j := range set.Groups {
 						if j != i && enabled[j] && cfgs[j].cfg.SlotName == gc.cfg.SlotName {
+							for _, s := range supports[j] {
+								applied = addBestSupport(s, applied)
+							}
+						}
+					}
+				}
+				// Then the supports of cross-linked slots.
+				for src, targets := range crossLinked {
+					if !contains(targets, gc.cfg.SlotName) {
+						continue
+					}
+					for j := range set.Groups {
+						if enabled[j] && cfgs[j].cfg.SlotName == src {
 							for _, s := range supports[j] {
 								applied = addBestSupport(s, applied)
 							}

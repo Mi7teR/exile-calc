@@ -54,6 +54,16 @@ var hooks = map[string]Hook{
 		limit, _ := toNumber(argS(a, 3)).(float64)
 		return []any{presenceDamage(n, limit, argS(a, 2))}
 	},
+	// ["socketed support gems can also support skills from y?o?u?r? ?e?q?u?i?p?p?e?d? ?([%a%s]+)"] = function (_, itemSlotName)
+	//   local targetItemSlotName = "Body Armour"; if itemSlotName == "main hand" then targetItemSlotName = "Weapon 1" end
+	//   return { mod("LinkedSupport", "LIST", { targetSlotName = targetItemSlotName }) } end
+	"specialModList[^socketed support gems can also support skills from y?o?u?r? ?e?q?u?i?p?p?e?d? ?([%a%s]+)$]": func(p *Parser, a []any) any {
+		target := "Body Armour"
+		if argS(a, 1) == "main hand" {
+			target = "Weapon 1"
+		}
+		return []any{newMod("LinkedSupport", "LIST", map[string]any{"targetSlotName": target}, 0, 0)}
+	},
 	// ["(%d+)%% of chaos damage t?a?k?e?n? ?does not bypass energy shield"] = function(num) return {
 	//   mod("ChaosEnergyShieldBypass", "BASE", -num) } end
 	"specialModList[^(%d+)%% of chaos damage t?a?k?e?n? ?does not bypass energy shield$]": func(p *Parser, a []any) any {

@@ -19,6 +19,9 @@ func chargeBaseMods(db *ModDB) {
 	db.NewMod("EnduranceChargesMax", "BASE", maxEnduranceCharges, "Base")
 	db.NewMod("InspirationChargesMax", "BASE", maxRighteousCharges, "Base")
 	db.NewMod("BloodChargesMax", "BASE", maxBloodCharges, "Base")
+	brine := map[string]any{"type": "Multiplier", "var": "BrineCharge"}
+	db.NewMod("PhysicalDamageGainAsCold", "BASE", 4, "Base", brine) // physical_damage_%_to_add_as_cold_per_brine_charge
+	db.NewMod("PhysicalDamageGainAsLightning", "BASE", 4, "Base", brine)
 	db.NewMod("MaximumRage", "BASE", 30, "Base") // characterConstants maximum_rage
 	db.NewMod("MaximumValour", "BASE", 50, "Base")
 }
