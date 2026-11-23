@@ -223,6 +223,7 @@ type activeSkill struct {
 	minionTypes map[int]bool
 	flags       map[string]bool
 	group       *pobcode.SocketGroup
+	gem         *pobcode.Gem // srcInstance: the gem of the active effect
 	cfg         *Cfg
 	mods        *ModDB // skillModList
 	data        map[string]any
@@ -593,6 +594,7 @@ func (c *Calculator) setupSkills(db *ModDB, b *pobcode.Build, useSwap bool, res 
 				}
 				s := c.createActiveSkill(eff, applied, g, weapons)
 				s.cfg = &Cfg{SlotName: gc.cfg.SlotName}
+				s.gem = gm
 				out = append(out, s)
 			}
 		}
@@ -1284,7 +1286,7 @@ func mergeBuff(src []Mod, dest map[string][]Mod, key string) {
 
 // applyBuffs ports the player's Buff and Aura branches of calcs.perform
 // and adds the merged buffs to the ModDB.
-func (c *Calculator) applyBuffs(db *ModDB, skills []*activeSkill, res *Result) []*enemyCurse {
+func (c *Calculator) applyBuffs(db *ModDB, skills []*activeSkill, res *Result) ([]*enemyCurse, map[string][]Mod) {
 	var curses []*enemyCurse
 	buffs := map[string][]Mod{}
 	warcries := map[string]bool{}
@@ -1422,7 +1424,7 @@ func (c *Calculator) applyBuffs(db *ModDB, skills []*activeSkill, res *Result) [
 			db.multipliers["BuffOnSelf"]++
 		}
 	}
-	return curses
+	return curses, buffs
 }
 
 var auraEffectNames = []string{"AuraEffect", "BuffEffect", "BuffEffectOnSelf", "AuraEffectOnSelf", "AuraBuffEffect", "SkillAuraEffectOnSelf"}

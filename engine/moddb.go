@@ -41,6 +41,7 @@ type ModDB struct {
 	tags        itemTags
 	classConds  map[string]string           // conditions[item title] = item.classRestriction
 	parent      *ModDB                      // a skill's mod list reads through to the actor's ModDB
+	owner       *ModDB                      // a minion's parent actor (tag actor "parent")
 	gameIDs     func(gemName string) string // calcLib.getGameIdFromGemName(name, true)
 
 	// UnsupportedTags counts tag types EvalMod does not port yet; mods
@@ -331,6 +332,8 @@ func (db *ModDB) target(t map[string]any) (*ModDB, bool) {
 		return db, true
 	case "enemy":
 		return db.enemy, db.enemy != nil
+	case "parent":
+		return db.owner, db.owner != nil
 	}
 	return nil, false
 }

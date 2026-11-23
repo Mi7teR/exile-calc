@@ -8,6 +8,8 @@ import (
 const (
 	stMark        = 98
 	stRemoteMined = 36
+
+	stMinionsAreUndamagable = 117
 )
 
 // cursePriority is Data.lua data.cursePriority.

@@ -218,6 +218,9 @@ type MonsterTables struct {
 	Armour              []float64 `json:"armour"`
 	PhysConversionMulti []float64 `json:"physConversionMulti"`
 	AllyLife            []float64 `json:"allyLife"`
+	Life                []float64 `json:"life"`  // monsterLifeTable
+	Life2               []float64 `json:"life2"` // monsterLifeTable2 (lifeScaling AltLife1)
+	Life3               []float64 `json:"life3"` // monsterLifeTable3 (lifeScaling AltLife2)
 	// TotemLifeMult is data.totemLifeMult by skillTotemId.
 	TotemLifeMult map[int]float64 `json:"totemLifeMult"`
 }
@@ -395,4 +398,22 @@ type SkillLevel struct {
 	LifeReservationPercent float64   `json:"lifeReservationPercent,omitempty"`
 	LifeReservationFlat    float64   `json:"lifeReservationFlat,omitempty"`
 	Cooldown               float64   `json:"cooldown,omitempty"`
+}
+
+// Minion is an entry of Data/Minions.lua or Data/Spectres.lua (data.minions);
+// ModList is encoded like Skill.BaseMods.
+type Minion struct {
+	Name            string           `json:"name"`
+	Life            float64          `json:"life"`
+	LifeScaling     string           `json:"lifeScaling,omitempty"`
+	EnergyShield    float64          `json:"energyShield,omitempty"`
+	Armour          float64          `json:"armour,omitempty"`
+	Evasion         float64          `json:"evasion,omitempty"`
+	FireResist      float64          `json:"fireResist,omitempty"`
+	ColdResist      float64          `json:"coldResist,omitempty"`
+	LightningResist float64          `json:"lightningResist,omitempty"`
+	ChaosResist     float64          `json:"chaosResist,omitempty"`
+	Limit           string           `json:"limit,omitempty"`
+	Hostile         bool             `json:"hostile,omitempty"`
+	ModList         []map[string]any `json:"modList,omitempty"`
 }

@@ -25,18 +25,18 @@ var goldenStats = []string{
 	"CritExtraDamageReduction", "EffectiveBlockChance", "EffectiveSpellBlockChance", "FireTakenDotMult",
 	"ColdTakenHit", "LifeHitPool", "PhysicalTotalPool", "ChaosTotalPool", "EvadeChance", "MeleeEvadeChance",
 	"ProjectileEvadeChance", "AverageNotHitChance", "EnemyCritChance", "PhysicalEnemyDamage", "FireEnemyDamage",
-	"ChaosEnemyDamage", "totalTakenDamage", "FireTakenHit", "ChaosTakenHit",
+	"ChaosEnemyDamage", "totalTakenDamage", "FireTakenHit", "ChaosTakenHit", "BasePhysicalDamageReduction",
+	"BasePhysicalDamageReductionWhenHit", "PhysicalTakenDotMult", "PhysicalTakenHit", "totalTakenHit",
+	"FireTotalHitPool", "PhysicalMaximumHitTaken", "FireMaximumHitTaken", "ColdMaximumHitTaken",
+	"LightningMaximumHitTaken", "ChaosMaximumHitTaken", "NumberOfDamagingHits", "NumberOfMitigatedDamagingHits",
+	"TotalEHP", "EHPSurvivalTime",
 }
 
 const tolerance = 0.005
 
 // reportStats are compared and logged but not part of the ratchet yet.
 var reportStats = []string{
-	"ManaRegenRecovery", "MovementSpeedMod", "BasePhysicalDamageReduction",
-	"BasePhysicalDamageReductionWhenHit", "CurseEffectOnSelf", "PhysicalTakenDotMult", "PhysicalTakenHit",
-	"totalTakenHit", "FireTotalHitPool", "PhysicalMaximumHitTaken", "FireMaximumHitTaken",
-	"ColdMaximumHitTaken", "LightningMaximumHitTaken", "ChaosMaximumHitTaken", "NumberOfDamagingHits",
-	"NumberOfMitigatedDamagingHits", "TotalEHP", "EHPSurvivalTime",
+	"ManaRegenRecovery", "MovementSpeedMod", "CurseEffectOnSelf",
 }
 
 // Ratchet: builds where every stat above is within tolerance. Raise it as
@@ -45,6 +45,15 @@ const minBuildsWithinTolerance = 44
 
 // minBuildsWithoutTimeless applies when the timeless jewel tables are absent.
 const minBuildsWithoutTimeless = 2
+
+// matches is within, plus: the oracle drops infinite numbers (math.huge)
+// from its JSON, so a missing stat matches our +Inf.
+func matches(got float64, want map[string]float64, stat string) bool {
+	if _, has := want[stat]; !has && math.IsInf(got, 1) {
+		return true
+	}
+	return within(got, want[stat])
+}
 
 func within(got, want float64) bool {
 	if want == 0 {
@@ -104,7 +113,7 @@ func TestGoldenCorpus(t *testing.T) {
 		var diffs []string
 		for _, s := range goldenStats {
 			got := res.Stats[s]
-			if within(got, want[s]) {
+			if matches(got, want, s) {
 				perStat[s]++
 			} else {
 				ok = false
@@ -116,12 +125,7 @@ func TestGoldenCorpus(t *testing.T) {
 		}
 		var extra []string
 		for _, s := range reportStats {
-			// The oracle drops infinite numbers (math.huge) from its JSON.
-			if _, has := want[s]; !has && math.IsInf(res.Stats[s], 1) {
-				perStat[s]++
-				continue
-			}
-			if within(res.Stats[s], want[s]) {
+			if matches(res.Stats[s], want, s) {
 				perStat[s]++
 			} else {
 				extra = append(extra, fmt.Sprintf("%s %g/%g", s, res.Stats[s], want[s]))

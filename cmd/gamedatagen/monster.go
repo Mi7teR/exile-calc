@@ -16,7 +16,8 @@ func convertMonsterTables(src string) (*gamedata.MonsterTables, error) {
 	for name, dst := range map[string]*[]float64{
 		"monsterEvasionTable": &out.Evasion, "monsterAccuracyTable": &out.Accuracy, "monsterDamageTable": &out.Damage,
 		"monsterArmourTable": &out.Armour, "monsterPhysConversionMultiTable": &out.PhysConversionMulti,
-		"monsterAllyLifeTable": &out.AllyLife,
+		"monsterAllyLifeTable": &out.AllyLife, "monsterLifeTable": &out.Life, "monsterLifeTable2": &out.Life2,
+		"monsterLifeTable3": &out.Life3,
 	} {
 		m := regexp.MustCompile(`(?m)^data\.` + name + ` = \{([^}]*)\}`).FindStringSubmatch(src)
 		if m == nil {

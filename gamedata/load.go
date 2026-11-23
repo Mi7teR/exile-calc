@@ -26,6 +26,7 @@ type Data struct {
 	Skills    *Skills
 	Monster   *MonsterTables
 	Pantheons map[string]*Pantheon // Data/Pantheons.lua, by config key ("TheBrineKing")
+	Minions   map[string]*Minion   // data.minions, by minion id
 
 	uniqueByName map[string]*Unique
 }
@@ -60,7 +61,7 @@ func load(fsys embed.FS, dir string) (*Data, error) {
 	for name, dst := range map[string]any{
 		"bases": &d.Bases, "mods": &d.Mods, "gems": &d.Gems, "uniques": &d.Uniques, "tree": &d.Tree,
 		"clusterjewels": &d.Cluster, "timeless": &d.Timeless, "config": &d.Config, "skills": &d.Skills,
-		"pantheons": &d.Pantheons, "monster": &d.Monster,
+		"pantheons": &d.Pantheons, "monster": &d.Monster, "minions": &d.Minions,
 	} {
 		gz, err := fsys.ReadFile(dir + "/" + name + ".json.gz")
 		if err != nil {

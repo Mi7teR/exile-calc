@@ -178,6 +178,10 @@ func run(src, out, parserOut string) error {
 	if err != nil {
 		return err
 	}
+	minions, err := convertMinions(read, skillEnv)
+	if err != nil {
+		return err
+	}
 
 	if err := os.MkdirAll(out, 0o755); err != nil {
 		return err
@@ -188,7 +192,7 @@ func run(src, out, parserOut string) error {
 	}
 	for name, v := range map[string]any{
 		"bases": bases, "mods": mods, "gems": gems, "uniques": uniques, "tree": tree,
-		"clusterjewels": &cluster, "timeless": timeless, "config": config, "skills": skills, "pantheons": pantheons, "monster": monster,
+		"clusterjewels": &cluster, "timeless": timeless, "config": config, "skills": skills, "pantheons": pantheons, "monster": monster, "minions": minions,
 	} {
 		if err := writeGzipJSON(filepath.Join(out, name+".json.gz"), v); err != nil {
 			return fmt.Errorf("%s: %w", name, err)

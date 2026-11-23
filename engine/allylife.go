@@ -12,17 +12,12 @@ var allyLifeRedirects = []string{
 
 // allyLifeMods ports the ally life block of calcs.perform: the life of
 // the allies that take damage before you, as BASE mods for the defence
-// estimations. Only totems are ported; minion life needs minion actors.
-func (c *Calculator) allyLifeMods(db *ModDB, skills []*activeSkill, res *Result) {
+// estimations.
+func (c *Calculator) allyLifeMods(db *ModDB, skills []*activeSkill, buffs map[string][]Mod, charLevel int, res *Result) {
 	if db.Sum("BASE", allyLifeRedirects...) == 0 {
 		return
 	}
-	for _, r := range []string{"takenFromSpectresBeforeYou", "takenFromMinionBeforeYou", "takenFromRadianceSentinelBeforeYou",
-		"takenFromVoidSpawnBeforeYou", "takenFromStoneGolemBeforeYou"} {
-		if db.Sum("BASE", r) != 0 {
-			res.Incomplete = append(res.Incomplete, "minion life for "+r+" not calculated")
-		}
-	}
+	c.minionLifeMods(db, skills, buffs, charLevel, res)
 	type totem struct {
 		name string
 		life float64
