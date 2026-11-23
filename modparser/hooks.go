@@ -93,6 +93,18 @@ var hooks = map[string]Hook{
 		}
 		return []any{newMod(from1+"DamageFromHitsTakenAs"+to, "BASE", arg(a, 0), 0, 0), newMod(from2+"DamageFromHitsTakenAs"+to, "BASE", arg(a, 0), 0, 0)}
 	},
+	// ["inflict (%w+) exposure on hit, applying %-(%d+)%% to (%w+) resistance"] = function(_, element1,  num, element2) return {
+	//   mod( firstToUpper(element1).."ExposureChance", "BASE", 100, { type = "Condition", var = "Effective" }),
+	//   mod("EnemyModifier", "LIST", { mod = mod(firstToUpper(element2).."Exposure", "BASE", -num) }, { type = "Condition", var = "Effective" }),
+	// } end
+	"specialModList[^inflict (%w+) exposure on hit, applying %-(%d+)%% to (%w+) resistance$]": func(p *Parser, a []any) any {
+		n, _ := toNumber(argS(a, 2)).(float64)
+		effective := map[string]any{"type": "Condition", "var": "Effective"}
+		return []any{
+			withTags(newMod(firstToUpper(argS(a, 1))+"ExposureChance", "BASE", 100.0, 0, 0), effective),
+			withTags(newMod("EnemyModifier", "LIST", map[string]any{"mod": newMod(firstToUpper(argS(a, 3))+"Exposure", "BASE", -n, 0, 0)}, 0, 0), effective),
+		}
+	},
 	// ["with at least one nearby corpse, nearby enemies deal (%d+)%% reduced damage"] = function(num) return {
 	//   mod("EnemyModifier", "LIST", { mod = mod("Damage", "INC", -num) }, { type = "MultiplierThreshold", var = "NearbyCorpse", threshold = 1 }) } end
 	"specialModList[^with at least one nearby corpse, nearby enemies deal (%d+)%% reduced damage$]": enemyModifier("Damage", "INC",

@@ -677,6 +677,12 @@ const stChannel = 48 // SkillType.Channel
 // combatConditions ports the mode_combat part of doActorAttribsConditions:
 // conditions that follow from using the main skill.
 func combatConditions(db *ModDB, s *activeSkill) {
+	// mode_effective: exposure the player can apply.
+	for _, el := range []string{"Fire", "Cold", "Lightning"} {
+		if (s != nil && s.mods != nil && s.mods.SumCfg(s.cfg, "BASE", el+"ExposureChance") > 0) || db.Sum("BASE", el+"ExposureChance") > 0 {
+			db.conditions["CanApply"+el+"Exposure"] = true
+		}
+	}
 	if s == nil {
 		return
 	}
@@ -1427,6 +1433,7 @@ func (c *Calculator) applyBuffs(db *ModDB, skills []*activeSkill, res *Result) (
 	var order []string
 	debuffs := map[string][]Mod{}
 	var debuffOrder []string
+	appliedCombustion := false
 	add := func(src []Mod, name string) {
 		if _, ok := buffs[name]; !ok {
 			order = append(order, name)
@@ -1541,6 +1548,33 @@ func (c *Calculator) applyBuffs(db *ModDB, skills []*activeSkill, res *Result) (
 				res.Incomplete = append(res.Incomplete, fmt.Sprintf("%s buff not applied: %s", strings.ToLower(b.typ), b.name))
 			}
 		}
+		// Wither: the skill or its (main) minion can wither.
+		if list.Flag("Condition:CanWither") || (s.main && minionCanWither(c, s)) {
+			name := "WitherEffect"
+			if s.main && minionCanWither(c, s) && !list.Flag("Condition:CanWither") {
+				name = "MinionWitherEffect"
+			}
+			inc := db.Sum("INC", name)
+			if name == "WitherEffect" && db.Flag("UnholyMight") {
+				inc += db.Sum("INC", "UnholyMightAlsoWitherEffect")
+			}
+			db.NewMod("WitherEffectStack", "MAX", math.Floor(6*(1+inc/100)), s.active.ge.Name)
+		}
+		// Combustion: an ignited enemy gets the support's fire resistance.
+		if !appliedCombustion && db.enemy.Flag("Condition:Ignited") && (s.types[stDamage] || s.types[stAttack]) {
+			for _, sup := range s.supportList {
+				if sup.ge.Name != "Combustion" {
+					continue
+				}
+				if !list.FlagCfg(cfg, "CannotIgnite") {
+					db.enemy.NewMod("FireResist", "BASE", list.SumCfg(cfg, "BASE", "CombustionFireResist"), "Combustion",
+						map[string]any{"type": "GlobalEffect", "effectType": "Debuff", "effectName": "Combustion"},
+						map[string]any{"type": "Condition", "var": "Ignited"})
+					appliedCombustion = true
+				}
+				break
+			}
+		}
 	}
 	// Guard buffs: a Vaal Molten Shell alone, else every Vaal guard and the
 	// first other guard (in PoB's pairs order; here the order of skills).
@@ -1578,6 +1612,30 @@ func (c *Calculator) applyBuffs(db *ModDB, skills []*activeSkill, res *Result) (
 		}
 	}
 	return curses, buffs
+}
+
+// minionCanWither is env.minion.modDB:Flag(nil, "Condition:CanWither") at
+// the time of the buff loop: the minion's data mods and the minion
+// modifiers of its summoning skill.
+func minionCanWither(c *Calculator, s *activeSkill) bool {
+	list, _ := minionList(s)
+	if len(list) == 0 {
+		return false
+	}
+	for _, e := range s.mods.List(s.cfg, "MinionModifier") {
+		v, _ := e.Value.(map[string]any)
+		if mm, ok := v["mod"].(map[string]any); ok && mm["name"] == "Condition:CanWither" {
+			return true
+		}
+	}
+	if m := c.data.Minions[list[0]]; m != nil {
+		for _, mm := range m.ModList {
+			if mm["name"] == "Condition:CanWither" {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // extraAuraDebuffMods is the extraAuraModList of the AuraDebuff branch of

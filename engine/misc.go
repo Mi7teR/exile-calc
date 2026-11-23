@@ -199,9 +199,19 @@ func actorMisc(db *ModDB, main *activeSkill, silverFlask bool, silverFlaskInc fl
 	if db.Flag("Elusive") {
 		elusive(db, main)
 	}
+	if effect, ok := db.MaxCfg(nil, "WitherEffectStack"); ok {
+		db.Add(Mod{Name: "Condition:CanWither", Type: "FLAG", Value: true, Source: "Config"})
+		db.enemy.NewMod("ChaosDamageTaken", "INC", effect, "Withered", map[string]any{"type": "Multiplier", "var": "WitheredStack", "limit": 15.0})
+	}
 	if db.Flag("Condition:CanBeWithered") {
 		effect := 6 * (100 + db.Sum("INC", "WitherEffectOnSelf")) / 100 * db.More("WitherEffectOnSelf")
 		db.NewMod("ChaosDamageTaken", "INC", effect, "Withered", map[string]any{"type": "Multiplier", "var": "WitheredStack", "limit": 15.0})
+	}
+	if e := db.Sum("BASE", "CoveredInAshEffect"); e > 0 && db.enemy != nil {
+		db.enemy.NewMod("FireDamageTaken", "INC", math.Min(e, 20), "Covered in Ash")
+	}
+	if e := db.Sum("BASE", "CoveredInFrostEffect"); e > 0 && db.enemy != nil {
+		db.enemy.NewMod("ColdDamageTaken", "INC", math.Min(e, 20), "Covered in Frost")
 	}
 	if db.Flag("Excommunicated") {
 		db.NewMod("ChaosDamage", "MORE", -100, "Excommunicated")
@@ -437,6 +447,36 @@ func impaleStacks(db *ModDB) {
 				mods[i].Value = max
 			}
 		}
+	}
+}
+
+// exposures is "Apply exposures" of calcs.perform: the strongest exposure
+// of each element on the enemy, changed by extra exposure and scaled by
+// exposure effect, as an enemy resistance.
+func exposures(db *ModDB) {
+	for _, el := range []string{"Fire", "Cold", "Lightning"} {
+		if db.Flag("ElementalEquilibrium") && db.enemy.Flag("Condition:HitBy"+el+"Damage") {
+			continue
+		}
+		min, source, found := 0.0, "", false
+		for _, r := range db.enemy.TabulateCfg(nil, "BASE", el+"Exposure") {
+			if f, ok := num(r.Value); ok && (!found || f < min) {
+				min, source, found = f, r.Source, true
+			}
+		}
+		if !found {
+			continue
+		}
+		min += db.Sum("BASE", "ExtraExposure", "Extra"+el+"Exposure")
+		if inc := db.Sum("INC", "ExposureEffect", el+"ExposureEffect"); inc != 0 {
+			min *= 1 + inc/100
+		}
+		db.enemy.Add(Mod{Name: "Condition:Has" + el + "Exposure", Type: "FLAG", Value: true})
+		if o, ok := db.Override("ExposureMin"); ok {
+			min = math.Min(min, o)
+		}
+		db.enemy.NewMod(el+"Resist", "BASE", min, source)
+		db.Add(Mod{Name: "Condition:AppliedExposureRecently", Type: "FLAG", Value: true})
 	}
 }
 

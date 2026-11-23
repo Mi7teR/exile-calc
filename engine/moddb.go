@@ -857,6 +857,20 @@ func (db *ModDB) skillNameTag(t map[string]any, cfg *Cfg) bool {
 	return match
 }
 
+// MaxCfg is ModStore:Max: the largest MAX mod value (ok false without one
+// above 0, as PoB's nil).
+func (db *ModDB) MaxCfg(cfg *Cfg, names ...string) (float64, bool) {
+	max, found := 0.0, false
+	for _, n := range names {
+		for _, r := range db.TabulateCfg(cfg, "MAX", n) {
+			if f, ok := num(r.Value); ok && f > max {
+				max, found = f, true
+			}
+		}
+	}
+	return max, found
+}
+
 // TabulateCfg is ModStore:Tabulate(typ, cfg, name) over the parent chain.
 func (db *ModDB) TabulateCfg(cfg *Cfg, typ, name string) []Row {
 	var rows []Row
