@@ -3,8 +3,10 @@ package engine
 import (
 	"fmt"
 	"math"
+	"sort"
 	"strings"
 
+	"github.com/Mi7teR/poe-lib/itemtext"
 	"github.com/Mi7teR/poe-lib/pobcode"
 )
 
@@ -18,9 +20,57 @@ var flaskTypeEffect = map[string]string{
 // active flasks add their base buff and their own mods, scaled by flask
 // effect; mods with the same parameters from flasks of one base (or the
 // same unique / the same mod set) do not stack, the highest wins.
-func (c *Calculator) applyFlasks(db *ModDB, res *Result, flasks []*pobcode.Item) {
-	effectInc := db.Sum("INC", "FlaskEffect")
-	effectIncMagic := db.Sum("INC", "MagicUtilityFlaskEffect")
+// flaskSlot is a flask in the active item set and whether its slot is active.
+type flaskSlot struct {
+	item   *pobcode.Item
+	active bool
+	num    int // the N of "Flask N"
+}
+
+// activeFlasks ports env.flasks: flasks in active slots (CalcSetup.lua),
+// plus Mageblood's magic utility flasks counted from the left and right
+// (CalcPerform.lua "Special handling of Mageblood"). It also sets
+// Have<BaseName> for every flask.
+func (c *Calculator) activeFlasks(db *ModDB, slots []flaskSlot) []*pobcode.Item {
+	sort.SliceStable(slots, func(i, j int) bool { return slots[i].num < slots[j].num })
+	active := map[*pobcode.Item]bool{}
+	var magicUtility []*pobcode.Item
+	for _, s := range slots {
+		it := c.peekItem(s.item)
+		if it == nil {
+			continue
+		}
+		db.conditions["Have"+strings.ReplaceAll(it.BaseName, " ", "")] = true
+		if s.active {
+			active[s.item] = true
+		}
+		if it.Rarity == itemtext.Magic && !strings.Contains(it.BaseName, "Life Flask") &&
+			!strings.Contains(it.BaseName, "Mana Flask") && !strings.Contains(it.BaseName, "Hybrid Flask") {
+			magicUtility = append(magicUtility, s.item)
+		}
+	}
+	left := int(db.Sum("BASE", "LeftActiveMagicUtilityFlasks"))
+	right := int(db.Sum("BASE", "RightActiveMagicUtilityFlasks"))
+	for i := 0; i < min(left, len(magicUtility)); i++ {
+		active[magicUtility[i]] = true
+	}
+	for i := len(magicUtility) - 1; right > 0 && i >= max(len(magicUtility)-right, 0); i-- {
+		active[magicUtility[i]] = true
+	}
+	var out []*pobcode.Item
+	for _, s := range slots {
+		if active[s.item] {
+			out = append(out, s.item)
+		}
+	}
+	return out
+}
+
+func (c *Calculator) applyFlasks(db *ModDB, res *Result, slots []flaskSlot) {
+	flasks := c.activeFlasks(db, slots)
+	player := &Cfg{Actor: "player"}
+	effectInc := db.SumCfg(player, "INC", "FlaskEffect")
+	effectIncMagic := db.SumCfg(player, "INC", "MagicUtilityFlaskEffect")
 	merged := map[string][]Mod{}
 	var keys []string
 	add := func(key string, m Mod) {
@@ -68,7 +118,7 @@ func (c *Calculator) applyFlasks(db *ModDB, res *Result, flasks []*pobcode.Item)
 			}
 		}
 		if stat := flaskTypeEffect[it.BaseName]; stat != "" {
-			inc += db.Sum("INC", stat)
+			inc += db.SumCfg(player, "INC", stat)
 		}
 		if it.Rarity == "MAGIC" && !recovery {
 			inc += effectIncMagic

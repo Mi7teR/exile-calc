@@ -172,7 +172,7 @@ func (c *Calculator) Calc(b *pobcode.Build) (*Result, error) {
 	}
 
 	// Items in the active set; jewels in allocated tree sockets.
-	var flasks []*pobcode.Item
+	var flasks []flaskSlot
 	var gear []equipped
 	useSwap := false
 	if set := b.ActiveItems(); set != nil {
@@ -190,9 +190,8 @@ func (c *Calculator) Calc(b *pobcode.Build) (*Result, error) {
 				continue
 			}
 			if strings.HasPrefix(slot.Name, "Flask") {
-				if slot.Active {
-					flasks = append(flasks, b.Item(slot.ItemID))
-				}
+				n, _ := strconv.Atoi(strings.TrimPrefix(slot.Name, "Flask "))
+				flasks = append(flasks, flaskSlot{item: b.Item(slot.ItemID), active: slot.Active, num: n})
 				continue
 			}
 			if skipSlot(slot.Name, set.UseSecondWeaponSet) {

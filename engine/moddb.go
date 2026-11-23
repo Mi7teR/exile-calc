@@ -106,6 +106,7 @@ type Cfg struct {
 	SocketColor         string
 	SocketNum           int
 	GemCounts           map[string]int // strengthGems, dexterityGems, intelligenceGems
+	Actor               string         // cfg.actor: an ActorCondition without var matches it
 }
 
 const keywordMatchAll = 0x40000000 // KeywordFlag.MatchAll
@@ -574,6 +575,10 @@ func (db *ModDB) eval(m *Mod, cfg *Cfg) (any, bool) {
 				} else if v := tagStr(t, "var"); v != "" {
 					match = target.getCondition(v, cfg, false)
 				}
+			}
+			_, hasVars := t["varList"]
+			if a := tagStr(t, "actor"); !(target != nil && (hasVars || tagStr(t, "var") != "")) && a != "" && cfg != nil && a == cfg.Actor {
+				match = true
 			}
 			if tagBool(t, "neg") {
 				match = !match
