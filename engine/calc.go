@@ -1,0 +1,361 @@
+package engine
+
+import (
+	"fmt"
+	"math"
+	"strings"
+
+	"github.com/Mi7teR/poe-lib/gamedata"
+	"github.com/Mi7teR/poe-lib/itemtext"
+	"github.com/Mi7teR/poe-lib/modparser"
+	"github.com/Mi7teR/poe-lib/pobcode"
+)
+
+// Calculator holds the game data; it is safe for concurrent use.
+type Calculator struct {
+	data   *gamedata.Data
+	parser *modparser.Parser
+	items  *itemtext.Parser
+}
+
+func New() (*Calculator, error) {
+	d, err := gamedata.PoE1()
+	if err != nil {
+		return nil, err
+	}
+	p, err := modparser.PoE1()
+	if err != nil {
+		return nil, err
+	}
+	return &Calculator{data: d, parser: p, items: itemtext.New(d)}, nil
+}
+
+// Result is the computed output. Unparsed lists mod lines the parser did
+// not understand; UnsupportedTags counts mods left out because a tag type
+// is not ported. Both make the result incomplete, never silently wrong.
+type Result struct {
+	Stats           map[string]float64
+	Unparsed        []string
+	UnsupportedTags map[string]int
+}
+
+// Data/Misc.lua characterConstants and Modules/Data.lua data.misc.
+const (
+	lifePerLevel        = 12
+	manaPerLevel        = 6
+	baseMaxResist       = 75
+	baseEvasion         = 15
+	maxResistCap        = 90
+	resistFloor         = -200
+	defaultAffixQuality = 0.5 // Main.lua defaultItemAffixQuality
+)
+
+var resistTypes = []string{"Fire", "Cold", "Lightning", "Chaos"}
+
+func (c *Calculator) Calc(b *pobcode.Build) (*Result, error) {
+	spec := b.ActiveSpec()
+	if spec == nil {
+		return nil, fmt.Errorf("engine: build has no passive tree")
+	}
+	tree := c.data.Tree
+	if spec.ClassID < 0 || spec.ClassID >= len(tree.Classes) {
+		return nil, fmt.Errorf("engine: unknown class id %d", spec.ClassID)
+	}
+	class := tree.Classes[spec.ClassID]
+	db := NewModDB()
+	db.enemy = NewModDB()
+	res := &Result{Stats: db.output}
+	config := b.ActiveConfig()
+
+	// CalcSetup.lua: base values.
+	db.NewMod("Str", "BASE", float64(class.BaseStr), "Base")
+	db.NewMod("Dex", "BASE", float64(class.BaseDex), "Base")
+	db.NewMod("Int", "BASE", float64(class.BaseInt), "Base")
+	db.multipliers["Level"] = math.Max(1, math.Min(100, float64(b.Level)))
+	for _, r := range resistTypes {
+		db.NewMod(r+"ResistMax", "BASE", baseMaxResist, "Base")
+	}
+	db.NewMod("Life", "BASE", lifePerLevel, "Base", map[string]any{"type": "Multiplier", "var": "Level", "base": 38.0})
+	db.NewMod("Mana", "BASE", manaPerLevel, "Base", map[string]any{"type": "Multiplier", "var": "Level", "base": 34.0})
+	db.NewMod("Evasion", "BASE", baseEvasion, "Base")
+	penalty := -60.0
+	if in, ok := configInput(config, "resistancePenalty"); ok && in.Kind == pobcode.KindNumber {
+		penalty = in.Number
+	}
+	for _, r := range resistTypes {
+		db.NewMod(r+"Resist", "BASE", penalty, "Base")
+	}
+	// CalcSetup.lua: bandit mods.
+	switch bandit := configString(config, "bandit", b.Bandit); bandit {
+	case "Alira":
+		db.NewMod("ElementalResist", "BASE", 15, "Bandit")
+	case "Oak":
+		db.NewMod("Life", "BASE", 40, "Bandit")
+	}
+
+	// Passive tree (CalcSetup.lua buildModListForNodeList): node stats, mastery effects.
+	allocated := map[int]bool{}
+	for _, id := range spec.Nodes {
+		allocated[id] = true
+	}
+	mastery := map[int]int{}
+	for _, m := range spec.MasteryEffects {
+		mastery[m.Node] = m.Effect
+	}
+	for _, id := range spec.Nodes {
+		node := tree.Nodes[id]
+		if node == nil {
+			continue
+		}
+		stats := node.Stats
+		if node.IsMastery {
+			stats = nil
+			for _, e := range node.MasteryEffects {
+				if e.Effect == mastery[id] {
+					stats = e.Stats
+				}
+			}
+		}
+		for _, line := range stats {
+			c.addLine(db, res, line, "Tree:"+node.Name)
+		}
+	}
+
+	// Items in the active set; jewels in allocated tree sockets.
+	if set := b.ActiveItems(); set != nil {
+		for _, slot := range set.Slots {
+			if slot.ItemID == 0 || skipSlot(slot.Name, set.UseSecondWeaponSet) {
+				continue
+			}
+			c.addItem(db, res, b.Item(slot.ItemID), "Item:"+slot.Name)
+		}
+	}
+	for _, s := range spec.Sockets {
+		if s.ItemID != 0 && allocated[s.NodeID] {
+			c.addItem(db, res, b.Item(s.ItemID), fmt.Sprintf("Jewel:%d", s.NodeID))
+		}
+	}
+
+	c.attributes(db)
+	c.lifeMana(db)
+	c.resistances(db)
+	for k, v := range db.UnsupportedTags {
+		if res.UnsupportedTags == nil {
+			res.UnsupportedTags = map[string]int{}
+		}
+		res.UnsupportedTags[k] = v
+	}
+	return res, nil
+}
+
+// skipSlot leaves out swap weapons (unless the swap set is active) and
+// flasks, whose effects depend on being active.
+func skipSlot(name string, useSwap bool) bool {
+	isSwap := strings.Contains(name, "Swap")
+	switch {
+	case strings.HasPrefix(name, "Flask"):
+		return true
+	case useSwap:
+		return strings.HasPrefix(name, "Weapon") && !isSwap
+	default:
+		return isSwap
+	}
+}
+
+func configInput(c *pobcode.ConfigSet, name string) (pobcode.Input, bool) {
+	if c == nil {
+		return pobcode.Input{}, false
+	}
+	return c.Input(name)
+}
+
+func configString(c *pobcode.ConfigSet, name, def string) string {
+	if in, ok := configInput(c, name); ok && in.Kind == pobcode.KindString {
+		return in.String
+	}
+	return def
+}
+
+func (c *Calculator) addLine(db *ModDB, res *Result, line, source string) {
+	r := c.parser.Parse(line)
+	if !r.Parsed() {
+		res.Unparsed = append(res.Unparsed, line)
+		return
+	}
+	for _, m := range r.Mods {
+		db.Add(fromParsed(m, source))
+	}
+}
+
+// localDefence names the mods an armour piece applies to itself
+// (Item:BuildModListForSlotNum); they do not reach the character directly.
+var localDefence = map[string]bool{
+	"Armour": true, "Evasion": true, "EnergyShield": true, "Ward": true,
+	"ArmourAndEvasion": true, "ArmourAndEnergyShield": true, "EvasionAndEnergyShield": true, "Defences": true,
+}
+
+func hasGlobalTag(m modparser.Mod) bool {
+	for _, t := range m.Tags {
+		if t["type"] == "Global" {
+			return true
+		}
+	}
+	return false
+}
+
+func (c *Calculator) addItem(db *ModDB, res *Result, item *pobcode.Item, source string) {
+	if item == nil {
+		return
+	}
+	it, err := c.items.Parse(item.Raw)
+	if err != nil {
+		res.Unparsed = append(res.Unparsed, "item: "+err.Error())
+		return
+	}
+	if item.Variant > 0 {
+		it.Variant = item.Variant
+	}
+	ranges := map[int]float64{}
+	for _, mr := range item.ModRanges {
+		ranges[mr.ID] = mr.Range
+	}
+	isArmour := it.Base != nil && it.Base.Armour != nil
+	isWeapon := it.Base != nil && it.Base.Weapon != nil
+	// ModRange ids count lines in this order (ItemsTab.lua Save).
+	id := 0
+	for _, group := range [][]itemtext.ModLine{it.Enchants, it.Scourge, it.Implicits, it.Explicits, it.Crucible} {
+		for _, l := range group {
+			id++
+			if len(l.Variants) > 0 && !containsInt(l.Variants, it.Variant) {
+				continue
+			}
+			r := defaultAffixQuality
+			if l.HasRange {
+				r = l.Range
+			}
+			if v, ok := ranges[id]; ok {
+				r = v
+			}
+			parsed := c.parser.Parse(applyRange(l.Text, r))
+			if !parsed.Parsed() {
+				res.Unparsed = append(res.Unparsed, l.Text)
+				continue
+			}
+			for _, m := range parsed.Mods {
+				if isArmour && localDefence[m.Name] && !hasGlobalTag(m) {
+					continue // local to the item: part of its own defence values
+				}
+				if isWeapon && m.Flags != 0 {
+					continue // local weapon stats: part of the weapon's own data
+				}
+				db.Add(fromParsed(m, source))
+			}
+		}
+	}
+}
+
+func containsInt(s []int, v int) bool {
+	for _, x := range s {
+		if x == v {
+			return true
+		}
+	}
+	return false
+}
+
+// val is calcLib.val (Modules/CalcTools.lua).
+func val(db *ModDB, name string) float64 {
+	base := db.Sum("BASE", name)
+	if base == 0 {
+		return 0
+	}
+	return base * (1 + db.Sum("INC", name)/100) * db.More(name)
+}
+
+// attributes ports calculateAttributes and the attribute bonuses of
+// doActorAttribsConditions (Modules/CalcPerform.lua).
+func (c *Calculator) attributes(db *ModDB) {
+	out := db.output
+	for pass := 0; pass < 2; pass++ { // twice: conditions depend on the attributes
+		for _, s := range []string{"Str", "Dex", "Int"} {
+			out[s] = math.Max(round(val(db, s), 0), 0)
+		}
+		str, dex, int_ := out["Str"], out["Dex"], out["Int"]
+		cond := db.conditions
+		cond["StrHigherThanInt"] = str > int_
+		cond["StrHigherThanDex"] = str > dex
+		cond["IntHigherThanStr"] = int_ > str
+		cond["DexHigherThanStr"] = dex > str
+		cond["IntHigherThanDex"] = int_ > dex
+		cond["DexHigherThanInt"] = dex > int_
+		cond["StrHighestAttribute"] = str >= dex && str >= int_
+		cond["IntHighestAttribute"] = int_ >= str && int_ >= dex
+		cond["DexHighestAttribute"] = dex >= str && dex >= int_
+	}
+	out["TotalAttr"] = out["Str"] + out["Dex"] + out["Int"]
+	if db.Flag("NoAttributeBonuses") {
+		return
+	}
+	if !db.Flag("NoStrengthAttributeBonuses") && !db.Flag("NoStrBonusToLife") {
+		db.NewMod("Life", "BASE", math.Floor(out["Str"]/2), "Strength")
+	}
+	if !db.Flag("NoDexterityAttributeBonuses") && !db.Flag("NoDexBonusToEvasion") {
+		db.NewMod("Evasion", "INC", math.Floor(out["Dex"]/5), "Dexterity")
+	}
+	if !db.Flag("NoIntelligenceAttributeBonuses") {
+		if !db.Flag("NoIntBonusToMana") {
+			db.NewMod("Mana", "BASE", math.Floor(out["Int"]/2), "Intelligence")
+		}
+		if !db.Flag("NoIntBonusToES") {
+			db.NewMod("EnergyShield", "INC", math.Floor(out["Int"]/10), "Intelligence")
+		}
+	}
+}
+
+// lifeMana ports doActorLifeMana (Modules/CalcPerform.lua).
+func (c *Calculator) lifeMana(db *ModDB) {
+	out := db.output
+	if db.Flag("ChaosInoculation") {
+		out["Life"] = 1
+		db.conditions["FullLife"] = true
+	} else if o, ok := db.Override("Life"); ok {
+		out["Life"] = o
+	} else {
+		base := db.Sum("BASE", "Life")
+		inc := db.Sum("INC", "Life")
+		more := db.More("Life")
+		conv := db.Sum("BASE", "LifeConvertToEnergyShield")
+		out["Life"] = math.Max(round(base*(1+inc/100)*more*(1-conv/100), 0), 1)
+	}
+	manaConv := db.Sum("BASE", "ManaConvertToArmour")
+	out["Mana"] = round(val(db, "Mana")*(1-manaConv/100), 0)
+}
+
+// resistances ports calcs.resistances (Modules/CalcDefence.lua) without
+// resistance conversion and Melding of the Flesh.
+func (c *Calculator) resistances(db *ModDB) {
+	out := db.output
+	for _, elem := range resistTypes {
+		maxNames := []string{elem + "ResistMax"}
+		names := []string{elem + "Resist"}
+		if elem != "Chaos" {
+			maxNames = append(maxNames, "ElementalResistMax")
+			names = append(names, "ElementalResist")
+		}
+		max, ok := db.Override(elem + "ResistMax")
+		if !ok {
+			max = math.Min(maxResistCap, db.Sum("BASE", maxNames...))
+		}
+		total, ok := db.Override(elem + "Resist")
+		if !ok {
+			base := db.Sum("BASE", names...)
+			inc := math.Max((1+db.Sum("INC", names...)/100)*db.More(names...), 0)
+			total = base * inc
+		}
+		total, max = modfInt(total), modfInt(max)
+		final := math.Max(math.Min(total, max), resistFloor)
+		out[elem+"Resist"] = final
+		out[elem+"ResistTotal"] = total
+		out[elem+"ResistOverCap"] = math.Max(0, total-max)
+	}
+}
