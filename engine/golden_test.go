@@ -99,6 +99,13 @@ func compareMinions(t *testing.T, raw json.RawMessage, got []MinionResult, perSt
 		if all {
 			ok++
 		}
+		for _, s := range minionOffenceStats {
+			if matches(got[idx].Stats[s], wantStats, s) {
+				perStat["Offence:"+s]++
+			} else {
+				diffs = append(diffs, fmt.Sprintf("%s %s %.4g/%.4g", w.Minion, s, got[idx].Stats[s], wantStats[s]))
+			}
+		}
 	}
 	return ok, total, diffs
 }
@@ -219,6 +226,9 @@ func TestGoldenCorpus(t *testing.T) {
 	t.Logf("unsupported tag types: %s", strings.Join(tags, ", "))
 	for _, s := range minionResultStats {
 		t.Logf("Minion %-16s within %.1f%%: %d/%d", s, tolerance*100, minionPerStat[s], minionsTotal)
+	}
+	for _, s := range minionOffenceStats {
+		t.Logf("Minion offence %-14s within %.1f%%: %d/%d", s, tolerance*100, minionPerStat["Offence:"+s], minionsTotal)
 	}
 	t.Logf("minions with all stats within tolerance: %d/%d", minionsOK, minionsTotal)
 	t.Logf("builds with all stats within tolerance: %d/%d", allOK, len(codes))

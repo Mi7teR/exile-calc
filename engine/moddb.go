@@ -114,6 +114,7 @@ type Cfg struct {
 	SocketNum           int
 	GemCounts           map[string]int // strengthGems, dexterityGems, intelligenceGems
 	Actor               string         // cfg.actor: an ActorCondition without var matches it
+	SkillCond           map[string]bool // cfg.skillCond: conditions of this query (CriticalStrike, MainHandAttack)
 }
 
 const keywordMatchAll = 0x40000000 // KeywordFlag.MatchAll
@@ -508,13 +509,14 @@ func (db *ModDB) eval(m *Mod, cfg *Cfg) (any, bool) {
 			match := false
 			if vars := tagList(t, "varList"); vars != nil {
 				for _, v := range vars {
-					if db.getCondition(v, cfg, false) {
+					if db.getCondition(v, cfg, false) || (cfg != nil && cfg.SkillCond[v]) {
 						match = true
 						break
 					}
 				}
 			} else {
-				match = db.getCondition(tagStr(t, "var"), cfg, false)
+				v := tagStr(t, "var")
+				match = db.getCondition(v, cfg, false) || (cfg != nil && cfg.SkillCond[v])
 			}
 			if tagBool(t, "neg") {
 				match = !match

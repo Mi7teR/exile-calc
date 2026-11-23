@@ -1173,6 +1173,7 @@ func (c *Calculator) buildSkillMods(db *ModDB, s *activeSkill, res *Result) {
 	}
 	if w1Attack {
 		w := *s.cfg
+		w.SkillCond = map[string]bool{"MainHandAttack": true}
 		s.weapon1Cfg = &w
 	}
 	if s.active.cfg != nil {

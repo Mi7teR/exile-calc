@@ -25,6 +25,8 @@ func minionBaseMods(mdb *ModDB) {
 	}
 	mdb.NewMod("BlockChanceMax", "BASE", 75, "Base")
 	mdb.NewMod("SpellBlockChanceMax", "BASE", 75, "Base")
+	mdb.NewMod("CritChanceCap", "BASE", 100, "Base")
+	mdb.conditions["Buffed"], mdb.conditions["Combat"], mdb.conditions["Effective"] = true, true, true
 	chargeBaseMods(mdb)
 	initConditionMods(mdb)
 	shrineBaseMods(mdb)
@@ -69,6 +71,21 @@ func (c *Calculator) initMinionDB(db *ModDB, s *activeSkill, m *skillMinion, res
 	mdb.NewMod("ColdResist", "BASE", m.data.ColdResist, "Base")
 	mdb.NewMod("LightningResist", "BASE", m.data.LightningResist, "Base")
 	mdb.NewMod("ChaosResist", "BASE", m.data.ChaosResist, "Base")
+	if db.Flag("MinionAccuracyEqualsAccuracy") {
+		mdb.NewMod("Accuracy", "BASE", val(db, "Accuracy")+val(db, "Dex")*2, "Player") // data.misc.AccuracyPerDexBase
+	} else {
+		mdb.Add(Mod{Name: "CannotBeEvaded", Type: "FLAG", Value: true, Source: "Minion Attacks always hit"})
+	}
+	// monsterConstants: base_critical_strike_multiplier 130, critical_ailment_dot_multiplier_+ 30,
+	// critical_strike_chance_+%_per_power_charge 50, frenzy charge speed 4, inherent damage 4.
+	mdb.NewMod("CritMultiplier", "BASE", 30, "Base")
+	mdb.NewMod("DotMultiplier", "BASE", 30, "Base", map[string]any{"type": "Condition", "var": "CriticalStrike"})
+	mdb.NewMod("CritChance", "INC", 50, "Base", map[string]any{"type": "Multiplier", "var": "PowerCharge"})
+	frenzy := map[string]any{"type": "Multiplier", "var": "FrenzyCharge"}
+	mdb.Add(Mod{Name: "Speed", Type: "INC", Value: 4.0, Flags: mfAttack, Source: "Base", Tags: []map[string]any{frenzy}})
+	mdb.Add(Mod{Name: "Speed", Type: "INC", Value: 4.0, Flags: mfCast, Source: "Base", Tags: []map[string]any{frenzy}})
+	mdb.NewMod("Damage", "MORE", 4, "Base", frenzy)
+	mdb.NewMod("ProjectileCount", "BASE", 1, "Base")
 	endurance := map[string]any{"type": "Multiplier", "var": "EnduranceCharge"}
 	mdb.NewMod("PhysicalDamageReduction", "BASE", 4, "Base", endurance)  // monsterConstants physical_damage_reduction_%_per_endurance_charge
 	mdb.NewMod("ElementalDamageReduction", "BASE", 4, "Base", endurance) // elemental_damage_reduction_%_per_endurance_charge_if_player_minion
@@ -240,6 +257,30 @@ func extraAurasToMinion(db, mdb *ModDB) {
 	}
 }
 
+var minionOffenceStats = []string{"Speed", "HitChance", "CritChance", "CritMultiplier", "AverageDamage", "TotalDPS"}
+
+// minionWeapon is the minion's weaponData1 of CalcActiveSkill.lua: damage
+// from the ally (or monster, for spectres) damage table and its attack
+// time. Minions using the player's or an item set's weapon are not ported.
+func (c *Calculator) minionWeapon(s *activeSkill, m *skillMinion) hitSource {
+	table := c.data.Monster.AllyDamage
+	if s.flags["spectre"] || m.data.Hostile {
+		table = c.data.Monster.Damage
+	}
+	w := hitSource{min: map[string]float64{}, max: map[string]float64{}, critChance: 5}
+	if m.level > len(table) || m.data.AttackTime == 0 {
+		return w
+	}
+	damage := table[m.level-1] * m.data.Damage
+	if !m.data.BaseDamageIgnoresAttackSpeed {
+		damage *= m.data.AttackTime
+	}
+	w.attackRate = 1 / m.data.AttackTime
+	w.min["Physical"] = round(damage*(1-m.data.DamageSpread), 0)
+	w.max["Physical"] = round(damage*(1+m.data.DamageSpread), 0)
+	return w
+}
+
 var minionResultStats = []string{
 	"Life", "EnergyShield", "Armour", "Evasion", "Str", "Dex", "Int",
 	"FireResist", "ColdResist", "LightningResist", "ChaosResist",
@@ -285,6 +326,13 @@ func (c *Calculator) mainMinion(db *ModDB, skills []*activeSkill, buffs map[stri
 	stats := map[string]float64{}
 	for _, k := range minionResultStats {
 		stats[k] = mdb.output[k]
+	}
+	if ms := c.createMinionSkills(mdb, s, m, res); ms != nil {
+		for k, v := range c.offence(mdb, ms, c.minionWeapon(s, m)) {
+			if contains(minionOffenceStats, k) {
+				stats[k] = v
+			}
+		}
 	}
 	return &MinionResult{Skill: s.active.ge.Name, Minion: m.data.Name, Stats: stats}
 }
