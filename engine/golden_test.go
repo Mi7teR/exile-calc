@@ -50,6 +50,9 @@ const minBuildsWithoutTimeless = 2
 // output.Minion) whose minionResultStats are all within tolerance.
 const minMinionsWithinTolerance = 49
 
+// Minion offence ratchet: oracle minions whose TotalDPS is within tolerance.
+const minMinionDPSWithinTolerance = 16
+
 // goldenMinion is one entry of the oracle's "Minions" list.
 type goldenMinion struct {
 	Name   string         `json:"name"`
@@ -241,6 +244,9 @@ func TestGoldenCorpus(t *testing.T) {
 	}
 	if allOK < ratchet {
 		t.Errorf("builds within tolerance %d < ratchet %d", allOK, ratchet)
+	}
+	if ratchet == minBuildsWithinTolerance && minionPerStat["Offence:TotalDPS"] < minMinionDPSWithinTolerance {
+		t.Errorf("minion TotalDPS within tolerance %d < ratchet %d", minionPerStat["Offence:TotalDPS"], minMinionDPSWithinTolerance)
 	}
 	if ratchet == minBuildsWithinTolerance && minionsOK < minMinionsWithinTolerance {
 		t.Errorf("minions within tolerance %d < ratchet %d", minionsOK, minMinionsWithinTolerance)

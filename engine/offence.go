@@ -325,12 +325,18 @@ func (c *Calculator) offence(actor *ModDB, s *activeSkill, weapon hitSource) map
 				avg = avg*(1+lucky) + ((rolls-1)*mn+mx)/rolls*(-lucky)
 			}
 			if mn != 0 || mx != 0 {
-				avg *= c.enemyEffMult(actor, list, p.cfg, s, t, avg)
+				effMult := c.enemyEffMult(actor, list, p.cfg, s, t, avg)
+				if pass == 2 {
+					out[t+"EffMult"] = effMult
+				}
+				avg *= effMult
 			}
 			if pass == 1 {
 				totalCritAvg += avg
+				out[t+"CritAverage"] = avg
 			} else {
 				totalHitAvg += avg
+				out[t+"HitAverage"] = avg
 			}
 		}
 	}

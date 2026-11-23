@@ -215,6 +215,10 @@ type skillBuff struct {
 	applyNotPlayer  bool
 	applyMinions    bool
 	applyAllies     bool
+	stackVar        string // effectStackVar and its limit (Debuff stacks)
+	stackLimitVar   string
+	stackLimit      float64
+	hasStackLimit   bool
 	allowTotemBuff  bool
 	mods            []Mod
 }
@@ -1332,7 +1336,9 @@ func (c *Calculator) separateBuffs(s *activeSkill) {
 			if buff == nil {
 				buff = &skillBuff{typ: typ, name: bname, cond: tagStr(tag, "effectCond"),
 					enemyCond: tagStr(tag, "effectEnemyCond"), applyNotPlayer: tagBool(tag, "applyNotPlayer"),
-					applyMinions: tagBool(tag, "applyMinions"), allowTotemBuff: tagBool(tag, "allowTotemBuff")}
+					applyMinions: tagBool(tag, "applyMinions"), allowTotemBuff: tagBool(tag, "allowTotemBuff"),
+					stackVar: tagStr(tag, "effectStackVar"), stackLimitVar: tagStr(tag, "effectStackLimitVar")}
+				buff.stackLimit, buff.hasStackLimit = tagNum(tag, "effectStackLimit")
 				if m.Source == "Skill:"+s.active.id {
 					buff.activeSkillBuff = true
 					buff.applyNotPlayer = buff.applyNotPlayer || truthy(s.data["buffNotPlayer"])
@@ -1400,6 +1406,8 @@ func (c *Calculator) applyBuffs(db *ModDB, skills []*activeSkill, res *Result) (
 	var guardOrder []string
 	notBuff := map[string]bool{}
 	var order []string
+	debuffs := map[string][]Mod{}
+	var debuffOrder []string
 	add := func(src []Mod, name string) {
 		if _, ok := buffs[name]; !ok {
 			order = append(order, name)
@@ -1469,6 +1477,43 @@ func (c *Calculator) applyBuffs(db *ModDB, skills []*activeSkill, res *Result) (
 				mergeBuff(scaleMods(b.mods, (1+inc/100)*more), guards, b.name)
 			case "Warcry":
 				c.warcry(db, s, b, mainCfg(skills), warcries, add)
+			case "Debuff", "AuraDebuff":
+				stack := 1.0
+				if b.stackVar != "" {
+					stack = list.SumCfg(cfg, "BASE", "Multiplier:"+b.stackVar)
+					if b.hasStackLimit {
+						stack = math.Min(stack, b.stackLimit)
+					} else if b.stackLimitVar != "" {
+						stack = math.Min(stack, list.SumCfg(cfg, "BASE", "Multiplier:"+b.stackLimitVar))
+					}
+				} else if v, ok := num(s.data["stackCount"]); ok {
+					stack = v
+				}
+				if stack <= 0 {
+					continue
+				}
+				name := strings.ReplaceAll(b.name, " ", "")
+				db.enemy.conditions["AffectedBy"+name] = true
+				db.conditions["AffectedBy"+name] = true
+				mult := 1.0
+				var extra []Mod
+				if b.typ == "AuraDebuff" {
+					extra = extraAuraDebuffMods(db, cfg)
+					mult = 0
+					if !db.Flag("SelfAurasOnlyAffectYou") {
+						mult = (1 + list.SumCfg(cfg, "INC", "AuraEffect", "BuffEffect", "DebuffEffect")/100) * list.MoreCfg(cfg, "AuraEffect", "BuffEffect", "DebuffEffect")
+					}
+				} else {
+					mult = (1 + list.SumCfg(cfg, "INC", "DebuffEffect")/100) * list.MoreCfg(cfg, "DebuffEffect")
+				}
+				src := append(scaleMods(b.mods, mult*stack), scaleMods(extra, mult*stack)...)
+				if s.data["stackCount"] != nil || b.stackVar != "" {
+					src = append(src, Mod{Name: "Multiplier:" + b.name + "Stack", Type: "BASE", Value: stack, Source: b.name})
+				}
+				if _, ok := debuffs[b.name]; !ok {
+					debuffOrder = append(debuffOrder, b.name)
+				}
+				mergeBuff(src, debuffs, b.name)
 			case "Curse", "CurseBuff":
 				if cu := c.skillCurse(db, s, b); cu != nil {
 					curses = append(curses, cu)
@@ -1508,7 +1553,41 @@ func (c *Calculator) applyBuffs(db *ModDB, skills []*activeSkill, res *Result) (
 			db.multipliers["BuffOnSelf"]++
 		}
 	}
+	for _, name := range debuffOrder {
+		for _, m := range debuffs[name] {
+			db.enemy.Add(m)
+		}
+	}
 	return curses, buffs
+}
+
+// extraAuraDebuffMods is the extraAuraModList of the AuraDebuff branch of
+// calcs.perform: ExtraAuraDebuffEffect mods, merged by parameters.
+func extraAuraDebuffMods(db *ModDB, cfg *Cfg) []Mod {
+	var extra []Mod
+	for _, e := range db.List(cfg, "ExtraAuraDebuffEffect") {
+		v, _ := e.Value.(map[string]any)
+		mm, ok := v["mod"].(map[string]any)
+		if !ok {
+			continue
+		}
+		m := modFromMap(mm, e.Mod.Source)
+		merged := false
+		for i, x := range extra {
+			if sameParams(x, m) {
+				a, _ := num(x.Value)
+				bv, _ := num(m.Value)
+				x.Value = a + bv
+				extra[i] = x
+				merged = true
+				break
+			}
+		}
+		if !merged {
+			extra = append(extra, m)
+		}
+	}
+	return extra
 }
 
 // extraAuraMods is the extraAuraModList of the Aura branch of
