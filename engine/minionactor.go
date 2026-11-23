@@ -330,13 +330,17 @@ func (c *Calculator) mainMinion(db *ModDB, skills []*activeSkill, buffs map[stri
 		return nil
 	}
 	weapon, weaponType, weapon2, weapon2Type := c.minionWeapon(s, m, mdb, gear)
-	ms := c.createMinionSkills(mdb, s, m, [2]string{weaponType, weapon2Type}, res)
+	mskills := c.createMinionSkills(mdb, s, m, [2]string{weaponType, weapon2Type}, res)
+	ms := mskills[0]
 	addMinionModifiers(mdb, s.mods.List(s.cfg, "MinionModifier"), m.typ)
 	c.mergeKeystones(mdb, map[string]bool{}, res)
 	c.attributes(mdb)
 	shrineBuffs(mdb)
 	c.lifeMana(mdb)
 	mb := minionBuffs(db, skills, mdb, res)
+	for k, l := range c.minionSkillBuffs(db, mdb, skills, s, mskills, charLevel, res) {
+		mergeBuff(l, mb, k)
+	}
 	for _, l := range buffMinionModifiers(buffs, s.cfg) {
 		addMinionModifiers(mdb, l, m.typ)
 	}
@@ -413,9 +417,9 @@ func withMainSkill(b *pobcode.Build, g, n int) *pobcode.Build {
 // createMinionSkills is calcs.createMinionSkills (CalcActiveSkill.lua):
 // the minion's skills (its minion data's skill list and ExtraMinionSkill
 // mods) at the highest level its level allows, supported by the summoning
-// skill's supports, with mod lists on the minion's ModDB. It returns the
-// minion's main skill (skillMinionSkill is not stored: the first).
-func (c *Calculator) createMinionSkills(mdb *ModDB, s *activeSkill, m *skillMinion, weapons [2]string, res *Result) *activeSkill {
+// skill's supports, with mod lists on the minion's ModDB. The first is the
+// minion's main skill (skillMinionSkill is not stored).
+func (c *Calculator) createMinionSkills(mdb *ModDB, s *activeSkill, m *skillMinion, weapons [2]string, res *Result) []*activeSkill {
 	skills := c.data.Skills.Effects
 	var ids []string
 	for _, id := range m.data.SkillList {
@@ -464,5 +468,72 @@ func (c *Calculator) createMinionSkills(mdb *ModDB, s *activeSkill, m *skillMini
 		ms.data["damageEffectiveness"] = 1 + eff2/100
 		list = append(list, ms)
 	}
-	return list[0]
+	return list
+}
+
+// minionSkillBuffs is the env.minion side of calcs.perform's loop over the
+// minions' skills: their enabled Buff and Aura buffs that reach the main
+// minion. Other minions' skills are built on a bare minion ModDB, as PoB
+// never initialises those. The player side (allies' auras) is not ported.
+func (c *Calculator) minionSkillBuffs(db, mdb *ModDB, skills []*activeSkill, main *activeSkill, mainSkills []*activeSkill, charLevel int, res *Result) map[string][]Mod {
+	out := map[string][]Mod{}
+	for _, s := range skills {
+		if s.disabled {
+			continue
+		}
+		casting := mdb
+		list := mainSkills
+		if s != main {
+			m := c.minionOf(s, charLevel, db.enemyEnv.level)
+			if m == nil {
+				continue
+			}
+			casting = NewModDB()
+			casting.enemy, casting.owner, casting.build, casting.enemyEnv = db.enemy, db, db.build, db.enemyEnv
+			list = c.createMinionSkills(casting, s, m, [2]string{m.data.WeaponType1}, res)
+		}
+		for _, ms := range list {
+			if !truthy(ms.data["enable"]) {
+				continue
+			}
+			skillList, cfg := ms.mods, ms.cfg
+			for _, b := range ms.buffs {
+				name := strings.ReplaceAll(b.name, " ", "")
+				switch b.typ {
+				case "Buff":
+					isCasting := casting == mdb
+					if !(b.applyMinions || isCasting || b.applyAllies) {
+						continue
+					}
+					store, bcfg := casting, (*Cfg)(nil)
+					if b.activeSkillBuff {
+						store, bcfg = skillList, cfg
+					}
+					mdb.conditions["AffectedBy"+name] = true
+					names := []string{"BuffEffect"}
+					if isCasting {
+						names = append(names, "BuffEffectOnSelf")
+					}
+					mult := (1 + store.SumCfg(bcfg, "INC", names...)/100) * store.MoreCfg(bcfg, names...)
+					mergeBuff(scaleMods(b.mods, mult), out, b.name)
+					mergeBuff(b.mods, out, b.name)
+				case "Aura":
+					if casting.Flag("SelfAurasCannotAffectAllies") || casting.Flag("SelfAurasOnlyAffectYou") ||
+						casting.Flag("SelfAuraSkillsCannotAffectAllies") || skillList.FlagCfg(cfg, "SelfAurasAffectYouAndLinkedTarget") {
+						continue
+					}
+					if mdb.conditions["AffectedBy"+name] || (casting == mdb && truthy(s.data["auraCannotAffectSelf"])) {
+						continue
+					}
+					inc := skillList.SumCfg(cfg, "INC", "AuraEffect", "BuffEffect") + mdb.SumCfg(cfg, "INC", "BuffEffectOnSelf", "AuraEffectOnSelf")
+					more := skillList.MoreCfg(cfg, "AuraEffect", "BuffEffect") * mdb.MoreCfg(cfg, "BuffEffectOnSelf", "AuraEffectOnSelf")
+					mult := (1 + inc/100) * more
+					mdb.conditions["AffectedBy"+name] = true
+					mdb.conditions["AffectedByAura"] = true
+					mergeBuff(append(scaleMods(b.mods, mult), scaleMods(extraAuraMods(casting, cfg), mult)...), out, b.name)
+				}
+			}
+		}
+	}
+	return out
 }

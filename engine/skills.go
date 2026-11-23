@@ -1273,7 +1273,12 @@ func (c *Calculator) buildSkillMods(db *ModDB, s *activeSkill, res *Result) {
 	if lv := ge.Levels[a.level]; lv != nil && lv.Cooldown != 0 {
 		s.data["cooldown"] = lv.Cooldown
 	}
-	for _, e := range db.List(s.cfg, "SkillData") {
+	// env.modDB: the player's SkillData, also for a minion's skills.
+	player := db
+	if db.owner != nil {
+		player = db.owner
+	}
+	for _, e := range player.List(s.cfg, "SkillData") {
 		skillData(s.data, e.Value)
 	}
 	for _, e := range list.List(s.cfg, "SkillData") {
