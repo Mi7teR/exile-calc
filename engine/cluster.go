@@ -25,6 +25,7 @@ type jewelData struct {
 	nothingness                            int
 	incEffect                              float64
 	hasNodeCount, hasSocketOverride        bool
+	smallsNothing                          bool // clusterJewelSmallsAreNothingness (Megalomaniac)
 }
 
 func readJewelData(mods []modparser.Mod, cj *gamedata.ClusterJewel) (jewelData, bool) {
@@ -56,6 +57,8 @@ func readJewelData(mods []modparser.Mod, cj *gamedata.ClusterJewel) (jewelData, 
 				d.socketCount = int(n)
 			case "clusterJewelSocketCountOverride":
 				d.socketOverride, d.hasSocketOverride = int(n), true
+			case "clusterJewelSmallsAreNothingness":
+				d.smallsNothing = v["value"] == true
 			case "clusterJewelNothingnessCount":
 				d.nothingness = int(n)
 			case "clusterJewelIncEffect":
@@ -75,7 +78,7 @@ func readJewelData(mods []modparser.Mod, cj *gamedata.ClusterJewel) (jewelData, 
 	if _, ok := cj.Skills[d.skill]; d.skill != "" && !ok {
 		d.skill = ""
 	}
-	valid := d.keystone != "" || (d.skill != "" && d.hasNodeCount) || (d.hasSocketOverride && d.nothingness > 0)
+	valid := d.keystone != "" || ((d.skill != "" || d.smallsNothing) && d.hasNodeCount) || (d.hasSocketOverride && d.nothingness > 0)
 	return d, valid
 }
 
@@ -218,7 +221,10 @@ func (c *Calculator) clusterGraph(spec *pobcode.Spec, b *pobcode.Build, res *Res
 			}
 		}
 		for _, idx := range smallIdx {
-			stats := append(append([]string(nil), skill.Stats...), d.addedMods...)
+			var stats []string
+			if d.skill != "" && !d.smallsNothing {
+				stats = append(append(stats, skill.Stats...), d.addedMods...)
+			}
 			out[nodeID+idx] = clusterNode{stats: stats, incEffect: d.incEffect}
 		}
 

@@ -472,6 +472,9 @@ func (c *Calculator) Calc(b *pobcode.Build) (*Result, error) {
 	res.Minion = c.mainMinion(db, skills, buffs, b.Level, res)
 	if s := mainSkill(skills); s != nil {
 		w1, w2 := playerWeapons(db, gearMods, spec.ClassID)
+		if truthy(s.data["triggeredByGeneralsCry"]) && !s.disabled {
+			c.generalsCry(db, s, w1, w2)
+		}
 		for k, v := range c.offence(db, s, w1, w2) {
 			db.output[k] = v
 		}
