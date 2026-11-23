@@ -88,6 +88,12 @@ var hooks = map[string]Hook{
 	// and the "increased" form with num.
 	"specialModList[^your offerings have (%d+)%% reduced effect on you$]":   offeringEffectOnYou(-1),
 	"specialModList[^your offerings have (%d+)%% increased effect on you$]": offeringEffectOnYou(1),
+	// ["%+(%d+)%% chance to block spell damage for each (%d+)%% overcapped chance to block attack damage"] = function(num, _, div) return {
+	//   mod("SpellBlockChance", "BASE", num, { type = "PerStat", stat = "BlockChanceOverCap", div = tonumber(div) }) } end
+	"specialModList[^%+(%d+)%% chance to block spell damage for each (%d+)%% overcapped chance to block attack damage$]": func(p *Parser, a []any) any {
+		return []any{withTags(newMod("SpellBlockChance", "BASE", arg(a, 0), 0, 0),
+			map[string]any{"type": "PerStat", "stat": "BlockChanceOverCap", "div": toNumber(argS(a, 2))})}
+	},
 	// ["grants level (%d+) (.+)"] = function(num, _, skill) return grantedExtraSkill(skill, num) end
 	"specialModList[^grants level (%d+) (.+)$]": func(p *Parser, a []any) any {
 		return p.grantedExtraSkill(argS(a, 2), arg(a, 0), nil)

@@ -66,29 +66,46 @@ func grant(source string, mods func(caps []string) []Mod) func(caps []string, so
 
 func mod(name, typ string, v float64) Mod { return Mod{Name: name, Type: typ, Value: v} }
 
-// simpleConv ports getSimpleConv: the node's own src mods are removed and
-// re-added as dst (times factor, floored).
-func simpleConv(src []string, dst, typ string, factor float64) func(caps []string, source string) radiusFunc {
+// simpleConv ports getSimpleConv(srcList, dst, type, remove, factor,
+// srcType): each node mod of a src name and type (srcType when set) is
+// removed when remove is set and re-added as dst, times factor and floored
+// when a factor is given. Attributes from tattoos are not converted.
+func simpleConv(src []string, dst, typ string, remove bool, factor float64, srcType string) func(caps []string, source string) radiusFunc {
 	return func(_ []string, _ string) radiusFunc {
 		return func(n *gamedata.Node, own []Mod) []Mod {
 			var out []Mod
 			for _, s := range src {
 				for _, m := range own {
 					v, ok := num(m.Value)
-					if m.Name != s || m.Type != typ || !ok {
+					want := typ
+					if srcType != "" {
+						want = srcType
+					}
+					if m.Name != s || (m.Type != want && m.Type != typ) || !ok {
 						continue
 					}
-					neg, conv := m, m
-					neg.Value = -v
-					conv.Name = dst
-					if factor != 1 {
+					if remove {
+						neg := m
+						neg.Type, neg.Value = typ, -v
+						out = append(out, neg)
+					}
+					conv := m
+					conv.Name, conv.Type = dst, typ
+					if factor != 0 {
 						conv.Value = math.Floor(v * factor)
 					}
-					out = append(out, neg, conv)
+					out = append(out, conv)
 				}
 			}
 			return out
 		}
+	}
+}
+
+// pctConv is a jewelOtherFuncs entry with "at (%d+)% of its value".
+func pctConv(src []string, dst, typ string, remove bool, srcType string) func(caps []string, source string) radiusFunc {
+	return func(caps []string, source string) radiusFunc {
+		return simpleConv(src, dst, typ, remove, numCap(caps, 1)/100, srcType)(caps, source)
 	}
 }
 
@@ -98,14 +115,22 @@ var radiusPatterns = func() []radiusPattern {
 		make func(caps []string, source string) radiusFunc
 	}
 	defs := []def{
-		{`^strength from passives in radius is transformed to dexterity$`, simpleConv([]string{"Str"}, "Dex", "BASE", 1)},
-		{`^dexterity from passives in radius is transformed to strength$`, simpleConv([]string{"Dex"}, "Str", "BASE", 1)},
-		{`^strength from passives in radius is transformed to intelligence$`, simpleConv([]string{"Str"}, "Int", "BASE", 1)},
-		{`^intelligence from passives in radius is transformed to strength$`, simpleConv([]string{"Int"}, "Str", "BASE", 1)},
-		{`^dexterity from passives in radius is transformed to intelligence$`, simpleConv([]string{"Dex"}, "Int", "BASE", 1)},
-		{`^intelligence from passives in radius is transformed to dexterity$`, simpleConv([]string{"Int"}, "Dex", "BASE", 1)},
-		{`^increases and reductions to life in radius are transformed to apply to energy shield$`, simpleConv([]string{"Life"}, "EnergyShield", "INC", 1)},
-		{`^increases and reductions to evasion rating in radius are transformed to apply to armour$`, simpleConv([]string{"Evasion"}, "Armour", "INC", 1)},
+		{`^strength from passives in radius is transformed to dexterity$`, simpleConv([]string{"Str"}, "Dex", "BASE", true, 0, "")},
+		{`^dexterity from passives in radius is transformed to strength$`, simpleConv([]string{"Dex"}, "Str", "BASE", true, 0, "")},
+		{`^strength from passives in radius is transformed to intelligence$`, simpleConv([]string{"Str"}, "Int", "BASE", true, 0, "")},
+		{`^intelligence from passives in radius is transformed to strength$`, simpleConv([]string{"Int"}, "Str", "BASE", true, 0, "")},
+		{`^dexterity from passives in radius is transformed to intelligence$`, simpleConv([]string{"Dex"}, "Int", "BASE", true, 0, "")},
+		{`^intelligence from passives in radius is transformed to dexterity$`, simpleConv([]string{"Int"}, "Dex", "BASE", true, 0, "")},
+		{`^increases and reductions to life in radius are transformed to apply to energy shield$`, simpleConv([]string{"Life"}, "EnergyShield", "INC", true, 0, "")},
+		{`^increases and reductions to evasion rating in radius are transformed to apply to armour$`, simpleConv([]string{"Evasion"}, "Armour", "INC", true, 0, "")},
+		{`^increases and reductions to energy shield in radius are transformed to apply to armour at (\d+)% of their value$`, pctConv([]string{"EnergyShield"}, "Armour", "INC", true, "")},
+		{`^increases and reductions to life in radius are transformed to apply to mana at (\d+)% of their value$`, pctConv([]string{"Life"}, "Mana", "INC", true, "")},
+		{`^passives granting lightning resistance or all elemental resistances in radius also grant chance to block spells? ?(?:damage)? at (\d+)% of its value$`, pctConv([]string{"LightningResist", "ElementalResist"}, "SpellBlockChance", "BASE", false, "")},
+		{`^passives granting lightning resistance or all elemental resistances in radius also grant increased maximum energy shield at (\d+)% of its value$`, pctConv([]string{"LightningResist", "ElementalResist"}, "EnergyShield", "INC", false, "BASE")},
+		{`^passives granting cold resistance or all elemental resistances in radius also grant chance to suppress spell damage at (\d+)% of its value$`, pctConv([]string{"ColdResist", "ElementalResist"}, "SpellSuppressionChance", "BASE", false, "")},
+		{`^passives granting cold resistance or all elemental resistances in radius also grant increased maximum mana at (\d+)% of its value$`, pctConv([]string{"ColdResist", "ElementalResist"}, "Mana", "INC", false, "BASE")},
+		{`^passives granting fire resistance or all elemental resistances in radius also grant chance to block(?: attack damage)? at (\d+)% of its value$`, pctConv([]string{"FireResist", "ElementalResist"}, "BlockChance", "BASE", false, "")},
+		{`^passives granting fire resistance or all elemental resistances in radius also grant increased maximum life at (\d+)% of its value$`, pctConv([]string{"FireResist", "ElementalResist"}, "Life", "INC", false, "BASE")},
 		{`^(\d+)% increased effect of non-keystone passive skills in radius$`, func(caps []string, src string) radiusFunc {
 			v := numCap(caps, 1)
 			return func(n *gamedata.Node, _ []Mod) []Mod {
@@ -227,8 +252,13 @@ func (c *Calculator) radiusFuncs(spec *pobcode.Spec, b *pobcode.Build, alloc map
 		}
 		src := fmt.Sprintf("Tree:%d", s.NodeID)
 		var funcs []radiusFunc
-		for _, line := range lines {
-			l := asciiLowerTrim(line)
+		for i := 0; i < len(lines); i++ {
+			l := asciiLowerTrim(lines[i])
+			// Two-line jewel mods are matched together (ItemClass:ParseRaw).
+			if !isRadiusFuncLine(l) && i+1 < len(lines) && isRadiusFuncLine(l+" "+asciiLowerTrim(lines[i+1])) {
+				l = l + " " + asciiLowerTrim(lines[i+1])
+				i++
+			}
 			for _, p := range radiusPatterns {
 				if m := p.re.FindStringSubmatch(l); m != nil {
 					funcs = append(funcs, p.make(m, src))

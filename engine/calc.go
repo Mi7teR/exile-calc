@@ -644,6 +644,9 @@ func (c *Calculator) itemMods(item *pobcode.Item, res *Result) (*itemtext.Item, 
 			if comb := c.parser.Parse(line + " " + lines[i+1]); comb.Parsed() {
 				parsed = comb
 				i++
+			} else if !isRadiusFuncLine(line) && isRadiusFuncLine(line+" "+lines[i+1]) {
+				i++ // a two-line radius jewel function (radius.go)
+				continue
 			}
 		}
 		if !parsed.Parsed() {
