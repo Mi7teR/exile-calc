@@ -64,6 +64,16 @@ var hooks = map[string]Hook{
 		}
 		return []any{newMod("LinkedSupport", "LIST", map[string]any{"targetSlotName": target}, 0, 0)}
 	},
+	// ["inflict withered for (%d+) seconds on hit if you've cast (.-) in the past (%d+) seconds"] = function (_, _, curse) return {
+	//   flag("Condition:CanWither", { type = "Condition", var = "SelfCast"..curse:gsub("^%l", string.upper):gsub(" %l", string.upper):gsub(" ", "") }) } end
+	"specialModList[^inflict withered for (%d+) seconds on hit if you've cast (.-) in the past (%d+) seconds$]": func(p *Parser, a []any) any {
+		words := strings.Fields(argS(a, 2))
+		for i, w := range words {
+			words[i] = firstToUpper(w)
+		}
+		return []any{withTags(newMod("Condition:CanWither", "FLAG", true, 0, 0),
+			map[string]any{"type": "Condition", "var": "SelfCast" + strings.Join(words, "")})}
+	},
 	// ["(%d+)%% of chaos damage t?a?k?e?n? ?does not bypass energy shield"] = function(num) return {
 	//   mod("ChaosEnergyShieldBypass", "BASE", -num) } end
 	"specialModList[^(%d+)%% of chaos damage t?a?k?e?n? ?does not bypass energy shield$]": func(p *Parser, a []any) any {

@@ -184,6 +184,12 @@ func (c *Calculator) triggers(db *ModDB, main *activeSkill, w1 hitSource, w2 *hi
 	if debugTrigger != nil {
 		debugTrigger(names, cfgFn != nil)
 	}
+	for _, n := range names {
+		if n == "cast while channelling" {
+			c.cwcTrigger(db, main)
+			return
+		}
+	}
 	if cfgFn == nil {
 		delete(main.data, "triggered")
 		return
@@ -318,4 +324,58 @@ func (c *Calculator) defaultTrigger(db *ModDB, main *activeSkill, by *skillEffec
 			main.mods.Add(Mod{Name: "Damage", Type: typ, Value: m.Value, Flags: m.Flags, KeywordFlags: m.KeywordFlags, Source: m.Source, Tags: m.Tags})
 		}
 	}
+}
+
+// cwcTrigger is CWCHandler: Cast while Channelling triggers at the
+// channelled skill's trigger interval.
+func (c *Calculator) cwcTrigger(db *ModDB, main *activeSkill) {
+	out := db.output
+	var source *activeSkill
+	var triggered []*simSkill
+	for _, s := range db.activeSkills {
+		match := slotMatch(main, s)
+		if source == nil && s.data["triggerTime"] != nil && s.types[stChannel] && s != main && match && !isTriggered(s) {
+			source = s
+		}
+		if truthy(s.data["triggeredWhileChannelling"]) && match {
+			triggered = append(triggered, packageSim(s))
+		}
+	}
+	if source == nil || len(triggered) == 0 {
+		delete(main.data, "triggered")
+		return
+	}
+	icdr := calcMod(main.mods, main.cfg, "CooldownRecovery")
+	if icdr == 0 {
+		icdr = 1
+	}
+	interval := numOr(source.data["triggerTime"], 0)
+	if interval <= 0 {
+		return
+	}
+	rateOfTrigger := 1 / interval
+	total := numOr(main.data["cooldown"], 0) / icdr
+	if o, ok := main.mods.OverrideCfg(main.cfg, "CooldownRecovery"); ok {
+		total = o
+	}
+	adj := math.Ceil(total*serverTickRate) / serverTickRate
+	eff := math.Ceil(adj*rateOfTrigger) / rateOfTrigger
+	if eff > 0 {
+		out["TriggerRateCap"] = math.Min(1/eff, rateOfTrigger)
+	} else {
+		out["TriggerRateCap"] = rateOfTrigger
+	}
+	rate := rotationImpact(main, triggered, rateOfTrigger, 0, 100)
+	if db.Flag("HaveTriggerBots") && main.types[stSpell] {
+		rate *= 2
+	}
+	out["SkillTriggerRate"] = rate
+	for _, typ := range []string{"INC", "MORE"} {
+		for _, m := range appliedMods(main.mods, main.cfg, typ, "TriggeredDamage") {
+			main.mods.Add(Mod{Name: "Damage", Type: typ, Value: m.Value, Flags: m.Flags, KeywordFlags: m.KeywordFlags, Source: m.Source, Tags: m.Tags})
+		}
+	}
+	main.data["triggered"] = true
+	main.data["triggerRate"] = rate
+	main.flags["globalTrigger"] = true
 }
