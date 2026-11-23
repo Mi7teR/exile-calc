@@ -121,21 +121,22 @@ type xSkill struct {
 }
 
 type xGem struct {
-	NameSpec        string `xml:"nameSpec,attr"`
-	SkillID         string `xml:"skillId,attr,omitempty"`
-	GemID           string `xml:"gemId,attr,omitempty"`
-	VariantID       string `xml:"variantId,attr,omitempty"`
-	QualityID       string `xml:"qualityId,attr,omitempty"`
-	Level           string `xml:"level,attr"`
-	Quality         string `xml:"quality,attr"`
-	Enabled         string `xml:"enabled,attr,omitempty"`
-	EnableGlobal1   string `xml:"enableGlobal1,attr,omitempty"`
-	EnableGlobal2   string `xml:"enableGlobal2,attr,omitempty"`
-	Count           string `xml:"count,attr,omitempty"`
-	SkillPart       string `xml:"skillPart,attr,omitempty"`
-	SkillStageCount string `xml:"skillStageCount,attr,omitempty"`
-	SkillMineCount  string `xml:"skillMineCount,attr,omitempty"`
-	SkillMinion     string `xml:"skillMinion,attr,omitempty"`
+	NameSpec           string `xml:"nameSpec,attr"`
+	SkillID            string `xml:"skillId,attr,omitempty"`
+	GemID              string `xml:"gemId,attr,omitempty"`
+	VariantID          string `xml:"variantId,attr,omitempty"`
+	QualityID          string `xml:"qualityId,attr,omitempty"`
+	Level              string `xml:"level,attr"`
+	Quality            string `xml:"quality,attr"`
+	Enabled            string `xml:"enabled,attr,omitempty"`
+	EnableGlobal1      string `xml:"enableGlobal1,attr,omitempty"`
+	EnableGlobal2      string `xml:"enableGlobal2,attr,omitempty"`
+	Count              string `xml:"count,attr,omitempty"`
+	SkillPart          string `xml:"skillPart,attr,omitempty"`
+	SkillStageCount    string `xml:"skillStageCount,attr,omitempty"`
+	SkillMineCount     string `xml:"skillMineCount,attr,omitempty"`
+	SkillMinion        string `xml:"skillMinion,attr,omitempty"`
+	SkillMinionItemSet string `xml:"skillMinionItemSet,attr,omitempty"`
 }
 
 type xConfig struct {
@@ -332,21 +333,22 @@ func Parse(data []byte) (*Build, error) {
 			for _, gm := range sk.Gems {
 				// SkillsTab.lua: enabled and enableGlobal1 default to true, count to 1.
 				g.Gems = append(g.Gems, Gem{
-					NameSpec:        gm.NameSpec,
-					SkillID:         gm.SkillID,
-					GemID:           gm.GemID,
-					VariantID:       gm.VariantID,
-					QualityID:       gm.QualityID,
-					Level:           p.int("Gem.level", gm.Level, 0),
-					Quality:         p.int("Gem.quality", gm.Quality, 0),
-					Enabled:         boolAttr(gm.Enabled, true),
-					EnableGlobal1:   boolAttr(gm.EnableGlobal1, true),
-					EnableGlobal2:   boolAttr(gm.EnableGlobal2, false),
-					Count:           p.int("Gem.count", gm.Count, 1),
-					SkillPart:       p.int("Gem.skillPart", gm.SkillPart, 0),
-					SkillStageCount: p.int("Gem.skillStageCount", gm.SkillStageCount, 0),
-					SkillMineCount:  p.int("Gem.skillMineCount", gm.SkillMineCount, 0),
-					SkillMinion:     gm.SkillMinion,
+					NameSpec:           gm.NameSpec,
+					SkillID:            gm.SkillID,
+					GemID:              gm.GemID,
+					VariantID:          gm.VariantID,
+					QualityID:          gm.QualityID,
+					Level:              p.int("Gem.level", gm.Level, 0),
+					Quality:            p.int("Gem.quality", gm.Quality, 0),
+					Enabled:            boolAttr(gm.Enabled, true),
+					EnableGlobal1:      boolAttr(gm.EnableGlobal1, true),
+					EnableGlobal2:      boolAttr(gm.EnableGlobal2, false),
+					Count:              p.int("Gem.count", gm.Count, 1),
+					SkillPart:          p.int("Gem.skillPart", gm.SkillPart, 0),
+					SkillStageCount:    p.int("Gem.skillStageCount", gm.SkillStageCount, 0),
+					SkillMineCount:     p.int("Gem.skillMineCount", gm.SkillMineCount, 0),
+					SkillMinion:        gm.SkillMinion,
+					SkillMinionItemSet: p.int("Gem.skillMinionItemSet", gm.SkillMinionItemSet, 0),
 				})
 			}
 			set.Groups = append(set.Groups, g)
@@ -493,21 +495,22 @@ func (b *Build) XML() ([]byte, error) {
 			}
 			for _, gm := range g.Gems {
 				xk.Gems = append(xk.Gems, xGem{
-					NameSpec:        gm.NameSpec,
-					SkillID:         gm.SkillID,
-					GemID:           gm.GemID,
-					VariantID:       gm.VariantID,
-					QualityID:       gm.QualityID,
-					Level:           itoa(gm.Level),
-					Quality:         itoa(gm.Quality),
-					Enabled:         btoa(gm.Enabled),
-					EnableGlobal1:   btoa(gm.EnableGlobal1),
-					EnableGlobal2:   btoa(gm.EnableGlobal2),
-					Count:           itoa(gm.Count),
-					SkillPart:       itoaOpt(gm.SkillPart),
-					SkillStageCount: itoaOpt(gm.SkillStageCount),
-					SkillMineCount:  itoaOpt(gm.SkillMineCount),
-					SkillMinion:     gm.SkillMinion,
+					NameSpec:           gm.NameSpec,
+					SkillID:            gm.SkillID,
+					GemID:              gm.GemID,
+					VariantID:          gm.VariantID,
+					QualityID:          gm.QualityID,
+					Level:              itoa(gm.Level),
+					Quality:            itoa(gm.Quality),
+					Enabled:            btoa(gm.Enabled),
+					EnableGlobal1:      btoa(gm.EnableGlobal1),
+					EnableGlobal2:      btoa(gm.EnableGlobal2),
+					Count:              itoa(gm.Count),
+					SkillPart:          itoaOpt(gm.SkillPart),
+					SkillStageCount:    itoaOpt(gm.SkillStageCount),
+					SkillMineCount:     itoaOpt(gm.SkillMineCount),
+					SkillMinion:        gm.SkillMinion,
+					SkillMinionItemSet: itoaOpt(gm.SkillMinionItemSet),
 				})
 			}
 			xs.Skills = append(xs.Skills, xk)

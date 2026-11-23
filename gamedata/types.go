@@ -362,6 +362,8 @@ type Skill struct {
 	SkillTotemID             int                 `json:"skillTotemId,omitempty"`
 	MinionList               []string            `json:"minionList,omitempty"`
 	AddMinionList            []string            `json:"addMinionList,omitempty"`
+	MinionHasItemSet         bool                `json:"minionHasItemSet,omitempty"`
+	MinionUses               []string            `json:"minionUses,omitempty"` // item slots the minion uses
 }
 
 // StatValue is a {stat, value} pair (qualityStats, constantStats).

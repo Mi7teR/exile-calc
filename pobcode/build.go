@@ -121,6 +121,9 @@ type Gem struct {
 	SkillStageCount int // 0 = not set
 	SkillMineCount  int // 0 = not set
 	SkillMinion     string
+	// SkillMinionItemSet is the item set id an Animate Guardian-style
+	// minion wears (0 = not set: the first item set).
+	SkillMinionItemSet int
 }
 
 type ConfigSet struct {

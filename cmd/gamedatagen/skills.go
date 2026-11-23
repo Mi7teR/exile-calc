@@ -87,6 +87,13 @@ func convertSkill(t *luadata.Table) (*gamedata.Skill, error) {
 	s.Unsupported, s.FromItem = b("unsupported"), b("fromItem")
 	s.BaseEffectiveness, s.IncrementalEffectiveness = f("baseEffectiveness"), f("incrementalEffectiveness")
 	s.SkillTotemID = int(f("skillTotemId"))
+	s.MinionHasItemSet = b("minionHasItemSet")
+	if uses, ok := t.Get("minionUses").(*luadata.Table); ok {
+		for _, k := range uses.Keys {
+			s.MinionUses = append(s.MinionUses, keyText(k))
+		}
+		sort.Strings(s.MinionUses)
+	}
 	for name, dst := range map[string]*[]string{"minionList": &s.MinionList, "addMinionList": &s.AddMinionList} {
 		if err := luadata.Decode(t.Get(name), dst); err != nil {
 			return nil, fmt.Errorf("%s: %w", name, err)

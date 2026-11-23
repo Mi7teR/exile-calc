@@ -95,6 +95,7 @@ func (c *Calculator) Calc(b *pobcode.Build) (*Result, error) {
 	class := tree.Classes[spec.ClassID]
 	db := NewModDB()
 	db.tags = itemTags{special: c.parser.Table("itemTagSpecial"), exclusion: c.parser.Table("itemTagSpecialExclusionPattern")}
+	db.build = b
 	db.enemy = NewModDB()
 	db.enemy.enemy = db
 	db.gameIDs = c.gemIdx.gameID

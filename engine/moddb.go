@@ -12,6 +12,7 @@ import (
 
 	"github.com/Mi7teR/poe-lib/itemtext"
 	"github.com/Mi7teR/poe-lib/modparser"
+	"github.com/Mi7teR/poe-lib/pobcode"
 )
 
 // Mod is a modifier in the database (Modules/ModTools.lua createMod).
@@ -40,6 +41,7 @@ type ModDB struct {
 	items       map[string]*itemtext.Item // the actor's itemList, by slot name
 	tags        itemTags
 	classConds  map[string]string           // conditions[item title] = item.classRestriction
+	build       *pobcode.Build              // the build being calculated (minion item sets)
 	parent      *ModDB                      // a skill's mod list reads through to the actor's ModDB
 	owner       *ModDB                      // a minion's parent actor (tag actor "parent")
 	gameIDs     func(gemName string) string // calcLib.getGameIdFromGemName(name, true)

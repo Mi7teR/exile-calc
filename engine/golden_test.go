@@ -48,7 +48,7 @@ const minBuildsWithoutTimeless = 2
 
 // Minion ratchet: oracle minions (each minion skill as the main skill,
 // output.Minion) whose minionResultStats are all within tolerance.
-const minMinionsWithinTolerance = 42
+const minMinionsWithinTolerance = 47
 
 // goldenMinion is one entry of the oracle's "Minions" list.
 type goldenMinion struct {

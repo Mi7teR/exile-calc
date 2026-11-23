@@ -4,6 +4,7 @@ import (
 	"math"
 	"strings"
 
+	"github.com/Mi7teR/poe-lib/modparser"
 	"github.com/Mi7teR/poe-lib/pobcode"
 )
 
@@ -31,7 +32,7 @@ func minionBaseMods(mdb *ModDB) {
 // initMinionDB is initMinionModDB (CalcPerform.lua): the minion's base
 // stats from the monster tables and its minion data. Minion items (Animate
 // Guardian, Bow and Quiver skills) are not ported.
-func (c *Calculator) initMinionDB(db *ModDB, s *activeSkill, m *skillMinion, res *Result) *ModDB {
+func (c *Calculator) initMinionDB(db *ModDB, s *activeSkill, m *skillMinion, res *Result) (*ModDB, map[string][]modparser.Mod) {
 	mon := c.data.Monster
 	table := mon.AllyLife
 	switch {
@@ -43,7 +44,7 @@ func (c *Calculator) initMinionDB(db *ModDB, s *activeSkill, m *skillMinion, res
 		table = mon.Life
 	}
 	if m.level > len(table) || m.level > len(mon.Armour) || m.level > len(mon.Evasion) {
-		return nil
+		return nil, nil
 	}
 	mdb := NewModDB()
 	mdb.enemy, mdb.owner = db.enemy, db
@@ -77,10 +78,56 @@ func (c *Calculator) initMinionDB(db *ModDB, s *activeSkill, m *skillMinion, res
 	if truthy(s.data["minionUseBowAndQuiver"]) || truthy(s.data["minionUseMainHandWeapon"]) {
 		res.Incomplete = append(res.Incomplete, "minion weapons not applied: "+m.data.Name)
 	}
+	gear := c.minionItems(db, mdb, s, res)
 	if db.Sum("BASE", "StrengthAddedToMinions") > 0 {
 		mdb.NewMod("Str", "BASE", round(val(db, "Str")*db.Sum("BASE", "StrengthAddedToMinions")/100, 0), "Player")
 	}
-	return mdb
+	return mdb, gear
+}
+
+// minionItems is the minion.uses part of initMinionModDB: the items in the
+// slots the minion uses, from its item set (Animate Guardian: the gem's
+// skillMinionItemSet, else the first item set) or else the player's.
+func (c *Calculator) minionItems(db, mdb *ModDB, s *activeSkill, res *Result) map[string][]modparser.Mod {
+	b := db.build
+	uses := s.active.ge.MinionUses
+	if b == nil || len(uses) == 0 {
+		return nil
+	}
+	var set *pobcode.ItemSet
+	if s.active.ge.MinionHasItemSet {
+		id := 0
+		if s.gem != nil {
+			id = s.gem.SkillMinionItemSet
+		}
+		for i := range b.ItemSets {
+			if b.ItemSets[i].ID == id {
+				set = &b.ItemSets[i]
+			}
+		}
+		if set == nil && len(b.ItemSets) > 0 {
+			set = &b.ItemSets[0] // itemSetOrderList[1]
+		}
+	}
+	gear := map[string][]modparser.Mod{}
+	for _, slot := range uses {
+		var id int
+		switch {
+		case set != nil:
+			name := slot
+			if set.UseSecondWeaponSet && (slot == "Weapon 1" || slot == "Weapon 2") {
+				name += " Swap"
+			}
+			id = set.SlotItem(name)
+		case b.ActiveItems() != nil:
+			id = b.ActiveItems().SlotItem(slot)
+		}
+		if it, mods := c.addItem(mdb, res, b.Item(id), 1, slot); it != nil {
+			mdb.items[slot] = it
+			gear[slot] = mods
+		}
+	}
+	return gear
 }
 
 // addMinionModifiers is CalcPerform.lua addMinionModifiers: the
@@ -194,7 +241,7 @@ func (c *Calculator) mainMinion(db *ModDB, skills []*activeSkill, buffs map[stri
 	if m == nil || m.data.Hostile {
 		return nil
 	}
-	mdb := c.initMinionDB(db, s, m, res)
+	mdb, gear := c.initMinionDB(db, s, m, res)
 	if mdb == nil {
 		return nil
 	}
@@ -212,10 +259,10 @@ func (c *Calculator) mainMinion(db *ModDB, skills []*activeSkill, buffs map[stri
 		}
 	}
 	extraAurasToMinion(db, mdb)
-	defenceForConditionals(mdb, nil)
+	defenceForConditionals(mdb, gear)
 	charges(mdb)
 	c.resistances(mdb)
-	c.defence(mdb, nil, map[string]bool{})
+	c.defence(mdb, gear, map[string]bool{})
 	stats := map[string]float64{}
 	for _, k := range minionResultStats {
 		stats[k] = mdb.output[k]

@@ -154,7 +154,7 @@ func (c *Calculator) minionCounts(db *ModDB, skills []*activeSkill) {
 // is not env.minion: initMinionModDB, the skill's and buffs' minion
 // modifiers, keystones, then doActorAttribsConditions.
 func (c *Calculator) minionLife(db *ModDB, s *activeSkill, m *skillMinion, buffs map[string][]Mod, res *Result) float64 {
-	mdb := c.initMinionDB(db, s, m, res)
+	mdb, _ := c.initMinionDB(db, s, m, res)
 	if mdb == nil {
 		return 0
 	}
