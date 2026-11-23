@@ -524,8 +524,18 @@ func (c *Calculator) itemMods(item *pobcode.Item, res *Result) (*itemtext.Item, 
 		return nil, nil
 	}
 	var mods []modparser.Mod
-	for _, line := range lines {
+	for i := 0; i < len(lines); i++ {
+		line := lines[i]
 		parsed := c.parser.Parse(line)
+		// ItemClass:ParseRaw: a line that does not parse is tried together
+		// with the next one (two-line mods such as cluster jewel enchants
+		// "Added Small Passive Skills grant: ...").
+		if !parsed.Parsed() && i+1 < len(lines) {
+			if comb := c.parser.Parse(line + " " + lines[i+1]); comb.Parsed() {
+				parsed = comb
+				i++
+			}
+		}
 		if !parsed.Parsed() {
 			if !isRadiusFuncLine(line) {
 				res.Unparsed = append(res.Unparsed, line)
@@ -573,7 +583,33 @@ func (c *Calculator) addItem(db *ModDB, res *Result, item *pobcode.Item, scale f
 		}
 		db.Add(scaleMod(slotTags(fromParsed(m, source), slot), scale))
 	}
+	if slot != "" {
+		socketMultipliers(db, it, strings.Replace(slot, " Swap", "", 1))
+	}
 	return it, mods
+}
+
+// socketMultipliers ports the socket part of ItemClass:BuildModListForSlotNum:
+// a multiplier per socket colour and the number of unlinked sockets.
+func socketMultipliers(db *ModDB, it *itemtext.Item, slot string) {
+	if len(it.Sockets) == 0 {
+		return
+	}
+	names := map[byte]string{'R': "Red", 'G': "Green", 'B': "Blue", 'W': "White"}
+	groups := map[int]int{}
+	for _, s := range it.Sockets {
+		groups[s.Group]++
+		if n, ok := names[s.Color]; ok {
+			db.NewMod("Multiplier:"+n+"SocketIn"+slot, "BASE", 1, "Item Sockets")
+		}
+	}
+	unlinked := 0
+	for _, n := range groups {
+		if n == 1 {
+			unlinked++
+		}
+	}
+	db.NewMod("Multiplier:UnlinkedSocketIn"+slot, "BASE", float64(unlinked), "Unlinked Item Sockets")
 }
 
 // slotTags is the tag substitution of ItemClass:BuildModListForSlotNum:
@@ -704,17 +740,77 @@ func (c *Calculator) lifeMana(db *ModDB) {
 // resistance conversion and Melding of the Flesh.
 func (c *Calculator) resistances(db *ModDB) {
 	out := db.output
-	for _, elem := range resistTypes {
+	resistMax := func(elem string) float64 {
 		maxNames := []string{elem + "ResistMax"}
-		names := []string{elem + "Resist"}
 		if elem != "Chaos" {
 			maxNames = append(maxNames, "ElementalResistMax")
+		}
+		if max, ok := db.Override(elem + "ResistMax"); ok {
+			return max
+		}
+		return math.Min(maxResistCap, db.Sum("BASE", maxNames...))
+	}
+	// Resistance conversion: non-base max resistances, then resistances.
+	sumNonBase := func(name, typ string) float64 {
+		total := 0.0
+		for i := range db.mods[name] {
+			m := &db.mods[name][i]
+			if m.Source == "Base" || !eligible(m, typ, nil) {
+				continue
+			}
+			if v, ok := db.eval(m, nil); ok {
+				if f, isNum := num(v); isNum {
+					total += f
+				}
+			}
+		}
+		return total
+	}
+	for _, from := range resistTypes {
+		for _, to := range resistTypes {
+			if rate := db.Sum("BASE", from+"MaxResConvertTo"+to) / 100; rate != 0 {
+				if max := sumNonBase(from+"ResistMax", "BASE"); max != 0 {
+					db.NewMod(to+"ResistMax", "BASE", max*rate, from+" To "+to+" Max Resistance Conversion")
+				}
+			}
+		}
+	}
+	for _, from := range resistTypes {
+		for _, to := range resistTypes {
+			rate := db.Sum("BASE", from+"ResConvertTo"+to) / 100
+			if rate == 0 {
+				continue
+			}
+			if res := sumNonBase(from+"Resist", "BASE"); res != 0 {
+				db.NewMod(to+"Resist", "BASE", res*rate, from+" To "+to+" Resistance Conversion")
+			}
+			for _, typ := range []string{"INC", "MORE"} {
+				for _, r := range db.tabulateType(from+"Resist", typ) {
+					if f, ok := num(r.Value); ok {
+						db.NewMod(to+"Resist", typ, f*rate, r.Source)
+					}
+				}
+			}
+		}
+	}
+	// Melding of the Flesh: every elemental maximum becomes the highest one.
+	if db.Flag("ElementalResistMaxIsHighestResistMax") {
+		highest, highestType := 0.0, ""
+		for _, elem := range resistTypes[:3] {
+			if m := resistMax(elem); m > highest {
+				highest, highestType = m, elem
+			}
+		}
+		for _, elem := range resistTypes[:3] {
+			db.NewMod(elem+"ResistMax", "OVERRIDE", highest, highestType+" Melding of the Flesh")
+		}
+	}
+	for _, elem := range resistTypes {
+		names := []string{elem + "Resist"}
+		if elem != "Chaos" {
 			names = append(names, "ElementalResist")
 		}
-		max, ok := db.Override(elem + "ResistMax")
-		if !ok {
-			max = math.Min(maxResistCap, db.Sum("BASE", maxNames...))
-		}
+		max := resistMax(elem)
 		total, ok := db.Override(elem + "Resist")
 		if !ok {
 			base := db.Sum("BASE", names...)

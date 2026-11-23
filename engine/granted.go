@@ -7,9 +7,11 @@ import (
 	"github.com/Mi7teR/poe-lib/gamedata"
 )
 
-// notableMaps builds PassiveTree.lua's notableMap and ascendancyMap: notable
-// nodes by lower-cased name. A duplicate name is replaced only by a node
-// that is in a group (on the tree).
+// notableMaps builds PassiveTree.lua's notableMap and ascendancyMap by
+// lower-cased name. A duplicate notable name is replaced only by a node that
+// is in a group (on the tree). ascendancyMap also holds the normal Ascendant
+// nodes named after other classes and multiple-choice options (not for
+// Reliquarian and Luminary), which Forbidden Flame and Flesh can allocate.
 func notableMaps(tree *gamedata.Tree) (notable, ascendancy map[string]*gamedata.Node) {
 	notable, ascendancy = map[string]*gamedata.Node{}, map[string]*gamedata.Node{}
 	ids := make([]int, 0, len(tree.Nodes))
@@ -19,14 +21,24 @@ func notableMaps(tree *gamedata.Tree) (notable, ascendancy map[string]*gamedata.
 	sort.Ints(ids) // PoB walks a hash table; any fixed order will do
 	for _, id := range ids {
 		n := tree.Nodes[id]
-		if !n.IsNotable || n.IsKeystone || n.IsMastery {
+		if n.IsMastery || n.IsJewelSocket || n.IsKeystone {
 			continue
 		}
 		name := strings.ToLower(n.Name)
-		if n.AscendancyName != "" {
+		if n.IsNotable {
+			if n.AscendancyName != "" {
+				ascendancy[name] = n
+			} else if _, dup := notable[name]; !dup || n.Group != 0 {
+				notable[name] = n
+			}
+			continue
+		}
+		ascendantNode := n.AscendancyName == "Ascendant" && !n.IsMultipleChoiceOption &&
+			!strings.Contains(n.Name, "Dexterity") && !strings.Contains(n.Name, "Intelligence") &&
+			!strings.Contains(n.Name, "Strength") && !strings.Contains(n.Name, "Passive")
+		option := n.IsMultipleChoiceOption && n.AscendancyName != ""
+		if (ascendantNode || option) && n.AscendancyName != "Reliquarian" && n.AscendancyName != "Luminary" {
 			ascendancy[name] = n
-		} else if _, dup := notable[name]; !dup || n.Group != 0 {
-			notable[name] = n
 		}
 	}
 	return notable, ascendancy

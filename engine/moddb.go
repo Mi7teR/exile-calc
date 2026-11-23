@@ -644,6 +644,17 @@ func (db *ModDB) Tabulate(name string) []Row {
 	return rows
 }
 
+// tabulateType is ModStore:Tabulate(typ, nil, name).
+func (db *ModDB) tabulateType(name, typ string) []Row {
+	var rows []Row
+	for _, r := range db.Tabulate(name) {
+		if r.Type == typ {
+			rows = append(rows, r)
+		}
+	}
+	return rows
+}
+
 // Conditions returns the actor's set conditions ("Condition:X" = 1) and
 // multipliers ("Multiplier:X" = value), for comparing with PoB.
 func (db *ModDB) Conditions() map[string]float64 {
