@@ -419,6 +419,11 @@ func (c *Calculator) setupSkills(db *ModDB, b *pobcode.Build, useSwap bool, res 
 	// gemCfg copies the group cfg with the gem's socket.
 	gemCfg := func(gc *groupCfg, gemIndex int) (*Cfg, bool) {
 		cfg := *gc.cfg
+		// copyTable(groupCfg, true): the gem counts as they are now.
+		cfg.GemCounts = make(map[string]int, len(gc.cfg.GemCounts))
+		for k, v := range gc.cfg.GemCounts {
+			cfg.GemCounts[k] = v
+		}
 		cfg.SocketNum = gemIndex
 		item := db.items[gc.cfg.SlotName]
 		if item != nil && gemIndex <= len(item.Sockets) {
@@ -451,6 +456,25 @@ func (c *Calculator) setupSkills(db *ModDB, b *pobcode.Build, useSwap bool, res 
 				gc.cfg.GemCounts[a+"Gems"]++
 			}
 		}
+	}
+
+	// newEffect builds an activeEffect or supportEffect for a gem: its
+	// matching socket quality, gemCfg and GemProperty levels and quality.
+	newEffect := func(gc *groupCfg, gi int, gm *pobcode.Gem, gem *gamedata.Gem, eid string, ge *gamedata.Skill) *skillEffect {
+		sq := socketQuality(db.items[gc.cfg.SlotName], ge, socketIndex[gm])
+		eff := &skillEffect{id: eid, ge: ge, gem: gem, level: gm.Level, quality: gm.Quality + sq,
+			srcLevel: gm.Level, srcQuality: gm.Quality, hasSrc: true}
+		if gem != nil {
+			cfg, socketed := gemCfg(gc, gi+1)
+			eff.cfg = cfg
+			props := gc.props
+			if socketed {
+				props = db.List(cfg, "GemProperty")
+			}
+			c.applyGemMods(eff, props)
+			countGem(gc, gm, gem)
+		}
+		return eff
 	}
 
 	// Support gems, per group.
@@ -503,19 +527,7 @@ func (c *Calculator) setupSkills(db *ModDB, b *pobcode.Build, useSwap bool, res 
 				if ge == nil || !ge.Support {
 					continue
 				}
-				sq := socketQuality(db.items[gc.cfg.SlotName], ge, socketIndex[gm])
-				eff := &skillEffect{id: eid, ge: ge, gem: gem, level: gm.Level, quality: gm.Quality + sq,
-					srcLevel: gm.Level, srcQuality: gm.Quality, hasSrc: true}
-				if gem != nil {
-					cfg, socketed := gemCfg(gc, gi+1)
-					eff.cfg = cfg
-					props := gc.props
-					if socketed {
-						props = db.List(cfg, "GemProperty")
-					}
-					c.applyGemMods(eff, props)
-					countGem(gc, gm, gem)
-				}
+				eff := newEffect(gc, gi, gm, gem, eid, ge)
 				eff.level = validateLevel(eff.level, ge, gem)
 				if !disabled {
 					supports[i] = addBestSupport(eff, supports[i])
@@ -556,19 +568,7 @@ func (c *Calculator) setupSkills(db *ModDB, b *pobcode.Build, useSwap bool, res 
 				if ge.HasGlobalEffect && !(n == 0 && gm.EnableGlobal1 || n == 1 && gm.EnableGlobal2) {
 					continue
 				}
-				sq := socketQuality(db.items[gc.cfg.SlotName], ge, socketIndex[gm])
-				eff := &skillEffect{id: eid, ge: ge, gem: gem, level: gm.Level, quality: gm.Quality + sq,
-					srcLevel: gm.Level, srcQuality: gm.Quality, hasSrc: true}
-				if gem != nil {
-					cfg, socketed := gemCfg(gc, gi+1)
-					eff.cfg = cfg
-					props := gc.props
-					if socketed {
-						props = db.List(cfg, "GemProperty")
-					}
-					c.applyGemMods(eff, props)
-					countGem(gc, gm, gem)
-				}
+				eff := newEffect(gc, gi, gm, gem, eid, ge)
 				applied := append([]*skillEffect(nil), supports[i]...)
 				if g.Source != "" && gc.cfg.SlotName != "" {
 					// Skills granted by an item take the supports of every group in its slot.
@@ -679,28 +679,13 @@ func (c *Calculator) createActiveSkill(active *skillEffect, supports []*skillEff
 		s.flags["hit"] = true
 	}
 	s.effects = []*skillEffect{active}
-	var rejected []*skillEffect
+	// Pass 1 adds the types of supports that fit in group order. PoB's
+	// retry loop over "rejected" supports only collects non-support
+	// effects, so it never adds types; it is not ported.
 	for _, sup := range supports {
-		if !sup.ge.Support {
-			continue
-		}
-		if canSupport(sup, s) {
+		if sup.ge.Support && canSupport(sup, s) {
 			for _, t := range sup.ge.AddSkillTypes {
 				s.types[t] = true
-			}
-		} else {
-			rejected = append(rejected, sup)
-		}
-	}
-	for added := true; added; {
-		added = false
-		for i, sup := range rejected {
-			if sup != nil && canSupport(sup, s) {
-				added = true
-				rejected[i] = nil
-				for _, t := range sup.ge.AddSkillTypes {
-					s.types[t] = true
-				}
 			}
 		}
 	}
