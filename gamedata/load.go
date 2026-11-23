@@ -14,16 +14,17 @@ var poe1FS embed.FS
 
 // Data is the full data set for one game.
 type Data struct {
-	Version  Version
-	Bases    map[string]*Base           // by base name
-	Mods     map[string]map[string]*Mod // by domain ("Explicit", ...), then mod id
-	Gems     map[string]*Gem            // by PoB gem id
-	Uniques  []*Unique
-	Tree     *Tree
-	Cluster  *ClusterJewels
-	Timeless *Timeless
-	Config   []ConfigOption // ConfigOptions.lua varList, in order
-	Skills   *Skills
+	Version   Version
+	Bases     map[string]*Base           // by base name
+	Mods      map[string]map[string]*Mod // by domain ("Explicit", ...), then mod id
+	Gems      map[string]*Gem            // by PoB gem id
+	Uniques   []*Unique
+	Tree      *Tree
+	Cluster   *ClusterJewels
+	Timeless  *Timeless
+	Config    []ConfigOption // ConfigOptions.lua varList, in order
+	Skills    *Skills
+	Pantheons map[string]*Pantheon // Data/Pantheons.lua, by config key ("TheBrineKing")
 
 	uniqueByName map[string]*Unique
 }
@@ -58,6 +59,7 @@ func load(fsys embed.FS, dir string) (*Data, error) {
 	for name, dst := range map[string]any{
 		"bases": &d.Bases, "mods": &d.Mods, "gems": &d.Gems, "uniques": &d.Uniques, "tree": &d.Tree,
 		"clusterjewels": &d.Cluster, "timeless": &d.Timeless, "config": &d.Config, "skills": &d.Skills,
+		"pantheons": &d.Pantheons,
 	} {
 		gz, err := fsys.ReadFile(dir + "/" + name + ".json.gz")
 		if err != nil {

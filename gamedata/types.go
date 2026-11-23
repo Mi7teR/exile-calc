@@ -209,6 +209,22 @@ type ExpansionJewel struct {
 
 // ClusterJewels is Data/ClusterJewels.lua: how each cluster jewel base lays
 // out its subgraph, and the order notables take on it.
+// Pantheon is a god of Data/Pantheons.lua; Souls[0] is the god's own soul
+// and names the source of every soul's mods.
+type Pantheon struct {
+	IsMajorGod bool           `json:"isMajorGod,omitempty" lua:"isMajorGod"`
+	Souls      []PantheonSoul `json:"souls" lua:"souls"`
+}
+
+type PantheonSoul struct {
+	Name string        `json:"name" lua:"name"`
+	Mods []PantheonMod `json:"mods" lua:"mods"`
+}
+
+type PantheonMod struct {
+	Line string `json:"line" lua:"line"`
+}
+
 type ClusterJewels struct {
 	Jewels           map[string]*ClusterJewel `json:"jewels" lua:"jewels"`
 	NotableSortOrder map[string]float64       `json:"notableSortOrder" lua:"notableSortOrder"`

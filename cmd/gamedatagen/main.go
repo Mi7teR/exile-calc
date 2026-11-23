@@ -148,6 +148,15 @@ func run(src, out, parserOut string) error {
 		return err
 	}
 
+	pantheonSrc, err := read("Data/Pantheons.lua")
+	if err != nil {
+		return err
+	}
+	var pantheons map[string]*gamedata.Pantheon
+	if err := evalInto("Data/Pantheons.lua", pantheonSrc, &pantheons); err != nil {
+		return err
+	}
+
 	globalSrc, err := read("Data/Global.lua")
 	if err != nil {
 		return err
@@ -170,7 +179,7 @@ func run(src, out, parserOut string) error {
 	}
 	for name, v := range map[string]any{
 		"bases": bases, "mods": mods, "gems": gems, "uniques": uniques, "tree": tree,
-		"clusterjewels": &cluster, "timeless": timeless, "config": config, "skills": skills,
+		"clusterjewels": &cluster, "timeless": timeless, "config": config, "skills": skills, "pantheons": pantheons,
 	} {
 		if err := writeGzipJSON(filepath.Join(out, name+".json.gz"), v); err != nil {
 			return fmt.Errorf("%s: %w", name, err)

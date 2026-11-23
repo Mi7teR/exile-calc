@@ -16,6 +16,13 @@ type Hook func(p *Parser, args []any) any
 // table and the key in ModParser.lua; each port quotes its Lua source.
 // Unported hooks make a line unsupported, never wrong.
 var hooks = map[string]Hook{
+	// ["regenerate (%d+) life per second for each (%d+)%% uncapped fire resistance"] = function(num, _, percent)
+	//   return { mod("LifeRegen", "BASE", num, { type = "PerStat", stat = "FireResistTotal", div = 1 / percent }) } end
+	"specialModList[^regenerate (%d+) life per second for each (%d+)%% uncapped fire resistance$]": func(p *Parser, a []any) any {
+		pct, _ := toNumber(argS(a, 2)).(float64)
+		return []any{withTags(newMod("LifeRegen", "BASE", arg(a, 0), 0, 0),
+			map[string]any{"type": "PerStat", "stat": "FireResistTotal", "div": 1 / pct})}
+	},
 	// ["your movement speed is (%d+)%% of its base value"] =
 	//   function(num) return { mod("MovementSpeed", "OVERRIDE", num / 100) } end
 	"specialModList[^your movement speed is (%d+)%% of its base value$]": func(p *Parser, a []any) any {
@@ -146,6 +153,12 @@ var hooks = map[string]Hook{
 	},
 	// ["if (%d+) (%a+) items are equipped"] = function(num, _, effectName) return {
 	//   tag = { type = "MultiplierThreshold", var = firstToUpper(effectName) .. "Item", threshold = num} } end
+	// ["per (%d+) mana spent recently, up to (%d+)%%"] = function(num, _, limit) return {
+	//   tag = { type = "Multiplier", var = "ManaSpentRecently", div = num, limit = tonumber(limit), limitTotal = true } } end
+	"modTagList[per (%d+) mana spent recently, up to (%d+)%%]": func(p *Parser, a []any) any {
+		return map[string]any{"tag": map[string]any{"type": "Multiplier", "var": "ManaSpentRecently", "div": arg(a, 0),
+			"limit": toNumber(argS(a, 2)), "limitTotal": true}}
+	},
 	"modTagList[if (%d+) (%a+) items are equipped]": func(p *Parser, a []any) any {
 		return map[string]any{"tag": map[string]any{"type": "MultiplierThreshold", "var": firstToUpper(argS(a, 2)) + "Item", "threshold": arg(a, 0)}}
 	},

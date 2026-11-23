@@ -344,6 +344,32 @@ func initConditionMods(db *ModDB) {
 	db.NewMod("PhysicalDamageReduction", "BASE", 4, "Base", endurance) // physical_damage_reduction_%_per_endurance_charge
 	db.NewMod("ElementalDamageReduction", "BASE", 4, "Base", endurance)
 	db.NewMod("MaximumFortification", "BASE", 20, "Base") // base_max_fortification
+	db.NewMod("ActiveTotemLimit", "BASE", 1, "Base")      // base_number_of_totems_allowed
 	// movement_velocity_+%_per_10_rampage_stacks, max_rampage_stacks 1000
 	db.NewMod("MovementSpeed", "INC", 1, "Base", map[string]any{"type": "Multiplier", "var": "Rampage", "limit": 50.0, "div": 20.0})
+}
+
+// totemCounts is the totem part of calcs.perform's active skill loop:
+// with any totem skill, ActiveTotemLimit is the main skill's limit and
+// TotemsSummoned (read by "per summoned totem" mods) the configured count
+// or that limit.
+func totemCounts(db *ModDB, skills []*activeSkill) {
+	main := mainSkill(skills)
+	if main == nil || main.mods == nil {
+		return
+	}
+	out := db.output
+	for _, s := range skills {
+		if !s.flags["totem"] {
+			continue
+		}
+		limit := main.mods.SumCfg(main.cfg, "BASE", "ActiveTotemLimit", "ActiveBallistaLimit")
+		out["ActiveTotemLimit"] = math.Max(limit, out["ActiveTotemLimit"])
+		if o, ok := db.Override("TotemsSummoned"); ok {
+			out["TotemsSummoned"] = o
+		} else {
+			out["TotemsSummoned"] = out["ActiveTotemLimit"]
+		}
+		db.enemy.multipliers["TotemsSummoned"] = math.Max(out["TotemsSummoned"], db.enemy.multipliers["TotemsSummoned"])
+	}
 }

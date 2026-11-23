@@ -134,6 +134,25 @@ func (c *Calculator) Calc(b *pobcode.Build) (*Result, error) {
 	case "Oak":
 		db.NewMod("Life", "BASE", 40, "Bandit")
 	}
+	// CalcSetup.lua: pantheon mods (PantheonTools.lua applySoulMod): every
+	// soul of the chosen gods, named after the god's own soul.
+	for _, x := range [][2]string{{"pantheonMajorGod", b.PantheonMajorGod}, {"pantheonMinorGod", b.PantheonMinorGod}} {
+		god := c.data.Pantheons[configString(config, x[0], x[1])]
+		if god == nil || len(god.Souls) == 0 {
+			continue
+		}
+		for _, soul := range god.Souls {
+			for _, m := range soul.Mods {
+				r := c.parser.Parse(m.Line)
+				if !r.Parsed() {
+					continue
+				}
+				for _, pm := range r.Mods {
+					db.Add(fromParsed(pm, "Pantheon:"+god.Souls[0].Name))
+				}
+			}
+		}
+	}
 
 	// Passive tree (CalcSetup.lua buildModListForNodeList): node stats, mastery effects.
 	allocated := map[int]bool{}
@@ -390,6 +409,7 @@ func (c *Calculator) Calc(b *pobcode.Build) (*Result, error) {
 	shrineBuffs(db)
 	c.lifeMana(db)
 	reservations(db, skills, res)
+	totemCounts(db, skills)
 	charges(db) // early, for stats that depend on charges
 	c.applyBuffs(db, skills, res)
 	c.extraCurses(db, res)
