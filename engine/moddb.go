@@ -706,6 +706,7 @@ type Row struct {
 	Type   string
 	Value  any
 	Source string
+	Flags  uint64
 }
 
 // Tabulate is ModStore:Tabulate(nil, nil, name): the mods that apply, with
@@ -866,7 +867,7 @@ func (db *ModDB) TabulateCfg(cfg *Cfg, typ, name string) []Row {
 				continue
 			}
 			if v, ok := db.eval(m, cfg); ok {
-				rows = append(rows, Row{Type: m.Type, Value: v, Source: m.Source})
+				rows = append(rows, Row{Type: m.Type, Value: v, Source: m.Source, Flags: m.Flags})
 			}
 		}
 	}

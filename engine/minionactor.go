@@ -243,6 +243,28 @@ func minionBuffs(db *ModDB, skills []*activeSkill, mdb *ModDB, mainCfg *Cfg, res
 	return out
 }
 
+// clawCritToMinion is the Law of the Wilds part of calcs.offence's stat
+// conversions for the main skill: claw crit chance and multiplier mods
+// also apply to the minion.
+func clawCritToMinion(s *activeSkill, mdb *ModDB) {
+	cfg := &Cfg{Flags: mfClaw | mfHit}
+	for _, x := range []struct{ flag, name, typ string }{
+		{"ClawCritChanceAppliesToMinions", "CritChance", "INC"},
+		{"ClawCritMultiplierAppliesToMinions", "CritMultiplier", "BASE"},
+	} {
+		if !s.mods.Flag(x.flag) {
+			continue
+		}
+		for _, r := range s.mods.TabulateCfg(cfg, x.typ, x.name) {
+			if r.Flags&mfClaw != 0 {
+				if f, ok := num(r.Value); ok {
+					mdb.NewMod(x.name, x.typ, f, r.Source)
+				}
+			}
+		}
+	}
+}
+
 // rallyingCryWeaponDamage is the minion side's "flat damage bonus" of
 // Rallying Cry in calcs.perform: a share of the player's main hand weapon
 // damage per 5 warcry power (up to 30). An unarmed player is not ported.
@@ -390,6 +412,7 @@ func (c *Calculator) mainMinion(db *ModDB, skills []*activeSkill, buffs map[stri
 	for _, k := range minionResultStats {
 		stats[k] = mdb.output[k]
 	}
+	clawCritToMinion(s, mdb)
 	if ms != nil {
 		if debugMinionSkill != nil {
 			debugMinionSkill(ms)
