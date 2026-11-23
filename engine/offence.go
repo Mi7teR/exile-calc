@@ -103,11 +103,13 @@ type hitPass struct {
 	// repeats, cooldown: the skill's Repeats and cooldown (if any).
 	repeats, cooldown float64
 	hasCooldown       bool
-	src               hitSource
-	cfg               *Cfg
-	conv              map[string]*convEntry
-	out               map[string]float64
-	base              map[string][2]float64 // <Type>MinBase, <Type>MaxBase
+	// mainHandCrit is the main hand weapon's crit chance (BaseCritFromMainHand).
+	mainHandCrit float64
+	src          hitSource
+	cfg          *Cfg
+	conv         map[string]*convEntry
+	out          map[string]float64
+	base         map[string][2]float64 // <Type>MinBase, <Type>MaxBase
 }
 
 // calcDamage is CalcOffence.lua calcDamage.
@@ -312,6 +314,7 @@ func (c *Calculator) offence(actor *ModDB, s *activeSkill, w1 hitSource, w2 *hit
 	for _, p := range passes {
 		p.conv = conversionTable(list, p.cfg)
 		p.repeats, p.cooldown, p.hasCooldown = out["Repeats"], cooldown, hasCooldown && cooldown > 0
+		p.mainHandCrit = w1.critChance
 		c.hitAndSpeed(actor, s, p)
 	}
 	combine("AccuracyHitChance", "AVERAGE")
@@ -526,7 +529,7 @@ func (c *Calculator) hitDamage(actor *ModDB, s *activeSkill, p *hitPass) {
 	enemy := actor.enemy
 	ge := s.active.ge
 
-	c.crit(list, p, enemy)
+	c.crit(s, p, enemy, actor)
 
 	// Double and triple damage.
 	triple := math.Min(list.SumCfg(p.cfg, "BASE", "TripleDamageChance")+enemy.SumCfg(p.cfg, "BASE", "SelfTripleDamageChance")+
@@ -626,73 +629,137 @@ func (c *Calculator) hitDamage(actor *ModDB, s *activeSkill, p *hitPass) {
 	out["AverageDamage"] = out["AverageHit"] * out["HitChance"] / 100
 }
 
-// crit is the crit chance and multiplier part of calcs.offence.
-func (c *Calculator) crit(list *ModDB, p *hitPass, enemy *ModDB) {
+// crit is the crit chance, crit multiplier and crit effect part of
+// calcs.offence's damage pass (mode_effective). Parent and party member
+// crit links are not ported.
+func (c *Calculator) crit(s *activeSkill, p *hitPass, enemy *ModDB, actor *ModDB) {
+	list := s.mods
 	out, cfg := p.out, p.cfg
-	if list.FlagCfg(cfg, "NeverCrit") {
-		out["CritChance"], out["CritMultiplier"], out["CritEffect"] = 0, 0, 1
-		return
+	zero := func() {
+		out["PreEffectiveCritChance"], out["CritChance"], out["CritMultiplier"], out["BonusCritDotMultiplier"], out["CritEffect"] = 0, 0, 0, 0, 1
 	}
-	override, hasOverride := list.OverrideCfg(cfg, "CritChance")
-	baseCrit := p.src.critChance
-	if hasOverride {
-		baseCrit = override
-	}
-	if hasOverride && override == 100 {
-		out["CritChance"] = 100
-	} else {
-		var base, inc, more = 0.0, 0.0, 1.0
-		if !hasOverride {
-			base = list.SumCfg(cfg, "BASE", "CritChance") + enemy.Sum("BASE", "SelfCritChance")
-			inc = list.SumCfg(cfg, "INC", "CritChance") + enemy.Sum("INC", "SelfCritChance")
-			more = list.MoreCfg(cfg, "CritChance") * enemy.More("SelfCritChance")
-		}
-		cc := round((baseCrit+base)*(1+inc/100)*more*100, 0) / 100
-		capv, ok := list.Override("CritChanceCap")
-		if !ok {
-			capv = list.SumCfg(cfg, "BASE", "CritChanceCap")
-		}
-		cc = math.Min(cc, capv)
-		if baseCrit+base > 0 {
-			cc = math.Max(cc, 0)
-		}
-		rolls := 0.0
-		if list.FlagCfg(cfg, "CritChanceLucky") {
-			rolls++
-		}
-		if list.FlagCfg(cfg, "ExtremeLuck") {
-			rolls *= 2
-		}
-		if rolls != 0 {
-			cc = (1 - math.Pow(1-cc/100, rolls+1)) * 100
-		}
-		if list.FlagCfg(cfg, "BifurcateCrit") {
-			cc = (1 - math.Pow(1-cc/100, 2)) * 100
-		}
-		for _, x := range []struct {
-			flag string
-			n    float64
-		}{{"Every3UseCrit", 3}, {"Every5UseCrit", 5}, {"Every6UseCrit", 6}} {
-			if list.FlagCfg(cfg, x.flag) {
-				cc = ((x.n-1)*cc + 100) / x.n
+	done := false
+	switch {
+	case list.FlagCfg(cfg, "NeverCrit"):
+		zero()
+		done = true
+	case list.FlagCfg(cfg, "SpellSkillsCannotDealCriticalStrikesExceptOnFinalRepeat"):
+		if p.repeats <= 1 {
+			zero()
+			done = true
+		} else if list.FlagCfg(cfg, "SpellSkillsAlwaysDealCriticalStrikesOnFinalRepeat") {
+			mode := "AVERAGE"
+			if actor.build != nil {
+				mode = configString(actor.build.ActiveConfig(), "repeatMode", "AVERAGE")
+			}
+			switch mode {
+			case "None":
+				out["PreEffectiveCritChance"], out["CritChance"] = 0, 0
+			case "AVERAGE":
+				out["PreEffectiveCritChance"], out["CritChance"] = 100/p.repeats, 100/p.repeats
+			default:
+				out["PreEffectiveCritChance"], out["CritChance"] = 100, 100
 			}
 		}
-		out["CritChance"] = cc * out["AccuracyHitChance"] / 100
-	}
-	if list.FlagCfg(cfg, "NoCritMultiplier") {
-		out["CritMultiplier"] = 1
-	} else {
-		extra := list.SumCfg(cfg, "BASE", "CritMultiplier") / 100
-		if o, ok := list.OverrideCfg(cfg, "CritMultiplier"); ok {
-			extra = (o - 100) / 100
+	default:
+		override, hasOverride := list.OverrideCfg(cfg, "CritChance")
+		baseCrit := p.src.critChance
+		if hasOverride {
+			baseCrit = override
 		}
-		enemyInc := 1 + enemy.Sum("INC", "SelfCritMultiplier")/100
-		extra += enemy.Sum("BASE", "SelfCritMultiplier") / 100
-		extra = round(extra*enemyInc, 2)
-		out["CritMultiplier"] = 1 + math.Max(0, extra)
+		if list.FlagCfg(cfg, "BaseCritFromMainHand") {
+			baseCrit = p.mainHandCrit
+		}
+		if hasOverride && override == 100 {
+			out["PreEffectiveCritChance"], out["PreBifurcateCritChance"], out["CritChance"] = 100, 100, 100
+		} else {
+			var base, inc, more = 0.0, 0.0, 1.0
+			if !hasOverride {
+				base = list.SumCfg(cfg, "BASE", "CritChance") + enemy.Sum("BASE", "SelfCritChance")
+				inc = list.SumCfg(cfg, "INC", "CritChance") + enemy.Sum("INC", "SelfCritChance")
+				more = list.MoreCfg(cfg, "CritChance") * enemy.More("SelfCritChance")
+			}
+			cc := round((baseCrit+base)*(1+inc/100)*more*100, 0) / 100
+			capv, ok := list.Override("CritChanceCap")
+			if !ok {
+				capv = list.SumCfg(cfg, "BASE", "CritChanceCap")
+			}
+			cc = math.Min(cc, capv)
+			if baseCrit+base > 0 {
+				cc = math.Max(cc, 0)
+			}
+			out["PreEffectiveCritChance"] = cc
+			rolls := 0.0
+			if list.FlagCfg(cfg, "CritChanceLucky") {
+				rolls++
+			}
+			if list.FlagCfg(s.cfg, "ExtremeLuck") {
+				rolls *= 2
+			}
+			if rolls != 0 {
+				if actor.Flag("Unexciting") {
+					cc = (3*math.Pow(cc/100, 2) - 2*math.Pow(cc/100, 3)) * 100
+				} else {
+					cc = (1 - math.Pow(1-cc/100, rolls+1)) * 100
+				}
+			}
+			out["PreBifurcateCritChance"] = cc
+			if list.FlagCfg(cfg, "BifurcateCrit") {
+				cc = (1 - math.Pow(1-cc/100, 2)) * 100
+			}
+			for _, x := range []struct {
+				flag string
+				n    float64
+			}{{"Every3UseCrit", 3}, {"Every5UseCrit", 5}, {"Every6UseCrit", 6}} {
+				if list.FlagCfg(s.cfg, x.flag) {
+					cc = ((x.n-1)*cc + 100) / x.n
+				}
+			}
+			out["CritChance"] = cc * out["AccuracyHitChance"] / 100
+		}
 	}
-	cc := out["CritChance"] / 100
-	out["CritEffect"] = 1 - cc + cc*out["CritMultiplier"]
+	if !done {
+		if list.FlagCfg(cfg, "NoCritMultiplier") {
+			out["CritMultiplier"] = 1
+		} else {
+			extra := list.SumCfg(cfg, "BASE", "CritMultiplier") / 100
+			if o, ok := list.OverrideCfg(s.cfg, "CritMultiplier"); ok {
+				extra = (o - 100) / 100
+			}
+			enemyInc := 1 + enemy.Sum("INC", "SelfCritMultiplier")/100
+			extra += enemy.Sum("BASE", "SelfCritMultiplier") / 100
+			extra = round(extra*enemyInc, 2)
+			override, hasOverride := list.OverrideCfg(cfg, "CritChance")
+			if list.FlagCfg(cfg, "BifurcateCrit") && !(hasOverride && override == 100) {
+				pre := out["PreBifurcateCritChance"]
+				multiChance := pre * pre / 100
+				use := 1.0
+				for _, x := range []struct {
+					flag string
+					f    float64
+				}{{"Every3UseCrit", 2.0 / 3}, {"Every5UseCrit", 4.0 / 5}, {"Every6UseCrit", 5.0 / 6}} {
+					if list.FlagCfg(s.cfg, x.flag) {
+						use *= x.f
+					}
+				}
+				multiChance *= use
+				cond := 0.0
+				if out["CritChance"] > 0 {
+					cond = multiChance / out["CritChance"]
+				}
+				out["CritBifurcates"] = 1 + cond
+				extra += cond * extra
+				list.Add(Mod{Name: "CritMultiplier", Type: "MORE", Value: floorTo(cond*100, 2), Flags: mfHit, Source: "Bifurcated Crit Damage Bonus"})
+			}
+			out["CritMultiplier"] = 1 + math.Max(0, extra)
+		}
+		cc := out["CritChance"] / 100
+		out["CritEffect"] = 1 - cc + cc*out["CritMultiplier"]
+		out["BonusCritDotMultiplier"] = (list.SumCfg(cfg, "BASE", "CritMultiplier") - 50) * list.SumCfg(cfg, "BASE", "CritMultiplierAppliesToDegen") / 10000
+	}
+	if out["CritChance"] != 0 {
+		list.conditions["CritInPast8Sec"] = true
+	}
 }
 
 // enemyEffMult is the effective damage multiplier of a hit of type t on
