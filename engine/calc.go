@@ -107,9 +107,10 @@ func (c *Calculator) Calc(b *pobcode.Build) (*Result, error) {
 	}
 	cluster := c.clusterGraph(spec, b, res)
 	conquered := c.conquests(spec, b, allocated, res)
+	radiusFuncs := c.radiusFuncs(spec, b, allocated, res)
 	for _, id := range spec.Nodes {
 		if g, ok := cluster[id]; ok {
-			c.addNode(db, res, g.stats, g.incEffect, fmt.Sprintf("Tree:%d", id))
+			c.addNode(db, res, g.stats, g.incEffect, fmt.Sprintf("Tree:%d", id), nil, nil)
 			continue
 		}
 		node := tree.Nodes[id]
@@ -125,10 +126,16 @@ func (c *Calculator) Calc(b *pobcode.Build) (*Result, error) {
 					stats = e.Stats
 				}
 			}
-		} else if cq, ok := conquered[id]; ok {
+		}
+		cq, isConquered := conquered[id]
+		if isConquered && !node.IsMastery {
 			stats, source, _ = c.conqueredStats(node, id, cq, res)
 		}
-		c.addNode(db, res, stats, 0, source)
+		var funcs []radiusFunc
+		if !isConquered { // jewelFuncList: nodes changed by timeless jewels are left alone
+			funcs = radiusFuncs[id]
+		}
+		c.addNode(db, res, stats, 0, source, node, funcs)
 	}
 
 	// Items in the active set; jewels in allocated tree sockets.
@@ -200,7 +207,7 @@ func configString(c *pobcode.ConfigSet, name, def string) string {
 // addNode adds one passive's mods, scaled by its PassiveSkillEffect
 // (CalcSetup.lua buildModListForNode: calcLib.mod(modList, nil, "PassiveSkillEffect")).
 // incEffect is the cluster jewel's "increased Effect" of small passives.
-func (c *Calculator) addNode(db *ModDB, res *Result, stats []string, incEffect float64, source string) {
+func (c *Calculator) addNode(db *ModDB, res *Result, stats []string, incEffect float64, source string, tn *gamedata.Node, funcs []radiusFunc) {
 	node := NewModDB()
 	var mods []Mod
 	for _, line := range stats {
@@ -216,8 +223,19 @@ func (c *Calculator) addNode(db *ModDB, res *Result, stats []string, incEffect f
 	if incEffect != 0 {
 		mods = append(mods, Mod{Name: "PassiveSkillEffect", Type: "INC", Value: incEffect, Source: source})
 	}
+	// First pass radius jewels ("Other" functions) see the node's own mods.
+	if tn != nil {
+		own := append([]Mod(nil), mods...)
+		for _, f := range funcs {
+			mods = append(mods, f(tn, own)...)
+		}
+	}
 	for _, m := range mods {
 		node.Add(m)
+	}
+	// buildModListForNode: a node that "grants nothing" loses its mods.
+	if node.Flag("PassiveSkillHasNoEffect") || node.Flag("AllocatedPassiveSkillHasNoEffect") {
+		return
 	}
 	scale := (1 + node.Sum("INC", "PassiveSkillEffect")/100) * node.More("PassiveSkillEffect")
 	for _, m := range mods {
@@ -272,9 +290,9 @@ func catalystScalar(it *itemtext.Item, l itemtext.ModLine) float64 {
 	return 1
 }
 
-// itemMods parses an item's active mod lines with their rolls and catalyst
-// scaling. ModRange ids count lines in ItemsTab.lua's save order.
-func (c *Calculator) itemMods(item *pobcode.Item, res *Result) (*itemtext.Item, []modparser.Mod) {
+// itemLines returns an item's active mod lines with rolls and catalyst
+// scaling applied. ModRange ids count lines in ItemsTab.lua's save order.
+func (c *Calculator) itemLines(item *pobcode.Item, res *Result) (*itemtext.Item, []string) {
 	it, err := c.items.Parse(item.Raw)
 	if err != nil {
 		res.Unparsed = append(res.Unparsed, "item: "+err.Error())
@@ -287,7 +305,7 @@ func (c *Calculator) itemMods(item *pobcode.Item, res *Result) (*itemtext.Item, 
 	for _, mr := range item.ModRanges {
 		ranges[mr.ID] = mr.Range
 	}
-	var mods []modparser.Mod
+	var lines []string
 	id := 0
 	for _, group := range [][]itemtext.ModLine{it.Enchants, it.Scourge, it.Implicits, it.Explicits, it.Crucible} {
 		for _, l := range group {
@@ -302,13 +320,28 @@ func (c *Calculator) itemMods(item *pobcode.Item, res *Result) (*itemtext.Item, 
 			if v, ok := ranges[id]; ok {
 				r = v
 			}
-			parsed := c.parser.Parse(applyRange(l.Text, r, catalystScalar(it, l)))
-			if !parsed.Parsed() {
-				res.Unparsed = append(res.Unparsed, l.Text)
-				continue
-			}
-			mods = append(mods, parsed.Mods...)
+			lines = append(lines, applyRange(l.Text, r, catalystScalar(it, l)))
 		}
+	}
+	return it, lines
+}
+
+// itemMods parses an item's active mod lines.
+func (c *Calculator) itemMods(item *pobcode.Item, res *Result) (*itemtext.Item, []modparser.Mod) {
+	it, lines := c.itemLines(item, res)
+	if it == nil {
+		return nil, nil
+	}
+	var mods []modparser.Mod
+	for _, line := range lines {
+		parsed := c.parser.Parse(line)
+		if !parsed.Parsed() {
+			if !isRadiusFuncLine(line) {
+				res.Unparsed = append(res.Unparsed, line)
+			}
+			continue
+		}
+		mods = append(mods, parsed.Mods...)
 	}
 	return it, mods
 }

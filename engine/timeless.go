@@ -47,15 +47,15 @@ type timelessLUTs struct {
 }
 
 func defaultTimelessDir() string {
-	if d := os.Getenv(TimelessDirEnv); d != "" {
-		return d
+	d := os.Getenv(TimelessDirEnv)
+	if d == "" {
+		cache, err := os.UserCacheDir()
+		if err != nil {
+			return ""
+		}
+		d = filepath.Join(cache, "poe-lib", "pob-v2.68.1-3", "src", "Data", "TimelessJewelData")
 	}
-	cache, err := os.UserCacheDir()
-	if err != nil {
-		return ""
-	}
-	d := filepath.Join(cache, "poe-lib", "pob-v2.68.1-3", "src", "Data", "TimelessJewelData")
-	if _, err := os.Stat(d); err != nil {
+	if st, err := os.Stat(d); err != nil || !st.IsDir() {
 		return ""
 	}
 	return d
