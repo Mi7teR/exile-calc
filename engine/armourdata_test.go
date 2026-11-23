@@ -29,7 +29,7 @@ func TestItemEnergyShield(t *testing.T) {
 		if it == nil {
 			t.Fatalf("%q: not parsed", tc.text)
 		}
-		if got := itemEnergyShield(it, mods); got != tc.want {
+		if got := itemArmour(it, mods).EnergyShield; got != tc.want {
 			t.Errorf("%q: got %v, want %v", tc.text, got, tc.want)
 		}
 	}

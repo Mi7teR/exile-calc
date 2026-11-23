@@ -26,30 +26,54 @@ func calcLocal(mods []modparser.Mod, name, typ string) float64 {
 	return total
 }
 
-// itemEnergyShield is armourData.EnergyShield of ItemClass:BuildModListForSlotNum.
-func itemEnergyShield(it *itemtext.Item, mods []modparser.Mod) float64 {
-	if it.Base == nil || it.Base.Armour == nil || zeroEnergyShield[it.Name] == it.BaseName {
-		return 0
+// armourData is an armour item's own defences (Item.lua armourData).
+type armourData struct {
+	Armour, Evasion, EnergyShield, Ward, BlockChance float64
+}
+
+// itemArmour ports the armour branch of ItemClass:BuildModListForSlotNum:
+// each defence is (base minimum + local flat + variance * base percentile)
+// scaled by local increases and quality. A missing percentile is derived
+// from the defence value in the item text, else 1.
+func itemArmour(it *itemtext.Item, mods []modparser.Mod) armourData {
+	var d armourData
+	if it.Base == nil || it.Base.Armour == nil {
+		return d
 	}
 	a := it.Base.Armour
-	base := calcLocal(mods, "EnergyShield", "BASE") + a.EnergyShieldBaseMin
-	variance := a.EnergyShieldBaseMax - a.EnergyShieldBaseMin
-	extra := calcLocal(mods, "EvasionAndEnergyShield", "BASE") + calcLocal(mods, "ArmourAndEnergyShield", "BASE")
-	inc := calcLocal(mods, "EnergyShield", "INC") + calcLocal(mods, "ArmourAndEnergyShield", "INC") +
-		calcLocal(mods, "EvasionAndEnergyShield", "INC") + calcLocal(mods, "Defences", "INC")
+	local := func(name, typ string) float64 { return calcLocal(mods, name, typ) }
 	quality := float64(it.Quality)
-	if calcLocal(mods, "AlternateQualityArmour", "BASE") > 0 {
+	if local("AlternateQualityArmour", "BASE") > 0 {
 		quality = 0
 	}
-	scale := (1 + inc/100) * (1 + quality/100)
-	pct, ok := it.ArmourData["EnergyShieldBasePercentile"]
-	if !ok {
-		pct = 1
-		if es := it.ArmourData["EnergyShield"]; es > 0 && variance != 0 {
-			pct = round(math.Max(math.Min((es/scale-base)/variance, 1), 0), 4)
+	defences := local("Defences", "INC")
+	compute := func(name string, min, max, flat, inc float64) float64 {
+		base := local(name, "BASE") + min
+		variance := max - min
+		scale := (1 + (local(name, "INC")+inc+defences)/100) * (1 + quality/100)
+		pct, ok := it.ArmourData[name+"BasePercentile"]
+		if !ok {
+			pct = 1
+			if v := it.ArmourData[name]; v > 0 && variance != 0 {
+				pct = round(math.Max(math.Min((v/scale-base)/variance, 1), 0), 4)
+			}
 		}
+		return round((base+flat+variance*pct)*scale, 0)
 	}
-	return round((base+extra+variance*pct)*scale, 0)
+	ae, aes, ees := local("ArmourAndEvasion", "BASE"), local("ArmourAndEnergyShield", "BASE"), local("EvasionAndEnergyShield", "BASE")
+	aeInc, aesInc, eesInc := local("ArmourAndEvasion", "INC"), local("ArmourAndEnergyShield", "INC"), local("EvasionAndEnergyShield", "INC")
+	d.Armour = compute("Armour", a.ArmourBaseMin, a.ArmourBaseMax, ae+aes, aeInc+aesInc)
+	d.Evasion = compute("Evasion", a.EvasionBaseMin, a.EvasionBaseMax, ae+ees, aeInc+eesInc)
+	d.EnergyShield = compute("EnergyShield", a.EnergyShieldBaseMin, a.EnergyShieldBaseMax, ees+aes, aesInc+eesInc)
+	// Ward has no hybrid stats: wardBase + variance, scaled by Ward and Defences.
+	d.Ward = compute("Ward", a.WardBaseMin, a.WardBaseMax, 0, 0)
+	if a.BlockChance != 0 {
+		d.BlockChance = math.Floor((a.BlockChance + local("BlockChance", "BASE")) * (1 + local("BlockChance", "INC")/100))
+	}
+	if base := zeroEnergyShield[it.Name]; base != "" && base == it.BaseName {
+		d.EnergyShield = 0
+	}
+	return d
 }
 
 // zeroEnergyShield: ItemClass:BuildModList's hack "to remove the energy

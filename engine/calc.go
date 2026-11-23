@@ -102,6 +102,15 @@ func (c *Calculator) Calc(b *pobcode.Build) (*Result, error) {
 	for _, r := range resistTypes {
 		db.NewMod(r+"ResistMax", "BASE", baseMaxResist, "Base")
 	}
+	db.NewMod("BlockChanceMax", "BASE", 75, "Base")      // characterConstants maximum_block_%
+	db.NewMod("SpellBlockChanceMax", "BASE", 75, "Base") // base_maximum_spell_block_%
+	// inherent_block_while_dual_wielding_% = 20
+	db.NewMod("BlockChance", "BASE", 20, "Base", map[string]any{"type": "Condition", "var": "DualWielding"},
+		map[string]any{"type": "Condition", "var": "NoInherentBlock", "neg": true},
+		map[string]any{"type": "Condition", "var": "DoubledInherentDualWieldingBlock", "neg": true})
+	db.NewMod("BlockChance", "BASE", 40, "Base", map[string]any{"type": "Condition", "var": "DualWielding"},
+		map[string]any{"type": "Condition", "var": "NoInherentBlock", "neg": true},
+		map[string]any{"type": "Condition", "var": "DoubledInherentDualWieldingBlock"})
 	db.NewMod("Life", "BASE", lifePerLevel, "Base", map[string]any{"type": "Multiplier", "var": "Level", "base": 38.0})
 	db.NewMod("Mana", "BASE", manaPerLevel, "Base", map[string]any{"type": "Multiplier", "var": "Level", "base": 34.0})
 	db.NewMod("Evasion", "BASE", baseEvasion, "Base")
@@ -359,7 +368,7 @@ func (c *Calculator) Calc(b *pobcode.Build) (*Result, error) {
 	if db.Flag("ConvertArmourESToLife") {
 		for _, slot := range esToLifeSlots {
 			if it := db.items[slot]; it != nil {
-				if es := itemEnergyShield(it, gearMods[slot]); es > 0 {
+				if es := itemArmour(it, gearMods[slot]).EnergyShield; es > 0 {
 					db.NewMod("Life", "BASE", es, slot+" ES to Life Conversion")
 				}
 			}
@@ -372,6 +381,7 @@ func (c *Calculator) Calc(b *pobcode.Build) (*Result, error) {
 	c.mergeKeystones(db, keystones, res)
 	res.Skills = skillInfo(skills)
 	c.resistances(db)
+	c.defence(db, gearMods, keystones)
 	for k, v := range db.UnsupportedTags {
 		if res.UnsupportedTags == nil {
 			res.UnsupportedTags = map[string]int{}
@@ -523,20 +533,25 @@ func (c *Calculator) nodeMods(res *Result, stats []string, incEffect float64, so
 	return mods
 }
 
-// localDefence names the mods an armour piece applies to itself
-// (Item:BuildModListForSlotNum); they do not reach the character directly.
-var localDefence = map[string]bool{
-	"Armour": true, "Evasion": true, "EnergyShield": true, "Ward": true,
-	"ArmourAndEvasion": true, "ArmourAndEnergyShield": true, "EvasionAndEnergyShield": true, "Defences": true,
+// localArmour names the mods ItemClass:BuildModListForSlotNum takes out of
+// an armour item's list with calcLocal: they make the item's own defences.
+var localArmour = map[string]string{
+	"Armour": "BASE INC", "Evasion": "BASE INC", "EnergyShield": "BASE INC", "Ward": "BASE INC",
+	"ArmourAndEvasion": "BASE INC", "ArmourAndEnergyShield": "BASE INC", "EvasionAndEnergyShield": "BASE INC",
+	"Defences": "INC", "AlternateQualityArmour": "BASE",
 }
 
-func hasGlobalTag(m modparser.Mod) bool {
-	for _, t := range m.Tags {
-		if t["type"] == "Global" {
-			return true
-		}
+// isLocalArmourMod is calcLocal's selection: no flags or keyword flags and
+// no tag but a leading InSlot. Shields also take their block chance.
+func isLocalArmourMod(m modparser.Mod, shield bool) bool {
+	types, ok := localArmour[m.Name]
+	if m.Name == "BlockChance" && shield {
+		types, ok = "BASE INC", true
 	}
-	return false
+	if !ok || !strings.Contains(types, m.Type) || m.Flags != 0 || m.KeywordFlags != 0 {
+		return false
+	}
+	return len(m.Tags) == 0 || tagStr(m.Tags[0], "type") == "InSlot"
 }
 
 // Item.lua catalystList and catalystTags: a catalyst scales the lines that
@@ -664,7 +679,7 @@ func (c *Calculator) addItem(db *ModDB, res *Result, item *pobcode.Item, scale f
 	isArmour := it.Base != nil && it.Base.Armour != nil
 	isWeapon := it.Base != nil && it.Base.Weapon != nil
 	for _, m := range mods {
-		if isArmour && localDefence[m.Name] && !hasGlobalTag(m) {
+		if isArmour && isLocalArmourMod(m, it.Base.Armour.BlockChance != 0) {
 			continue // local to the item: part of its own defence values
 		}
 		if isWeapon && m.Flags != 0 {

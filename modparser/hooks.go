@@ -82,6 +82,12 @@ var hooks = map[string]Hook{
 	"specialModList[^grants (%d+)%% increased accuracy per (%d+)%% quality$]":         perQuality("Accuracy", "INC"),
 	"specialModList[^grants (%d+)%% increased area of effect per (%d+)%% quality$]":   perQuality("AreaOfEffect", "INC"),
 	"specialModList[^grants (%d+)%% increased elemental damage per (%d+)%% quality$]": perQuality("ElementalDamage", "INC"),
+	// ["your offerings have (%d+)%% reduced effect on you"] = function(num) return {
+	//   mod("ExtraSkillMod", "LIST", { mod = mod("BuffEffectOnPlayer", "INC", -num) },
+	//   { type = "SkillName", skillNameList = { "Bone Offering", "Flesh Offering", "Spirit Offering", "Blood Offering" } }) } end
+	// and the "increased" form with num.
+	"specialModList[^your offerings have (%d+)%% reduced effect on you$]":   offeringEffectOnYou(-1),
+	"specialModList[^your offerings have (%d+)%% increased effect on you$]": offeringEffectOnYou(1),
 	// ["grants level (%d+) (.+)"] = function(num, _, skill) return grantedExtraSkill(skill, num) end
 	"specialModList[^grants level (%d+) (.+)$]": func(p *Parser, a []any) any {
 		return p.grantedExtraSkill(argS(a, 2), arg(a, 0), nil)
@@ -102,6 +108,11 @@ var hooks = map[string]Hook{
 	"modTagList[while holding a (%w+)]": func(p *Parser, a []any) any {
 		return map[string]any{"tag": map[string]any{"type": "Condition", "varList": []any{"Using" + firstToUpper(argS(a, 1))}}}
 	},
+	// ["while holding a (%w+) or (%w+)"] = function (_, g1, g2) return {
+	//   tag = { type = "Condition", varList = { "Using"..firstToUpper(g1), "Using"..firstToUpper(g2) } } } end
+	"modTagList[while holding a (%w+) or (%w+)]": func(p *Parser, a []any) any {
+		return map[string]any{"tag": map[string]any{"type": "Condition", "varList": []any{"Using" + firstToUpper(argS(a, 1)), "Using" + firstToUpper(argS(a, 2))}}}
+	},
 	// ["if (%d+) (%a+) items are equipped"] = function(num, _, effectName) return {
 	//   tag = { type = "MultiplierThreshold", var = firstToUpper(effectName) .. "Item", threshold = num} } end
 	"modTagList[if (%d+) (%a+) items are equipped]": func(p *Parser, a []any) any {
@@ -111,6 +122,14 @@ var hooks = map[string]Hook{
 
 func corruptedJewelEffect(p *Parser, a []any) any {
 	return []any{newMod("JewelData", "LIST", map[string]any{"key": "corrupted" + firstToUpper(argS(a, 2)) + "JewelIncEffect", "value": arg(a, 0)}, 0, 0)}
+}
+
+func offeringEffectOnYou(sign float64) Hook {
+	return func(p *Parser, a []any) any {
+		n, _ := toNumber(arg(a, 0)).(float64)
+		return []any{withTags(newMod("ExtraSkillMod", "LIST", map[string]any{"mod": newMod("BuffEffectOnPlayer", "INC", sign*n, 0, 0)}, 0, 0),
+			map[string]any{"type": "SkillName", "skillNameList": []any{"Bone Offering", "Flesh Offering", "Spirit Offering", "Blood Offering"}})}
+	}
 }
 
 // perQuality builds the hooks of the "grants ... per N% quality" lines.
