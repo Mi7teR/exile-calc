@@ -6,6 +6,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 
 	"github.com/Mi7teR/poe-lib/gamedata"
 	"github.com/Mi7teR/poe-lib/itemtext"
@@ -21,6 +22,9 @@ type Calculator struct {
 	luts   *timelessLUTs
 	config configApplies
 	gemIdx *gemIndex
+
+	keystoneOnce sync.Once
+	keystones    map[string]*gamedata.Node // PassiveTree.lua keystoneMap
 }
 
 func New() (*Calculator, error) {
@@ -276,11 +280,14 @@ func (c *Calculator) Calc(b *pobcode.Build) (*Result, error) {
 	for _, s := range skills {
 		c.buildSkillMods(db, s, res)
 	}
+	keystones := map[string]bool{}
 	c.applyFlasks(db, res, flasks)
+	c.mergeKeystones(db, keystones, res)
 	c.attributes(db)
 	shrineBuffs(db)
 	c.lifeMana(db)
 	c.applyBuffs(db, skills, res)
+	c.mergeKeystones(db, keystones, res)
 	res.Skills = skillInfo(skills)
 	c.resistances(db)
 	for k, v := range db.UnsupportedTags {
@@ -584,9 +591,42 @@ func (c *Calculator) addItem(db *ModDB, res *Result, item *pobcode.Item, scale f
 		db.Add(scaleMod(slotTags(fromParsed(m, source), slot), scale))
 	}
 	if slot != "" {
-		socketMultipliers(db, it, strings.Replace(slot, " Swap", "", 1))
+		name := strings.Replace(slot, " Swap", "", 1)
+		socketMultipliers(db, it, name)
+		db.NewMod("Multiplier:QualityOn"+name, "BASE", float64(it.Quality), "Quality")
 	}
 	return it, mods
+}
+
+// mergeKeystones is modLib.mergeKeystones: a Keystone mod (an item line
+// such as "Blood Magic") adds that keystone's node mods once, with the
+// source of the line unless it comes from the tree. PoB runs it at the
+// start of calcs.perform, after flasks and after buffs.
+func (c *Calculator) mergeKeystones(db *ModDB, added map[string]bool, res *Result) {
+	c.keystoneOnce.Do(func() {
+		c.keystones = map[string]*gamedata.Node{}
+		for _, n := range c.data.Tree.Nodes {
+			if n.IsKeystone && n.Group != 0 {
+				c.keystones[n.Name] = n
+				c.keystones[strings.ToLower(n.Name)] = n
+			}
+		}
+	})
+	for _, e := range db.List(nil, "Keystone") {
+		name, _ := e.Value.(string)
+		node := c.keystones[name]
+		if added[name] || node == nil {
+			continue
+		}
+		added[name] = true
+		source := fmt.Sprintf("Tree:%d", node.ID)
+		if e.Mod.Source != "" && !strings.Contains(strings.ToLower(e.Mod.Source), "tree") {
+			source = e.Mod.Source
+		}
+		for _, m := range c.nodeLines(node.Stats, res) {
+			db.Add(fromParsed(m, source))
+		}
+	}
 }
 
 // socketMultipliers ports the socket part of ItemClass:BuildModListForSlotNum:

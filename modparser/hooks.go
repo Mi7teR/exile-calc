@@ -68,6 +68,20 @@ var hooks = map[string]Hook{
 		}
 		return []any{withTags(newMod("BuffEffect", "INC", arg(a, 2), 0, 0), tag)}
 	},
+	// ["grants %+(%d+) to maximum life per (%d+)%% quality"] = function(num, _, div) return {
+	//   mod("Life", "BASE", num, { type = "Multiplier", var = "QualityOn{SlotName}", div = tonumber(div) }) } end
+	// and the other "grants ... per N% quality" lines of ModParser.lua.
+	"specialModList[^grants %+(%d+) to maximum life per (%d+)%% quality$]":            perQuality("Life", "BASE"),
+	"specialModList[^grants %+(%d+) to maximum mana per (%d+)%% quality$]":            perQuality("Mana", "BASE"),
+	"specialModList[^grants %+(%d+) to strength per (%d+)%% quality$]":                perQuality("Str", "BASE"),
+	"specialModList[^grants %+(%d+) to dexterity per (%d+)%% quality$]":               perQuality("Dex", "BASE"),
+	"specialModList[^grants %+(%d+) to intelligence per (%d+)%% quality$]":            perQuality("Int", "BASE"),
+	"specialModList[^grants %+(%d+)%% to fire resistance per (%d+)%% quality$]":       perQuality("FireResist", "BASE"),
+	"specialModList[^grants %+(%d+)%% to cold resistance per (%d+)%% quality$]":       perQuality("ColdResist", "BASE"),
+	"specialModList[^grants %+(%d+)%% to lightning resistance per (%d+)%% quality$]":  perQuality("LightningResist", "BASE"),
+	"specialModList[^grants (%d+)%% increased accuracy per (%d+)%% quality$]":         perQuality("Accuracy", "INC"),
+	"specialModList[^grants (%d+)%% increased area of effect per (%d+)%% quality$]":   perQuality("AreaOfEffect", "INC"),
+	"specialModList[^grants (%d+)%% increased elemental damage per (%d+)%% quality$]": perQuality("ElementalDamage", "INC"),
 	// ["grants level (%d+) (.+)"] = function(num, _, skill) return grantedExtraSkill(skill, num) end
 	"specialModList[^grants level (%d+) (.+)$]": func(p *Parser, a []any) any {
 		return p.grantedExtraSkill(argS(a, 2), arg(a, 0), nil)
@@ -97,6 +111,14 @@ var hooks = map[string]Hook{
 
 func corruptedJewelEffect(p *Parser, a []any) any {
 	return []any{newMod("JewelData", "LIST", map[string]any{"key": "corrupted" + firstToUpper(argS(a, 2)) + "JewelIncEffect", "value": arg(a, 0)}, 0, 0)}
+}
+
+// perQuality builds the hooks of the "grants ... per N% quality" lines.
+func perQuality(name, typ string) Hook {
+	return func(p *Parser, a []any) any {
+		return []any{withTags(newMod(name, typ, arg(a, 0), 0, 0),
+			map[string]any{"type": "Multiplier", "var": "QualityOn{SlotName}", "div": toNumber(argS(a, 2))})}
+	}
 }
 
 func arg(a []any, i int) any {
