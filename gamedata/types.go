@@ -356,4 +356,5 @@ type SkillLevel struct {
 	ManaReservationFlat    float64   `json:"manaReservationFlat,omitempty"`
 	LifeReservationPercent float64   `json:"lifeReservationPercent,omitempty"`
 	LifeReservationFlat    float64   `json:"lifeReservationFlat,omitempty"`
+	Cooldown               float64   `json:"cooldown,omitempty"`
 }

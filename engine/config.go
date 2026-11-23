@@ -119,6 +119,10 @@ func (c *Calculator) applyConfig(db *ModDB, res *Result, set *pobcode.ConfigSet)
 		if !ok {
 			continue
 		}
+		if o.Var == "enemyIsBoss" {
+			enemyIsBoss(db, val)
+			continue
+		}
 		f := funcs[o.Var]
 		if f == nil {
 			res.Incomplete = append(res.Incomplete, "config "+o.Var+": apply not supported")
@@ -132,6 +136,35 @@ func (c *Calculator) applyConfig(db *ModDB, res *Result, set *pobcode.ConfigSet)
 		player.commit()
 		enemy.commit()
 	}
+}
+
+// enemyIsBoss ports the mods of ConfigOptions.lua's enemyIsBoss apply.
+// Its other work sets placeholders on the config tab's enemy fields
+// (damage, resistances, armour), which only enemy stats read.
+func enemyIsBoss(db *ModDB, val luadata.Value) {
+	v, _ := val.(luadata.String)
+	effective := map[string]any{"type": "Condition", "var": "Effective"}
+	enemyFlag := func(name string) {
+		db.enemy.Add(Mod{Name: name, Type: "FLAG", Value: true, Source: "Config", Tags: []map[string]any{effective}})
+	}
+	switch string(v) {
+	case "Boss":
+		enemyFlag("Condition:RareOrUnique")
+		db.enemy.NewMod("AilmentThreshold", "MORE", 488, "Boss")
+	case "Pinnacle":
+		enemyFlag("Condition:RareOrUnique")
+		enemyFlag("Condition:PinnacleBoss")
+		db.enemy.NewMod("AilmentThreshold", "MORE", 404, "Boss")
+	case "Uber":
+		enemyFlag("Condition:RareOrUnique")
+		enemyFlag("Condition:PinnacleBoss")
+		db.enemy.NewMod("DamageTaken", "MORE", -70, "Boss")
+		db.enemy.NewMod("AilmentThreshold", "MORE", 404, "Boss")
+	default:
+		return
+	}
+	db.NewMod("WarcryPower", "BASE", 20, "Boss")
+	db.NewMod("Multiplier:EnemyPower", "BASE", 20, "Boss")
 }
 
 // modSink collects one apply call's NewMod calls, committed only if the

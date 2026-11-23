@@ -1062,6 +1062,9 @@ func (c *Calculator) buildSkillMods(db *ModDB, s *activeSkill, res *Result) {
 			list.Add(modFromMap(m, src))
 		}
 	}
+	if lv := ge.Levels[a.level]; lv != nil && lv.Cooldown != 0 {
+		s.data["cooldown"] = lv.Cooldown
+	}
 	for _, e := range db.List(s.cfg, "SkillData") {
 		skillData(s.data, e.Value)
 	}
@@ -1197,6 +1200,7 @@ func mergeBuff(src []Mod, dest map[string][]Mod, key string) {
 // and adds the merged buffs to the ModDB.
 func (c *Calculator) applyBuffs(db *ModDB, skills []*activeSkill, res *Result) {
 	buffs := map[string][]Mod{}
+	warcries := map[string]bool{}
 	guards := map[string][]Mod{}
 	var guardOrder []string
 	notBuff := map[string]bool{}
@@ -1290,7 +1294,9 @@ func (c *Calculator) applyBuffs(db *ModDB, skills []*activeSkill, res *Result) {
 					guardOrder = append(guardOrder, b.name)
 				}
 				mergeBuff(scaleMods(b.mods, (1+inc/100)*more), guards, b.name)
-			case "Warcry", "Link":
+			case "Warcry":
+				c.warcry(db, s, b, mainCfg(skills), warcries, add)
+			case "Link":
 				res.Incomplete = append(res.Incomplete, fmt.Sprintf("%s buff not applied: %s", strings.ToLower(b.typ), b.name))
 			}
 		}
@@ -1343,6 +1349,81 @@ func skillInfo(skills []*activeSkill) []SkillInfo {
 		out = append(out, info)
 	}
 	return out
+}
+
+// warcry ports the Warcry branch of calcs.perform: exerted attacks, warcry
+// power bonuses on mods tagged with a div, uptime from duration and
+// cooldown, and the buff on the player scaled by buff effect.
+func (c *Calculator) warcry(db *ModDB, s *activeSkill, b *skillBuff, mainCfg *Cfg, seen map[string]bool, add func([]Mod, string)) {
+	list, cfg := s.mods, s.cfg
+	name := strings.ReplaceAll(strings.ReplaceAll(strings.ReplaceAll(b.name, " Cry", ""), "'s", ""), " ", "")
+	if base := list.SumCfg(mainCfg, "BASE", name+"ExertedAttacks"); base > 0 {
+		extra := list.Sum("BASE", "ExtraExertedAttacks")
+		db.NewMod("Num"+name+"Exerts", "BASE", math.Floor((base+extra)*list.More("ExtraExertedAttacks")), "")
+		if !seen[b.name] {
+			db.NewMod("Multiplier:ExertingWarcryCount", "BASE", 1, b.name)
+			seen[b.name] = true
+		}
+	}
+	if list.Flag("CannotShareWarcryBuffs") {
+		return
+	}
+	power, ok := db.Override("WarcryPower")
+	if !ok {
+		power = math.Max(db.Sum("BASE", "WarcryPower")*(1+db.Sum("INC", "WarcryPower")/100), db.Sum("BASE", "MinimumWarcryPower"))
+	}
+	bonus := make([]float64, len(b.mods))
+	for i, m := range b.mods {
+		bonus[i] = 1
+		if len(m.Tags) == 0 || tagStr(m.Tags[0], "effectType") != "Warcry" {
+			continue
+		}
+		if div, ok := tagNum(m.Tags[0], "div"); ok && div != 0 {
+			p := power
+			if limit, ok := tagNum(m.Tags[0], "limit"); ok {
+				p = math.Min(p, limit)
+			}
+			bonus[i] = math.Floor(p / div)
+		}
+	}
+	duration := skillDuration(list, cfg, s.data, db.enemy)
+	cooldown, ok := list.OverrideCfg(cfg, "CooldownRecovery")
+	if !ok {
+		cd, _ := num(s.data["cooldown"])
+		cooldown = (cd + list.SumCfg(cfg, "BASE", "CooldownRecovery")) / calcMod(list, cfg, "CooldownRecovery")
+	}
+	uptime := 1.0
+	if !db.Flag("Condition:WarcryMaxHit") {
+		uptime = math.Min(duration/cooldown, 1)
+	}
+	if db.Flag("CannotGainWarcryBuffs") || b.applyNotPlayer {
+		return
+	}
+	db.conditions["AffectedBy"+name] = true
+	inc := list.SumCfg(cfg, "INC", "BuffEffect", "BuffEffectOnSelf", "BuffEffectOnPlayer")
+	more := list.MoreCfg(cfg, "BuffEffect", "BuffEffectOnSelf")
+	var out []Mod
+	for i, m := range b.mods {
+		out = append(out, scaleMod(m, (1+inc/100)*more*bonus[i]*uptime))
+	}
+	add(out, b.name)
+}
+
+const buffExpirationSlowCap = 0.25 // Data.lua data.misc
+
+// skillDuration is calcSkillDuration (CalcOffence.lua).
+func skillDuration(list *ModDB, cfg *Cfg, data map[string]any, enemy *ModDB) float64 {
+	names := []string{"Duration", "PrimaryDuration"}
+	if truthy(data["mineDurationAppliesToSkill"]) {
+		names = append(names, "MineDuration")
+	}
+	mod := math.Max(calcMod(list, cfg, names...), 0)
+	base, _ := num(data["duration"])
+	d := (base + list.SumCfg(cfg, "BASE", "Duration", "PrimaryDuration")) * mod
+	if truthy(data["debuff"]) && enemy != nil {
+		d /= math.Max(buffExpirationSlowCap, calcMod(enemy, cfg, "BuffExpireFaster"))
+	}
+	return d
 }
 
 // extraAuras ports the ExtraAura loop of calcs.perform: aura mods granted
