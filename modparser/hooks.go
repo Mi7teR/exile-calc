@@ -16,6 +16,11 @@ type Hook func(p *Parser, args []any) any
 // table and the key in ModParser.lua; each port quotes its Lua source.
 // Unported hooks make a line unsupported, never wrong.
 var hooks = map[string]Hook{
+	// ["you count as on low (%a+) while at (%d+)%% of maximum (%a+) or below"] = function(_, resourceType, numStr) return {
+	//   mod("Low"..resourceType:gsub("^%l", string.upper).."Percentage", "BASE", tonumber(numStr) / 100.0) } end
+	"specialModList[^you count as on low (%a+) while at (%d+)%% of maximum (%a+) or below$]": poolPercentage("Low"),
+	// ["you count as on full (%a+) while at (%d+)%% of maximum (%a+) or above"]: the same with "Full".
+	"specialModList[^you count as on full (%a+) while at (%d+)%% of maximum (%a+) or above$]": poolPercentage("Full"),
 	// ["you are cursed with level (%d+) (%D+)"] = function(num, _, name) return {
 	//   mod("ExtraCurse", "LIST", { skillId = gemIdLookup[name], level = num, applyToPlayer = true }) } end
 	"specialModList[^you are cursed with level (%d+) (%D+)$]": func(p *Parser, a []any) any {
@@ -277,6 +282,14 @@ func upperAfterNonWord(s string) string {
 		}
 	}
 	return string(b)
+}
+
+// poolPercentage builds the Low/Full <Pool>Percentage hooks.
+func poolPercentage(prefix string) Hook {
+	return func(p *Parser, a []any) any {
+		n, _ := toNumber(argS(a, 2)).(float64)
+		return []any{newMod(prefix+firstToUpper(argS(a, 1))+"Percentage", "BASE", n/100, 0, 0)}
+	}
 }
 
 // dmgTypeNames is ModParser.lua's local dmgTypes.

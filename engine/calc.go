@@ -1114,6 +1114,14 @@ func (c *Calculator) attributes(db *ModDB) {
 // lifeMana ports doActorLifeMana (Modules/CalcPerform.lua).
 func (c *Calculator) lifeMana(db *ModDB) {
 	out := db.output
+	out["LowLifePercentage"] = 100 * lowPoolThreshold
+	if v := db.Sum("BASE", "LowLifePercentage"); v > 0 {
+		out["LowLifePercentage"] = 100 * v
+	}
+	out["FullLifePercentage"] = 100
+	if v := db.Sum("BASE", "FullLifePercentage"); v > 0 {
+		out["FullLifePercentage"] = 100 * v
+	}
 	if db.Flag("ChaosInoculation") {
 		out["Life"] = 1
 		db.conditions["FullLife"] = true

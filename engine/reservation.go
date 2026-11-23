@@ -22,6 +22,7 @@ func reservations(db *ModDB, skills []*activeSkill, res *Result) {
 	out := db.output
 	reservedBase := map[string]float64{"Life": 0, "Mana": 0}
 	reservedPercent := map[string]float64{"Life": db.Sum("BASE", "ExtraLifeReserved"), "Mana": 0}
+	uncancellable := map[string]float64{"Life": db.Sum("BASE", "ExtraLifeReserved"), "Mana": db.Sum("BASE", "ExtraManaReserved")}
 	for _, s := range skills {
 		if s.disabled || s.mods == nil {
 			continue
@@ -93,13 +94,16 @@ func reservations(db *ModDB, skills []*activeSkill, res *Result) {
 			}
 			reservedBase[name] += flat
 			reservedPercent[name] += pct
+			if list.FlagCfg(cfg, "HasUncancellableReservation") {
+				uncancellable[name] += pct
+			}
 		}
 	}
-	lifeManaReservation(db, reservedBase, reservedPercent, !db.Flag("ManaIncreasedByOvercappedLightningRes"))
+	lifeManaReservation(db, reservedBase, reservedPercent, uncancellable, !db.Flag("ManaIncreasedByOvercappedLightningRes"))
 }
 
 // lifeManaReservation is doActorLifeManaReservation.
-func lifeManaReservation(db *ModDB, base, percent map[string]float64, addAura bool) {
+func lifeManaReservation(db *ModDB, base, percent, uncancellable map[string]float64, addAura bool) {
 	out := db.output
 	for _, pool := range []string{"Life", "Mana"} {
 		max := out[pool]
@@ -111,6 +115,8 @@ func lifeManaReservation(db *ModDB, base, percent map[string]float64, addAura bo
 			out[pool+"ReservedPercent"] = math.Min(reserved/max*100, 100)
 			out[pool+"Unreserved"] = max - reserved
 			out[pool+"UnreservedPercent"] = (max - reserved) / max * 100
+			out[pool+"UncancellableReservation"] = math.Min(uncancellable[pool], 0)
+			out[pool+"CancellableReservation"] = 100 - uncancellable[pool]
 			threshold := lowPoolThreshold
 			if low > 0 {
 				threshold = low

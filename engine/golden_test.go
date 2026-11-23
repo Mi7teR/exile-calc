@@ -35,6 +35,8 @@ var reportStats = []string{"ManaRegenRecovery", "MovementSpeedMod",
 	"EffectiveBlockChance", "EffectiveSpellBlockChance", "AverageNotHitChance", "EnemyCritChance",
 	"PhysicalEnemyDamage", "FireEnemyDamage", "ChaosEnemyDamage", "totalTakenDamage",
 	"PhysicalTakenDotMult", "FireTakenDotMult", "PhysicalTakenHit", "FireTakenHit", "ColdTakenHit", "ChaosTakenHit", "totalTakenHit",
+	"LifeHitPool", "PhysicalTotalPool", "ChaosTotalPool", "FireTotalHitPool",
+	"PhysicalMaximumHitTaken", "FireMaximumHitTaken", "ColdMaximumHitTaken", "LightningMaximumHitTaken", "ChaosMaximumHitTaken",
 }
 
 // Ratchet: builds where every stat above is within tolerance. Raise it as
@@ -114,6 +116,11 @@ func TestGoldenCorpus(t *testing.T) {
 		}
 		var extra []string
 		for _, s := range reportStats {
+			// The oracle drops infinite numbers (math.huge) from its JSON.
+			if _, has := want[s]; !has && math.IsInf(res.Stats[s], 1) {
+				perStat[s]++
+				continue
+			}
 			if within(res.Stats[s], want[s]) {
 				perStat[s]++
 			} else {

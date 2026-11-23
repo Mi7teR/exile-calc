@@ -27,6 +27,7 @@ type enemyEnv struct {
 	// physConversion is monsterPhysConversionMultiTable at the level.
 	physConversion float64
 	inputs         map[string]float64
+	checks         map[string]bool // check inputs that are on
 	holders        map[string]float64
 }
 
@@ -48,11 +49,14 @@ func (e *enemyEnv) value(name string) float64 {
 // newEnemyEnv ports the placeholder side of ConfigOptions.lua enemyIsBoss
 // and ConfigTabClass:UpdateLevel.
 func newEnemyEnv(set *pobcode.ConfigSet, opts []gamedata.ConfigOption, charLevel int, mon *gamedata.MonsterTables, res *Result) *enemyEnv {
-	e := &enemyEnv{inputs: map[string]float64{}, holders: map[string]float64{}, damageType: "Average", worstOf: 1}
+	e := &enemyEnv{inputs: map[string]float64{}, checks: map[string]bool{}, holders: map[string]float64{}, damageType: "Average", worstOf: 1}
 	if set != nil {
 		for _, in := range set.Inputs {
-			if in.Kind == pobcode.KindNumber {
+			switch in.Kind {
+			case pobcode.KindNumber:
 				e.inputs[in.Name] = in.Number
+			case pobcode.KindBool:
+				e.checks[in.Name] = in.Bool
 			}
 		}
 	}
