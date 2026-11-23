@@ -23,7 +23,9 @@ var goldenStats = []string{
 	"EnergyShieldRecharge", "ActionSpeedMod", "AvoidAllDamageFromHitsChance", "IgniteAvoidChance",
 	"ChillAvoidChance", "FreezeAvoidChance", "ShockAvoidChance", "BleedAvoidChance", "PoisonAvoidChance",
 	"CritExtraDamageReduction", "EffectiveBlockChance", "EffectiveSpellBlockChance", "FireTakenDotMult",
-	"ColdTakenHit", "LifeHitPool", "PhysicalTotalPool", "ChaosTotalPool",
+	"ColdTakenHit", "LifeHitPool", "PhysicalTotalPool", "ChaosTotalPool", "EvadeChance", "MeleeEvadeChance",
+	"ProjectileEvadeChance", "AverageNotHitChance", "EnemyCritChance", "PhysicalEnemyDamage", "FireEnemyDamage",
+	"ChaosEnemyDamage", "totalTakenDamage", "FireTakenHit", "ChaosTakenHit",
 }
 
 const tolerance = 0.005
@@ -31,10 +33,8 @@ const tolerance = 0.005
 // reportStats are compared and logged but not part of the ratchet yet.
 var reportStats = []string{
 	"ManaRegenRecovery", "MovementSpeedMod", "BasePhysicalDamageReduction",
-	"BasePhysicalDamageReductionWhenHit", "CurseEffectOnSelf", "EvadeChance", "MeleeEvadeChance",
-	"ProjectileEvadeChance", "AverageNotHitChance", "EnemyCritChance", "PhysicalEnemyDamage", "FireEnemyDamage",
-	"ChaosEnemyDamage", "totalTakenDamage", "PhysicalTakenDotMult", "PhysicalTakenHit", "FireTakenHit",
-	"ChaosTakenHit", "totalTakenHit", "FireTotalHitPool", "PhysicalMaximumHitTaken", "FireMaximumHitTaken",
+	"BasePhysicalDamageReductionWhenHit", "CurseEffectOnSelf", "PhysicalTakenDotMult", "PhysicalTakenHit",
+	"totalTakenHit", "FireTotalHitPool", "PhysicalMaximumHitTaken", "FireMaximumHitTaken",
 	"ColdMaximumHitTaken", "LightningMaximumHitTaken", "ChaosMaximumHitTaken", "NumberOfDamagingHits",
 	"NumberOfMitigatedDamagingHits", "TotalEHP", "EHPSurvivalTime",
 }

@@ -1284,7 +1284,8 @@ func mergeBuff(src []Mod, dest map[string][]Mod, key string) {
 
 // applyBuffs ports the player's Buff and Aura branches of calcs.perform
 // and adds the merged buffs to the ModDB.
-func (c *Calculator) applyBuffs(db *ModDB, skills []*activeSkill, res *Result) {
+func (c *Calculator) applyBuffs(db *ModDB, skills []*activeSkill, res *Result) []*enemyCurse {
+	var curses []*enemyCurse
 	buffs := map[string][]Mod{}
 	warcries := map[string]bool{}
 	guards := map[string][]Mod{}
@@ -1382,6 +1383,10 @@ func (c *Calculator) applyBuffs(db *ModDB, skills []*activeSkill, res *Result) {
 				mergeBuff(scaleMods(b.mods, (1+inc/100)*more), guards, b.name)
 			case "Warcry":
 				c.warcry(db, s, b, mainCfg(skills), warcries, add)
+			case "Curse", "CurseBuff":
+				if cu := c.skillCurse(db, s, b); cu != nil {
+					curses = append(curses, cu)
+				}
 			case "Link":
 				res.Incomplete = append(res.Incomplete, fmt.Sprintf("%s buff not applied: %s", strings.ToLower(b.typ), b.name))
 			}
@@ -1417,6 +1422,7 @@ func (c *Calculator) applyBuffs(db *ModDB, skills []*activeSkill, res *Result) {
 			db.multipliers["BuffOnSelf"]++
 		}
 	}
+	return curses
 }
 
 var auraEffectNames = []string{"AuraEffect", "BuffEffect", "BuffEffectOnSelf", "AuraEffectOnSelf", "AuraBuffEffect", "SkillAuraEffectOnSelf"}
@@ -1516,20 +1522,17 @@ func skillDuration(list *ModDB, cfg *Cfg, data map[string]any, enemy *ModDB) flo
 // (CalcPerform.lua): ExtraCurse mods with applyToPlayer (config options,
 // "You are Cursed with ...") put the curse gem's curse mods on the player,
 // scaled by curse effect on self.
-func (c *Calculator) extraCurses(db *ModDB, res *Result) {
+func (c *Calculator) extraCurses(db *ModDB, curses []*enemyCurse, res *Result) []*enemyCurse {
 	if db.Flag("Condition:OnConsecratedGround") {
 		effect := 1 + db.Sum("INC", "ConsecratedGroundEffect")/100
 		db.NewMod("CurseEffectOnSelf", "INC", -50*effect, "Consecrated Ground")
 	}
 	for _, e := range db.List(nil, "ExtraCurse") {
 		v, _ := e.Value.(map[string]any)
-		if !truthy(v["applyToPlayer"]) {
-			continue // curses on the enemy only change enemy stats
-		}
 		id, _ := v["skillId"].(string)
 		ge := c.data.Skills.Effects[id]
 		if ge == nil {
-			res.Incomplete = append(res.Incomplete, fmt.Sprintf("curse on you: unknown skill %q", id))
+			res.Incomplete = append(res.Incomplete, fmt.Sprintf("extra curse: unknown skill %q", id))
 			continue
 		}
 		lvl, _ := num(v["level"])
@@ -1546,6 +1549,13 @@ func (c *Calculator) extraCurses(db *ModDB, res *Result) {
 				}
 			}
 		}
+		if !truthy(v["applyToPlayer"]) {
+			if !db.enemy.Flag("Hexproof") || db.Flag("CursesIgnoreHexproof") {
+				scale := (1 + db.enemy.Sum("INC", "CurseEffectOnSelf")/100) * db.enemy.More("CurseEffectOnSelf")
+				curses = append(curses, &enemyCurse{name: ge.Name, priority: c.cursePriorityOf(ge.Name, nil), mods: scaleMods(curse, scale)})
+			}
+			continue
+		}
 		if db.Sum("BASE", "AvoidCurse") >= 100 {
 			continue
 		}
@@ -1559,6 +1569,7 @@ func (c *Calculator) extraCurses(db *ModDB, res *Result) {
 			db.Add(m)
 		}
 	}
+	return curses
 }
 
 // extraAuras ports the ExtraAura loop of calcs.perform: aura mods granted

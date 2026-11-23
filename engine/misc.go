@@ -339,6 +339,11 @@ func initConditionMods(db *ModDB) {
 	db.NewMod("Damage", "MORE", -10, "Base", when("MalignantMadness"), madness)
 	db.NewMod("ActionSpeed", "MORE", -10, "Base", when("MalignantMadness"), madness)
 	db.NewMod("PhysicalDamageReduction", "BASE", -15, "Base", when("Crushed"))
+	// IgnoreCond only hides these from the config tab's condition list.
+	ignore := map[string]any{"type": "IgnoreCond"}
+	db.Add(Mod{Name: "Condition:Burning", Type: "FLAG", Value: true, Source: "Base", Tags: []map[string]any{ignore, when("Ignited")}})
+	db.Add(Mod{Name: "Condition:Poisoned", Type: "FLAG", Value: true, Source: "Base", Tags: []map[string]any{ignore,
+		{"type": "MultiplierThreshold", "var": "PoisonStack", "threshold": 1.0}}})
 }
 
 // playerBaseMods are the defensive player base mods of calcs.initEnv.
@@ -348,6 +353,8 @@ func playerBaseMods(db *ModDB) {
 	db.NewMod("ElementalDamageReduction", "BASE", 4, "Base", endurance)
 	db.NewMod("MaximumFortification", "BASE", 20, "Base") // base_max_fortification
 	db.NewMod("ActiveTotemLimit", "BASE", 1, "Base")      // base_number_of_totems_allowed
+	db.NewMod("EnemyCurseLimit", "BASE", 1, "Base")
+	db.NewMod("SocketedCursesHexLimitValue", "BASE", 1, "Base")
 	// movement_velocity_+%_per_10_rampage_stacks, max_rampage_stacks 1000
 	db.NewMod("MovementSpeed", "INC", 1, "Base", map[string]any{"type": "Multiplier", "var": "Rampage", "limit": 50.0, "div": 20.0})
 }

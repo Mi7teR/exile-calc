@@ -429,8 +429,9 @@ func (c *Calculator) Calc(b *pobcode.Build) (*Result, error) {
 	totemCounts(db, skills)
 	chilling := chillSkills(db, skills)
 	charges(db) // early, for stats that depend on charges
-	c.applyBuffs(db, skills, res)
-	c.extraCurses(db, res)
+	curses := c.applyBuffs(db, skills, res)
+	curses = c.extraCurses(db, curses, res)
+	c.applyCurses(db, skills, curses, res)
 	extraAuras(db)
 	guaranteedChills(db, chilling)
 	c.mergeKeystones(db, keystones, res)
