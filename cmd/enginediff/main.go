@@ -115,7 +115,7 @@ func run(ids string, stats []string, oracle string) error {
 				}
 			}
 		}
-		if err := enc.Encode(map[string]any{"name": name, "xml": string(x), "tabulate": stats, "conditions": compareConditions, "skills": compareSkills}); err != nil {
+		if err := enc.Encode(map[string]any{"name": name, "xml": string(x), "tabulate": stats, "conditions": compareConditions, "skills": compareSkills, "buffMods": compareSkills}); err != nil {
 			return err
 		}
 	}

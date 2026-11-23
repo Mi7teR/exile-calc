@@ -66,7 +66,10 @@ func (c *Calculator) activeFlasks(db *ModDB, slots []flaskSlot) []*pobcode.Item 
 	return out
 }
 
-func (c *Calculator) applyFlasks(db *ModDB, res *Result, slots []flaskSlot) {
+// It returns whether a Silver Flask is active and the highest such flask's
+// increased effect as a fraction, for Onslaught in actorMisc.
+func (c *Calculator) applyFlasks(db *ModDB, res *Result, slots []flaskSlot) (silver bool, silverInc float64) {
+	silverInc = -100 // as in doActorMisc
 	flasks := c.activeFlasks(db, slots)
 	player := &Cfg{Actor: "player"}
 	effectInc := db.SumCfg(player, "INC", "FlaskEffect")
@@ -124,6 +127,10 @@ func (c *Calculator) applyFlasks(db *ModDB, res *Result, slots []flaskSlot) {
 			inc += effectIncMagic
 		}
 		scale := 1 + inc/100
+		if strings.Contains(it.BaseName, "Silver Flask") {
+			silver = true
+			silverInc = math.Max(silverInc, inc/100)
+		}
 		source := itemSource(item, it)
 
 		for _, line := range base.Buff {
@@ -153,6 +160,7 @@ func (c *Calculator) applyFlasks(db *ModDB, res *Result, slots []flaskSlot) {
 			db.Add(m)
 		}
 	}
+	return
 }
 
 // scaleMod is ModStoreClass:ScaleAddMod for numeric values without

@@ -40,6 +40,8 @@ const (
 	stNOT           = 75
 	stMovement      = 34
 	stRequireStaff  = 134
+
+	stSkillGrantedBySupport = 115
 )
 
 // Data/Global.lua ModFlag and KeywordFlag bits used here.
@@ -226,9 +228,9 @@ type activeSkill struct {
 	buffs       []*skillBuff
 	disabled    bool
 	main        bool // env.player.mainSkill
-	// weaponSupports is set when a linked support has weaponTypes, which
-	// canSupport does not match yet.
-	weaponSupports bool
+	// weapons are the types of the equipped weapons (weaponData1/2.type),
+	// which supports with weaponTypes check for skills granted by supports.
+	weapons [2]string
 }
 
 // resolveGem ports SkillsTabClass:LoadSkill and ProcessSocketGroup: the
@@ -392,6 +394,13 @@ func (c *Calculator) setupSkills(db *ModDB, b *pobcode.Build, useSwap bool, res 
 	mainGroup := min(max(len(set.Groups), 1), max(b.MainSocketGroup, 1))
 	if len(db.List(nil, "LinkedSupport")) > 0 {
 		res.Incomplete = append(res.Incomplete, "linked supports (LinkedSupport) not applied")
+	}
+
+	var weapons [2]string
+	for i, slot := range []string{"Weapon 1", "Weapon 2"} {
+		if it := db.items[slot]; it != nil && it.Base != nil && it.Base.Weapon != nil {
+			weapons[i] = it.Base.Type
+		}
 	}
 
 	slotOf := func(g *pobcode.SocketGroup) string {
@@ -581,7 +590,7 @@ func (c *Calculator) setupSkills(db *ModDB, b *pobcode.Build, useSwap bool, res 
 						}
 					}
 				}
-				s := c.createActiveSkill(eff, applied, g)
+				s := c.createActiveSkill(eff, applied, g, weapons)
 				s.cfg = &Cfg{SlotName: gc.cfg.SlotName}
 				out = append(out, s)
 			}
@@ -745,15 +754,33 @@ func canSupport(sup *skillEffect, s *activeSkill) bool {
 		return false
 	}
 	if len(ge.WeaponTypes) > 0 {
-		s.weaponSupports = true
-		return false // weapon type matching is not ported
+		// Varunastra's countsAsAll1H is not ported.
+		have := map[string]bool{}
+		if len(s.active.ge.WeaponTypes) > 0 {
+			for _, t := range s.active.ge.WeaponTypes {
+				have[t] = true
+			}
+		} else if s.types[stSkillGrantedBySupport] {
+			for _, t := range s.weapons {
+				if t != "" {
+					have[t] = true
+				}
+			}
+		}
+		match := false
+		for _, t := range ge.WeaponTypes {
+			match = match || have[t]
+		}
+		if !match {
+			return false
+		}
 	}
 	return len(ge.RequireSkillTypes) == 0 || typeExpressionMatch(ge.RequireSkillTypes, s.types, minionTypes)
 }
 
 // createActiveSkill is calcs.createActiveSkill.
-func (c *Calculator) createActiveSkill(active *skillEffect, supports []*skillEffect, g *pobcode.SocketGroup) *activeSkill {
-	s := &activeSkill{active: active, group: g, data: map[string]any{},
+func (c *Calculator) createActiveSkill(active *skillEffect, supports []*skillEffect, g *pobcode.SocketGroup, weapons [2]string) *activeSkill {
+	s := &activeSkill{active: active, group: g, data: map[string]any{}, weapons: weapons,
 		types: typeSet(active.ge.SkillTypes), minionTypes: typeSet(active.ge.MinionSkillTypes), flags: map[string]bool{}}
 	for _, f := range active.ge.BaseFlags {
 		s.flags[f] = true
@@ -1137,9 +1164,6 @@ func (c *Calculator) buildSkillMods(db *ModDB, s *activeSkill, res *Result) {
 		// Weapon flags (getWeaponFlags) are not ported: attack skills
 		// match only mods without weapon flags.
 		res.Incomplete = append(res.Incomplete, "attack skill weapon flags: "+ge.Name)
-	}
-	if len(s.buffs) > 0 && s.weaponSupports {
-		res.Incomplete = append(res.Incomplete, "supports with weapon types: "+ge.Name)
 	}
 }
 

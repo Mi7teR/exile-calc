@@ -117,6 +117,7 @@ func (c *Calculator) Calc(b *pobcode.Build) (*Result, error) {
 	db.NewMod("Life", "BASE", lifePerLevel, "Base", map[string]any{"type": "Multiplier", "var": "Level", "base": 38.0})
 	db.NewMod("Mana", "BASE", manaPerLevel, "Base", map[string]any{"type": "Multiplier", "var": "Level", "base": 34.0})
 	db.NewMod("Evasion", "BASE", baseEvasion, "Base")
+	initConditionMods(db)
 	penalty := -60.0
 	if in, ok := configInput(config, "resistancePenalty"); ok && in.Kind == pobcode.KindNumber {
 		penalty = in.Number
@@ -128,6 +129,8 @@ func (c *Calculator) Calc(b *pobcode.Build) (*Result, error) {
 	switch bandit := configString(config, "bandit", b.Bandit); bandit {
 	case "Alira":
 		db.NewMod("ElementalResist", "BASE", 15, "Bandit")
+	case "Kraityn":
+		db.NewMod("MovementSpeed", "INC", 8, "Bandit")
 	case "Oak":
 		db.NewMod("Life", "BASE", 40, "Bandit")
 	}
@@ -368,7 +371,7 @@ func (c *Calculator) Calc(b *pobcode.Build) (*Result, error) {
 		c.buildSkillMods(db, s, res)
 	}
 	keystones := map[string]bool{}
-	c.applyFlasks(db, res, flasks)
+	silverFlask, silverFlaskInc := c.applyFlasks(db, res, flasks)
 	c.mergeKeystones(db, keystones, res)
 	banners(db)
 	// CalcPerform.lua: "gain maximum life instead of maximum energy shield
@@ -394,6 +397,7 @@ func (c *Calculator) Calc(b *pobcode.Build) (*Result, error) {
 	c.mergeKeystones(db, keystones, res)
 	defenceForConditionals(db, gearMods)
 	charges(db)
+	actorMisc(db, mainSkill(skills), silverFlask, silverFlaskInc)
 	rage(db, mainCfg(skills))
 	res.Skills = skillInfo(skills)
 	c.resistances(db)

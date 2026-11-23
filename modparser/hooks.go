@@ -16,6 +16,12 @@ type Hook func(p *Parser, args []any) any
 // table and the key in ModParser.lua; each port quotes its Lua source.
 // Unported hooks make a line unsupported, never wrong.
 var hooks = map[string]Hook{
+	// ["your movement speed is (%d+)%% of its base value"] =
+	//   function(num) return { mod("MovementSpeed", "OVERRIDE", num / 100) } end
+	"specialModList[^your movement speed is (%d+)%% of its base value$]": func(p *Parser, a []any) any {
+		n, _ := toNumber(arg(a, 0)).(float64)
+		return []any{newMod("MovementSpeed", "OVERRIDE", n/100, 0, 0)}
+	},
 	// ["socketed [%a+]* ?gems a?r?e? ?supported by level (%d+) (.+)"] =
 	//   function(num, _, support) return extraSupport(support, num) end
 	"specialModList[^socketed [%a+]* ?gems a?r?e? ?supported by level (%d+) (.+)$]": func(p *Parser, a []any) any {

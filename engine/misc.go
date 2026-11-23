@@ -1,0 +1,349 @@
+package engine
+
+import (
+	"math"
+	"strings"
+)
+
+const fortifyBaseDuration = 6.0 // Data.lua data.misc.FortifyBaseDuration
+
+// nonDamagingAilment is the part of Data.lua data.nonDamagingAilment that
+// self ailments read: the default and maximum effect.
+var nonDamagingAilment = map[string]struct{ def, max float64 }{
+	"Chill": {10, 30}, "Shock": {15, 50}, "Scorch": {10, 30},
+}
+
+// maxSource is ModStore:Max: the largest MAX mod, or false if there is
+// none above zero. With source set, only mods from that source kind
+// ("Skill" for "Skill:<id>") count.
+func maxSource(db *ModDB, source string, name string) (float64, bool) {
+	best, found := 0.0, false
+	for _, r := range db.tabulateType(name, "MAX") {
+		if source != "" && strings.SplitN(r.Source, ":", 2)[0] != source {
+			continue
+		}
+		if f, ok := num(r.Value); ok && f > best {
+			best, found = f, true
+		}
+	}
+	return best, found
+}
+
+// actorMisc ports the player buffs and debuffs of doActorMisc
+// (CalcPerform.lua) before its rage part, which rage() ports.
+func actorMisc(db *ModDB, main *activeSkill, silverFlask bool, silverFlaskInc float64) {
+	out := db.output
+	cond := db.conditions
+	mainMods, mainCfg := db, (*Cfg)(nil)
+	if main != nil && main.mods != nil {
+		mainMods, mainCfg = main.mods, main.cfg
+	}
+	buffEffect := func(names ...string) float64 {
+		return 1 + db.Sum("INC", append(names, "BuffEffectOnSelf")...)/100
+	}
+	speed := func(typ string, v float64, source string) {
+		db.Add(Mod{Name: "Speed", Type: typ, Value: v, Flags: mfAttack, Source: source})
+		db.Add(Mod{Name: "Speed", Type: typ, Value: v, Flags: mfCast, Source: source})
+	}
+
+	if main != nil && main.mods != nil && main.mods.FlagCfg(main.cfg, "Cruelty") {
+		if o, ok := db.Override("Cruelty"); ok {
+			db.multipliers["Cruelty"] = o
+		} else {
+			db.multipliers["Cruelty"] = 40
+		}
+	}
+	if m := db.Sum("BASE", "MinimumRage"); m > db.multipliers["Rage"] {
+		db.multipliers["Rage"] = m
+	}
+	if db.Sum("BASE", "MinimumFortification") > 0 {
+		cond["Fortified"] = true
+	}
+	if db.Flag("Fortified") || db.Sum("BASE", "Multiplier:Fortification") > 0 {
+		maxStacks, ok := db.Override("MaximumFortification")
+		if !ok {
+			maxStacks = db.SumCfg(mainCfg, "BASE", "MaximumFortification")
+		}
+		minStacks := db.Sum("BASE", "MinimumFortification")
+		if db.Flag("Condition:HaveMaxFortification") {
+			minStacks = maxStacks
+		}
+		minStacks = math.Min(minStacks, maxStacks)
+		set, ok := db.Override("FortificationStacks")
+		if !ok {
+			set = maxStacks
+		}
+		stacks := math.Min(set, maxStacks)
+		dur := fortifyBaseDuration
+		if o, ok := mainMods.OverrideCfg(nil, "FortifyDuration"); ok {
+			dur = o
+		}
+		out["MaximumFortification"] = maxStacks
+		out["MinimumFortification"] = minStacks
+		out["RemovableFortification"] = math.Min(maxStacks-minStacks, set-minStacks)
+		out["FortificationStacks"] = stacks
+		out["FortificationStacksOver20"] = math.Min(math.Max(0, stacks-20), maxStacks-20)
+		out["FortifyDuration"] = dur * (1 + mainMods.SumCfg(nil, "INC", "FortifyDuration")/100)
+		if !db.Flag("Condition:NoFortificationMitigation") {
+			out["FortificationEffect"] = stacks
+			db.NewMod("DamageTakenWhenHit", "MORE", -stacks, "Fortification")
+		}
+		if stacks >= maxStacks {
+			db.Add(Mod{Name: "Condition:HaveMaximumFortification", Type: "FLAG", Value: true})
+		}
+		db.multipliers["BuffOnSelf"]++
+	}
+	if db.Flag("Onslaught") {
+		inc := db.Sum("INC", "OnslaughtEffect", "BuffEffectOnSelf") / 100
+		if silverFlask {
+			inc += silverFlaskInc
+		}
+		effect := math.Floor(20 * (1 + inc))
+		speed("INC", effect, "Onslaught")
+		db.NewMod("MovementSpeed", "INC", effect, "Onslaught")
+	}
+	if cond["AffectedByArcaneSurge"] || db.Flag("Condition:ArcaneSurge") {
+		cond["AffectedByArcaneSurge"] = true
+		effect := buffEffect("ArcaneSurgeEffect")
+		effect += db.SumCfg(&Cfg{Actor: "player"}, "INC", "FlaskEffect") / 100 * db.Sum("BASE", "FlaskEffectToArcaneSurgeEffect") / 100
+		regen, ok := maxSource(db, "", "ArcaneSurgeManaRegen")
+		if !ok {
+			regen = 30
+		}
+		db.NewMod("ManaRegen", "INC", regen*effect, "Arcane Surge")
+		cast, ok := maxSource(db, "", "ArcaneSurgeCastSpeed")
+		if !ok {
+			cast = 20
+		}
+		cast *= effect
+		db.Add(Mod{Name: "Speed", Type: "INC", Value: cast, Flags: mfCast, Source: "Arcane Surge"})
+		if db.Flag("ArcaneSurgeCastSpeedToMovementSpeed") {
+			db.NewMod("MovementSpeed", "INC", cast, "Arcane Surge")
+		}
+		if d, ok := maxSource(db, "", "ArcaneSurgeDamage"); ok {
+			db.Add(Mod{Name: "Damage", Type: "MORE", Value: d * effect, Flags: mfSpell, Source: "Arcane Surge"})
+		}
+		for _, x := range []struct{ name, typ string }{{"LifeRegen", "INC"}, {"ManaRecoup", "BASE"}, {"ManaCostEfficiency", "INC"}} {
+			if v := db.Sum(x.typ, "ArcaneSurgeAlso"+x.name); v != 0 {
+				db.NewMod(x.name, x.typ, v*effect, "Arcane Surge")
+			}
+		}
+	}
+	if db.Flag("Fanaticism") && main != nil && main.flags["selfCast"] {
+		effect := math.Floor(75 * buffEffect())
+		db.Add(Mod{Name: "Speed", Type: "MORE", Value: effect, Flags: mfCast, Source: "Fanaticism"})
+		db.Add(Mod{Name: "Cost", Type: "MORE", Value: -effect, Flags: mfCast, Source: "Fanaticism"})
+		db.Add(Mod{Name: "AreaOfEffect", Type: "INC", Value: effect, Flags: mfCast, Source: "Fanaticism"})
+	}
+	if db.Flag("Condition:CanGainSpiritInfusion") {
+		mult := map[string]any{"type": "Multiplier", "var": "SpiritInfusion"}
+		global := map[string]any{"type": "GlobalEffect", "effectType": "Buff", "effectName": "Spirit Infusion", "unscalable": true}
+		db.NewMod("EnergyShieldRechargeFaster", "INC", 15, "Spirit Infusion", mult, global)
+	}
+	if db.Flag("UnholyMight") {
+		effect := buffEffect()
+		db.NewMod("PhysicalDamageConvertToChaos", "BASE", math.Floor(100*effect), "Unholy Might")
+		db.Add(Mod{Name: "Condition:CanWither", Type: "FLAG", Value: true, Source: "Unholy Might"})
+		if v := db.Sum("BASE", "UnholyMightAlsoChaosPenetration"); v != 0 {
+			db.NewMod("ChaosPenetration", "BASE", v*effect, "Unholy Might")
+		}
+	}
+	if db.Flag("ChaoticMight") {
+		db.NewMod("PhysicalDamageGainAsChaos", "BASE", math.Floor(30*buffEffect()), "Chaotic Might")
+	}
+	if db.Flag("Tailwind") {
+		db.NewMod("ActionSpeed", "INC", math.Floor(8*buffEffect("TailwindEffectOnSelf")), "Tailwind")
+	}
+	if db.Flag("Condition:TotemTailwind") {
+		db.NewMod("TotemActionSpeed", "INC", 8, "Tailwind")
+	}
+	if db.Flag("Adrenaline") {
+		e := buffEffect()
+		db.NewMod("Damage", "INC", math.Floor(100*e), "Adrenaline")
+		speed("INC", math.Floor(25*e), "Adrenaline")
+		db.NewMod("MovementSpeed", "INC", math.Floor(25*e), "Adrenaline")
+		db.NewMod("PhysicalDamageReduction", "BASE", math.Floor(10*e), "Adrenaline")
+	}
+	if db.Flag("Condition:WildSavagery") && db.Flag("WildSavagery") {
+		db.NewMod("PhysicalDamage", "INC", 100, "Wild Savagery")
+		db.NewMod("ActionSpeed", "INC", 10, "Wild Savagery")
+		db.Add(Mod{Name: "IgnoreEnemyPhysicalDamageReduction", Type: "FLAG", Value: true, Source: "Wild Savagery"})
+		db.Add(Mod{Name: "StunImmune", Type: "FLAG", Value: true, Source: "Wild Savagery"})
+	}
+	if db.Flag("Convergence") {
+		db.NewMod("ElementalDamage", "MORE", math.Floor(30*buffEffect()), "Convergence")
+	}
+	if db.Flag("HerEmbrace") {
+		cond["HerEmbrace"] = true
+		for _, n := range []string{"AvoidStun", "AvoidFreeze", "AvoidChill", "AvoidIgnite"} {
+			db.NewMod(n, "BASE", 100, "Her Embrace")
+		}
+		speed("INC", 20, "Her Embrace")
+		db.NewMod("MovementSpeed", "INC", 20, "Her Embrace")
+	}
+	if db.Flag("Condition:OnConsecratedGround") {
+		effect := 1 + db.Sum("INC", "ConsecratedGroundEffect")/100
+		db.NewMod("LifeRegenPercent", "BASE", 5*effect, "Consecrated Ground")
+		db.NewMod("Accuracy", "INC", math.Floor(db.Sum("INC", "ConsecratedGroundAlsoAccuracy")*effect), "Consecrated Ground")
+	}
+	if db.Flag("Condition:PhantasmalMight") {
+		limit, ok := out["ActivePhantasmLimit"]
+		if !ok {
+			limit = 1
+		}
+		db.multipliers["BuffOnSelf"] += limit - 1
+	}
+	if db.Flag("Elusive") {
+		elusive(db, main)
+	}
+	if db.Flag("Condition:CanBeWithered") {
+		effect := 6 * (100 + db.Sum("INC", "WitherEffectOnSelf")) / 100 * db.More("WitherEffectOnSelf")
+		db.NewMod("ChaosDamageTaken", "INC", effect, "Withered", map[string]any{"type": "Multiplier", "var": "WitheredStack", "limit": 15.0})
+	}
+	if db.Flag("Excommunicated") {
+		db.NewMod("ChaosDamage", "MORE", -100, "Excommunicated")
+	}
+	if db.Flag("Blind") && !db.Flag("CannotBeBlinded") && !db.Flag("UnaffectedByBlind") {
+		effect := buffEffect("BlindEffect")
+		if o, ok := db.Override("BlindEffect"); ok {
+			effect = math.Min(o/100, effect)
+		}
+		db.NewMod("Accuracy", "MORE", math.Floor(-20*effect), "Blind")
+		db.NewMod("Evasion", "MORE", math.Floor(-20*effect), "Blind")
+	}
+	if db.Flag("Chill") {
+		effect := selfAilment(db, "Chill", true)
+		sign := -1.0
+		if db.Flag("SelfChillEffectIsReversed") {
+			sign = 1
+		}
+		if db.Flag("SkitterbotBonechill") {
+			db.NewMod("ColdDamageTaken", "INC", -sign*effect, "Bonechill")
+		}
+		db.NewMod("ActionSpeed", "INC", sign*effect, "Chill")
+	}
+	if db.Flag("Shock") {
+		db.NewMod("DamageTaken", "INC", selfAilment(db, "Shock", false), "Shock")
+	}
+	if db.Flag("Scorch") {
+		db.NewMod("ElementalResist", "BASE", -selfAilment(db, "Scorch", true), "Scorch")
+	}
+	if db.Flag("Freeze") {
+		effect := math.Max(math.Floor(70*calcMod(db, nil, "SelfChillEffect")), 0)
+		db.NewMod("ActionSpeed", "INC", -effect, "Freeze")
+	}
+	if db.Flag("CanLeechLifeOnFullLife") && !db.Flag("GhostReaver") {
+		cond["Leeching"], cond["LeechingLife"] = true, true
+	}
+	if db.Flag("CanLeechEnergyShieldOnFullEnergyShield") {
+		cond["Leeching"], cond["LeechingEnergyShield"] = true, true
+	}
+	if db.Flag("HasMalediction") {
+		db.NewMod("DamageTaken", "INC", 10, "Malediction")
+		db.NewMod("Damage", "INC", -10, "Malediction")
+	}
+	if db.Flag("HasMaddeningPresence") {
+		db.NewMod("ActionSpeed", "INC", -10, "Maddening Presence")
+		db.NewMod("Damage", "INC", -10, "Maddening Presence")
+	}
+	if db.Flag("HasShapersPresence") {
+		db.NewMod("BuffExpireFaster", "MORE", -20, "Shapers Presence")
+	}
+}
+
+// selfAilment is the effect of Chill, Shock or Scorch on the player;
+// shockAvoid says whether ShockAvoidAppliesToElementalAilments counts.
+func selfAilment(db *ModDB, name string, shockAvoid bool) float64 {
+	a := nonDamagingAilment[name]
+	value := db.Sum("BASE", "Self"+name+"Override")
+	if o, ok := db.Override(name + "Val"); ok {
+		value = math.Max(value, o)
+	} else if value == 0 {
+		// m_max(sum, nil) errors in Lua unless the override is set; a
+		// zero sum with no override falls back to the default.
+		value = a.def
+	}
+	if db.Flag(name+"Immune", "ElementalAilmentImmune") {
+		return 0
+	}
+	avoid := db.Sum("BASE", "Avoid"+name, "AvoidAilments", "AvoidElementalAilments")
+	if shockAvoid && db.Flag("ShockAvoidAppliesToElementalAilments") {
+		avoid += db.Sum("BASE", "AvoidShock")
+	}
+	if db.Flag("SpellSuppressionAppliesToAilmentAvoidance") {
+		avoid += db.Sum("BASE", "SpellSuppressionChance") / 2
+	}
+	if math.Floor(math.Min(avoid, 100)) == 100 {
+		return 0
+	}
+	max := a.max
+	if o, ok := db.Override(name + "Max"); ok {
+		max = o
+	}
+	return math.Min(math.Max(math.Floor(value*calcMod(db, nil, "Self"+name+"Effect")), 0), max)
+}
+
+// elusive is the Elusive part of doActorMisc.
+func elusive(db *ModDB, main *activeSkill) {
+	out := db.output
+	maxSkillInc, _ := maxSource(db, "Skill", "ElusiveEffect")
+	inc := db.Sum("INC", "ElusiveEffect", "BuffEffectOnSelf")
+	if main != nil && main.mods != nil && main.mods.Flag("SupportedByNightblade") {
+		inc += db.Sum("INC", "NightbladeSupportedElusiveEffect")
+	}
+	inc += maxSkillInc
+	mod := (1 + inc/100) * db.More("ElusiveEffect", "BuffEffectOnSelf") * 100
+	minThreshold, _ := db.Override("ElusiveEffectMinThreshold")
+	incDuration := db.Sum("BASE", "ElusiveEffectIncreaseDuration")
+	peak := mod
+	if incDuration > 0 {
+		rate := 20 / (1 + db.Sum("INC", "ElusiveEffectLossSlower")/100)
+		peak = mod + rate*incDuration
+		decDuration := (peak - minThreshold) / rate
+		out["ElusiveEffectMod"] = ((mod+peak)/2*incDuration + (peak+minThreshold)/2*decDuration) / (incDuration + decDuration)
+	} else {
+		out["ElusiveEffectMod"] = (mod + minThreshold) / 2
+	}
+	db.NewMod("ElusiveEffect", "INC", maxSkillInc, "Max Skill Effect")
+	if o, ok := db.Override("ElusiveEffect"); ok {
+		out["ElusiveEffectMod"] = math.Min(o, peak)
+	}
+	effect := out["ElusiveEffectMod"] / 100
+	db.conditions["Elusive"] = true
+	db.NewMod("AvoidAllDamageFromHitsChance", "BASE", math.Floor(15*effect), "Elusive")
+	db.NewMod("MovementSpeed", "INC", math.Floor(30*effect), "Elusive")
+}
+
+// initConditionMods is the part of calcs.initModDB (CalcSetup.lua) that
+// turns config conditions into buff flags and base debuffs, and the
+// defensive base mods of calcs.initEnv.
+func initConditionMods(db *ModDB) {
+	when := func(v string) map[string]any { return map[string]any{"type": "Condition", "var": v} }
+	for _, x := range [][2]string{
+		{"Blind", "Blinded"}, {"Chill", "Chilled"}, {"Freeze", "Frozen"}, {"Fortify", "Fortify"},
+		{"Fortified", "Fortified"}, {"Excommunicated", "Excommunicated"}, {"Fanaticism", "Fanaticism"},
+		{"Onslaught", "Onslaught"}, {"UnholyMight", "UnholyMight"}, {"ChaoticMight", "ChaoticMight"},
+		{"Tailwind", "Tailwind"}, {"Adrenaline", "Adrenaline"}, {"AlchemistsGenius", "AlchemistsGenius"},
+		{"LuckyHits", "LuckyHits"}, {"Convergence", "Convergence"},
+	} {
+		db.Add(Mod{Name: x[0], Type: "FLAG", Value: true, Source: "Base", Tags: []map[string]any{when(x[1])}})
+	}
+	db.NewMod("MovementSpeed", "INC", -30, "Base", when("Maimed"))
+	db.Add(Mod{Name: "DamageTaken", Type: "INC", Value: 10.0, Flags: mfAttack, Source: "Base", Tags: []map[string]any{when("Intimidated")}})
+	db.Add(Mod{Name: "DamageTaken", Type: "INC", Value: 10.0, Flags: mfSpell, Source: "Base", Tags: []map[string]any{when("Unnerved")}})
+	debilitated := map[string]any{"type": "GlobalEffect", "effectName": "Debilitated", "effectType": "Debuff"}
+	db.NewMod("Damage", "MORE", -10, "Base", when("Debilitated"), debilitated)
+	db.NewMod("MovementSpeed", "MORE", -20, "Base", when("Debilitated"), debilitated)
+	madness := map[string]any{"type": "GlobalEffect", "effectName": "Malignant Madness", "effectType": "Debuff"}
+	db.NewMod("Damage", "MORE", -10, "Base", when("MalignantMadness"), madness)
+	db.NewMod("ActionSpeed", "MORE", -10, "Base", when("MalignantMadness"), madness)
+	db.NewMod("PhysicalDamageReduction", "BASE", -15, "Base", when("Crushed"))
+
+	// calcs.initEnv's player base mods.
+	endurance := map[string]any{"type": "Multiplier", "var": "EnduranceCharge"}
+	db.NewMod("PhysicalDamageReduction", "BASE", 4, "Base", endurance) // physical_damage_reduction_%_per_endurance_charge
+	db.NewMod("ElementalDamageReduction", "BASE", 4, "Base", endurance)
+	db.NewMod("MaximumFortification", "BASE", 20, "Base") // base_max_fortification
+	// movement_velocity_+%_per_10_rampage_stacks, max_rampage_stacks 1000
+	db.NewMod("MovementSpeed", "INC", 1, "Base", map[string]any{"type": "Multiplier", "var": "Rampage", "limit": 50.0, "div": 20.0})
+}
