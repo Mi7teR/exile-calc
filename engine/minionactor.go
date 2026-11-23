@@ -266,17 +266,31 @@ var (
 
 var minionOffenceStats = []string{"Speed", "HitChance", "CritChance", "CritMultiplier", "AverageDamage", "TotalDPS"}
 
-// minionWeapon is the minion's weaponData1 of CalcActiveSkill.lua: damage
-// from the ally (or monster, for spectres) damage table and its attack
-// time. Minions using the player's or an item set's weapon are not ported.
-func (c *Calculator) minionWeapon(s *activeSkill, m *skillMinion) hitSource {
+// minionWeapon is the minion's weaponData1 of CalcActiveSkill.lua and its
+// type: the main hand item of a minion that uses one (Animate Guardian's
+// item set), else damage from the ally (or monster, for spectres) damage
+// table and its attack time. The off hand weapon and minions using the
+// player's weapons are not ported.
+func (c *Calculator) minionWeapon(s *activeSkill, m *skillMinion, mdb *ModDB, gear map[string][]modparser.Mod, res *Result) (hitSource, string) {
+	if contains(s.active.ge.MinionUses, "Weapon 1") {
+		if w, typ, ok := itemWeapon(mdb.items["Weapon 1"], gear["Weapon 1"]); ok {
+			if contains(s.active.ge.MinionUses, "Weapon 2") && mdb.items["Weapon 2"] != nil && mdb.items["Weapon 2"].Base != nil && mdb.items["Weapon 2"].Base.Weapon != nil {
+				res.Incomplete = append(res.Incomplete, "minion off hand weapon not applied: "+m.data.Name)
+			}
+			return w, typ
+		}
+	}
+	typ := m.data.WeaponType1
+	if typ == "" {
+		typ = "None"
+	}
 	table := c.data.Monster.AllyDamage
 	if s.flags["spectre"] || m.data.Hostile {
 		table = c.data.Monster.Damage
 	}
 	w := hitSource{min: map[string]float64{}, max: map[string]float64{}, critChance: 5}
 	if m.level > len(table) || m.data.AttackTime == 0 {
-		return w
+		return w, typ
 	}
 	damage := table[m.level-1] * m.data.Damage
 	if !m.data.BaseDamageIgnoresAttackSpeed {
@@ -285,7 +299,7 @@ func (c *Calculator) minionWeapon(s *activeSkill, m *skillMinion) hitSource {
 	w.attackRate = 1 / m.data.AttackTime
 	w.min["Physical"] = round(damage*(1-m.data.DamageSpread), 0)
 	w.max["Physical"] = round(damage*(1+m.data.DamageSpread), 0)
-	return w
+	return w, typ
 }
 
 var minionResultStats = []string{
@@ -311,7 +325,8 @@ func (c *Calculator) mainMinion(db *ModDB, skills []*activeSkill, buffs map[stri
 	if mdb == nil {
 		return nil
 	}
-	ms := c.createMinionSkills(mdb, s, m, res)
+	weapon, weaponType := c.minionWeapon(s, m, mdb, gear, res)
+	ms := c.createMinionSkills(mdb, s, m, weaponType, res)
 	addMinionModifiers(mdb, s.mods.List(s.cfg, "MinionModifier"), m.typ)
 	c.mergeKeystones(mdb, map[string]bool{}, res)
 	c.attributes(mdb)
@@ -343,7 +358,7 @@ func (c *Calculator) mainMinion(db *ModDB, skills []*activeSkill, buffs map[stri
 		if debugEnemy != nil && debugMinionOffence {
 			debugEnemy(mdb)
 		}
-		for k, v := range c.offence(mdb, ms, c.minionWeapon(s, m)) {
+		for k, v := range c.offence(mdb, ms, weapon) {
 			if contains(minionOffenceStats, k) || debugMinionOffence {
 				stats[k] = v
 			}
@@ -396,7 +411,7 @@ func withMainSkill(b *pobcode.Build, g, n int) *pobcode.Build {
 // mods) at the highest level its level allows, supported by the summoning
 // skill's supports, with mod lists on the minion's ModDB. It returns the
 // minion's main skill (skillMinionSkill is not stored: the first).
-func (c *Calculator) createMinionSkills(mdb *ModDB, s *activeSkill, m *skillMinion, res *Result) *activeSkill {
+func (c *Calculator) createMinionSkills(mdb *ModDB, s *activeSkill, m *skillMinion, weapon string, res *Result) *activeSkill {
 	skills := c.data.Skills.Effects
 	var ids []string
 	for _, id := range m.data.SkillList {
@@ -422,10 +437,6 @@ func (c *Calculator) createMinionSkills(mdb *ModDB, s *activeSkill, m *skillMini
 	}
 	if len(ids) == 0 {
 		ids = []string{"Melee"}
-	}
-	weapon := m.data.WeaponType1
-	if weapon == "" {
-		weapon = "None"
 	}
 	var list []*activeSkill
 	for _, id := range ids {

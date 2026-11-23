@@ -85,3 +85,61 @@ var zeroEnergyShield = map[string]string{
 
 // esToLifeSlots are the slots CalcPerform.lua converts for ConvertArmourESToLife.
 var esToLifeSlots = []string{"Helmet", "Gloves", "Boots", "Body Armour", "Weapon 2", "Weapon 3"}
+
+// calcLocalFlags is Item.lua calcLocal with mod flags (local attack speed).
+func calcLocalFlags(mods []modparser.Mod, name, typ string, flags uint64) float64 {
+	total := 0.0
+	for _, m := range mods {
+		if m.Name != name || m.Type != typ || m.Flags != flags || m.KeywordFlags != 0 {
+			continue
+		}
+		if len(m.Tags) > 0 && tagStr(m.Tags[0], "type") != "InSlot" {
+			continue
+		}
+		if f, ok := num(m.Value); ok {
+			total += f
+		}
+	}
+	return total
+}
+
+// itemWeapon ports the weapon branch of ItemClass:BuildModListForSlotNum:
+// the weapon's attack rate, crit chance and physical damage with its local
+// mods and quality (elemental base damage and WeaponData mods are not
+// ported). It returns false for items that are not weapons.
+func itemWeapon(it *itemtext.Item, mods []modparser.Mod) (hitSource, string, bool) {
+	if it == nil || it.Base == nil || it.Base.Weapon == nil {
+		return hitSource{}, "", false
+	}
+	w := it.Base.Weapon
+	local := func(name, typ string) float64 { return calcLocal(mods, name, typ) }
+	quality := float64(it.Quality)
+	speedInc := calcLocalFlags(mods, "Speed", "INC", mfAttack) + math.Floor(quality/8*local("AlternateQualityLocalAttackSpeedPer8Quality", "INC"))
+	out := hitSource{min: map[string]float64{}, max: map[string]float64{}}
+	out.attackRate = round(w.AttackRateBase*(1+speedInc/100), 2)
+	localEle := local("LocalElementalDamage", "INC")
+	for _, t := range dmgTypeList {
+		mn, mx := local(t+"Min", "BASE"), local(t+"Max", "BASE")
+		if t == "Physical" {
+			mn += w.PhysicalMin
+			mx += w.PhysicalMax
+			inc := local("PhysicalDamage", "INC")
+			q := quality
+			if local("AlternateQualityWeapon", "BASE") > 0 {
+				q = 0
+			}
+			mn = round(mn*(1+inc/100)*(1+q/100), 0)
+			mx = round(mx*(1+inc/100)*(1+q/100), 0)
+		} else if t != "Chaos" {
+			inc := local("Local"+t+"Damage", "INC") + localEle
+			mn = round(mn*(1+inc/100), 0)
+			mx = round(mx*(1+inc/100), 0)
+		}
+		if mn > 0 && mx > 0 {
+			out.min[t], out.max[t] = mn, mx
+		}
+	}
+	out.critChance = round((w.CritChanceBase+local("CritChance", "BASE"))*
+		(1+(local("CritChance", "INC")+math.Floor(quality/4*local("AlternateQualityLocalCritChancePer4Quality", "INC")))/100), 2)
+	return out, it.Base.Type, true
+}
