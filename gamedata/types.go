@@ -258,6 +258,16 @@ type LegionNode struct {
 	Stats []string `json:"stats" lua:"sd"`
 	// Keystone is set for keystone replacements ("ks").
 	Keystone bool `json:"keystone,omitempty" lua:"ks"`
+	// StatMods describes the rolled values in Stats, by stat id ("stats"):
+	// abyssal timeless jewels store the roll for each index.
+	StatMods map[string]LegionStat `json:"statMods,omitempty" lua:"stats"`
+}
+
+type LegionStat struct {
+	Fmt   string  `json:"fmt" lua:"fmt"`
+	Index int     `json:"index" lua:"index"`
+	Min   float64 `json:"min" lua:"min"`
+	Max   float64 `json:"max" lua:"max"`
 }
 
 // ConfigOption is one entry of Modules/ConfigOptions.lua's varList.

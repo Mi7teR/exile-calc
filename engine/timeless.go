@@ -38,12 +38,14 @@ type conquest struct {
 	jewelType int
 	conqID    string // conqueror id: "1", "2_v2", ...
 	conqType  string
+	abyss     []abyssComponent // types 7-11: the modification of this node
 }
 
 type timelessLUTs struct {
-	dir  string
-	mu   sync.Mutex
-	data map[int][]byte
+	dir       string
+	mu        sync.Mutex
+	data      map[int][]byte
+	abyssData map[int]*abyssLUT
 }
 
 func defaultTimelessDir() string {
@@ -53,7 +55,7 @@ func defaultTimelessDir() string {
 		if err != nil {
 			return ""
 		}
-		d = filepath.Join(cache, "poe-lib", "pob-v2.68.1-5", "src", "Data", "TimelessJewelData")
+		d = filepath.Join(cache, "poe-lib", "pob-v2.68.1-6", "src", "Data", "TimelessJewelData")
 	}
 	if st, err := os.Stat(d); err != nil || !st.IsDir() {
 		return ""
@@ -169,9 +171,25 @@ func (c *Calculator) conquests(spec *pobcode.Spec, b *pobcode.Build, alloc map[i
 				continue
 			}
 			if cq.jewelType >= 7 {
-				// The abyssal timeless jewels of 3.30 use split lookup tables
-				// (DataLegionLookUpTableHelper.lua) that are not ported.
-				res.Incomplete = append(res.Incomplete, "abyssal timeless jewel conquest: "+it.Name)
+				// BuildAllDependsAndPaths: abyss changes are read per socket
+				// (Zorath: along the path to the class start), not by radius.
+				if n := c.data.Tree.Nodes[s.NodeID]; n != nil && n.ExpansionJewel != nil && n.ExpansionJewel.Parent != 0 {
+					continue
+				}
+				lut, err := c.luts.abyss(cq.jewelType, c.data.Timeless.LocalToGlobal[cq.jewelType])
+				if err != nil {
+					res.Incomplete = append(res.Incomplete, "abyssal timeless jewel: "+err.Error())
+					continue
+				}
+				var path []int
+				if cq.jewelType == 11 {
+					path = pathToClassStart(c.data.Tree, alloc, s.NodeID, spec.ClassID)
+				}
+				for id, mod := range lut.read(cq.seed, s.NodeID, path) {
+					a := cq
+					a.abyss = mod
+					out[id] = a
+				}
 				continue
 			}
 			r, ok := radiusByLabel(it.Radius)
@@ -215,6 +233,12 @@ func (c *Calculator) conqueredStats(node *gamedata.Node, id int, cq conquest, re
 			return node.Stats, src
 		}
 		return t.Nodes[index].Stats, "Tree:" + t.Nodes[index].ID
+	}
+	if cq.jewelType >= 7 {
+		if node.IsJewelSocket {
+			return node.Stats, src, false
+		}
+		return c.abyssStats(node.Stats, cq.abyss, res), src, true
 	}
 	switch {
 	case node.IsKeystone:

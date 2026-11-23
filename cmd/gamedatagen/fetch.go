@@ -38,8 +38,8 @@ func get(url string) ([]byte, error) {
 }
 
 // timelessLUT are the timeless jewel lookup tables the engine reads (types
-// 2-6; Glorious Vanity and the abyss jewels are split into large parts and
-// not used yet). They stay in the cache: see engine.TimelessDirEnv.
+// 2-6; Glorious Vanity is split into large parts and not used yet; the
+// abyss jewels' parts are selected by abyssLUT). They stay in the cache: see engine.TimelessDirEnv.
 var timelessLUT = map[string]bool{
 	"LethalPride.zip": true, "BrutalRestraint.zip": true, "MilitantFaith.zip": true,
 	"ElegantHubris.zip": true, "HeroicTragedy.zip": true,
@@ -49,14 +49,21 @@ var timelessLUT = map[string]bool{
 func wanted(p, tree string) bool {
 	return (strings.HasPrefix(p, "src/Data/") && strings.HasSuffix(p, ".lua")) ||
 		p == "src/TreeData/"+tree+"/tree.lua" || p == "src/Modules/ModParser.lua" || p == "src/Modules/Data.lua" || p == "src/Modules/ConfigOptions.lua" ||
-		timelessLUT[strings.TrimPrefix(p, "src/Data/TimelessJewelData/")]
+		timelessLUT[strings.TrimPrefix(p, "src/Data/TimelessJewelData/")] || abyssLUT(p)
+}
+
+// abyssLUT selects the split lookup tables of the 3.30 abyssal timeless
+// jewels (Data/TimelessJewelData/Abyss<Name>.zip.part<N>).
+func abyssLUT(p string) bool {
+	name, ok := strings.CutPrefix(p, "src/Data/TimelessJewelData/Abyss")
+	return ok && strings.Contains(name, ".zip.part")
 }
 
 // fetchPoB downloads the needed files of a PoB tag into cacheDir (once) and
 // returns the directory that plays the role of PoB's src.
 func fetchPoB(tag, tree, cacheDir string) (string, error) {
 	// fetchLayout changes whenever wanted() starts selecting more files.
-	const fetchLayout = "5"
+	const fetchLayout = "6"
 	root := filepath.Join(cacheDir, "pob-"+tag+"-"+fetchLayout)
 	done := filepath.Join(root, ".complete")
 	if _, err := os.Stat(done); err == nil {
