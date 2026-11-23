@@ -210,24 +210,22 @@ type radiusJewels struct {
 }
 
 // collectUnallocated ports "Grants all bonuses of Unallocated Small/Notable
-// Passive Skills in Radius": the func keeps the first-pass mods of the
-// unallocated nodes of that type and the finaliser adds them, without
-// Condition:ConnectedTo*. The Lua func does not test allocation itself, yet
-// PoB's totals leave allocated nodes out (golden builds SE4GCSBAhJxM,
-// ljOk40ieEDlA), so allocated nodes are skipped here.
-func collectUnallocated(onType string, alloc map[int]bool) (radiusFunc, func() []Mod) {
+// Passive Skills in Radius", a jewelSelfUnallocFuncs entry: in the second
+// pass of unallocated nodes it keeps the node's final (scaled) mods of that
+// node type, without Condition:ConnectedTo*, and the finaliser adds them.
+func collectUnallocated(onType string) (secondPassFunc, func() []Mod) {
 	var kept []Mod
-	f := func(n *gamedata.Node, _, out []Mod) []Mod {
-		if nodeType(n) == onType && !alloc[n.ID] {
-			for _, m := range out {
-				if !strings.HasPrefix(m.Name, "Condition:ConnectedTo") {
-					kept = append(kept, m)
-				}
+	f := func(n *gamedata.Node, mods []Mod) {
+		if nodeType(n) != onType {
+			return
+		}
+		for _, m := range mods {
+			if !strings.HasPrefix(m.Name, "Condition:ConnectedTo") {
+				kept = append(kept, m)
 			}
 		}
-		return nil
 	}
-	return f, func() []Mod { return kept }
+	return secondPassFunc{unalloc: true, f: f}, func() []Mod { return kept }
 }
 
 var collectPatterns = map[string]string{
@@ -272,8 +270,8 @@ func (c *Calculator) radiusFuncs(spec *pobcode.Spec, b *pobcode.Build, alloc map
 				}
 			}
 			if t, ok := collectPatterns[l]; ok {
-				f, final := collectUnallocated(t, alloc)
-				funcs = append(funcs, f)
+				f, final := collectUnallocated(t)
+				seconds = append(seconds, f)
 				out.finals = append(out.finals, final)
 			}
 			if p, ok := selfFuncs[l]; ok {
