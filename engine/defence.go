@@ -16,6 +16,26 @@ func calcMod(db *ModDB, cfg *Cfg, names ...string) float64 {
 // defenceSlots are the slots whose armour data counts (calcs.defence).
 var defenceSlots = []string{"Helmet", "Gloves", "Boots", "Body Armour", "Weapon 2", "Weapon 3"}
 
+// defenceForConditionals is calcs.defenceForConditionals: each armour
+// slot's defences as <Defence>On<Slot> outputs, read by PerStat tags.
+func defenceForConditionals(db *ModDB, gearMods map[string][]modparser.Mod) {
+	for _, slot := range defenceSlots {
+		it := db.items[slot]
+		if it == nil || it.Base == nil || it.Base.Armour == nil {
+			continue
+		}
+		d := itemArmour(it, gearMods[slot])
+		for _, x := range []struct {
+			name string
+			v    float64
+		}{{"Ward", d.Ward}, {"EnergyShield", d.EnergyShield}, {"Armour", d.Armour}, {"Evasion", d.Evasion}} {
+			if !db.Flag("GainNo"+x.name+"From"+slot) && x.v > 0 {
+				db.output[x.name+"On"+slot] = x.v
+			}
+		}
+	}
+}
+
 // defence ports the block and primary defence parts of calcs.defence
 // (Modules/CalcDefence.lua): block chances, then armour, evasion, energy
 // shield and ward from gear (per slot, with the slot's cfg), global bases

@@ -382,6 +382,7 @@ func (c *Calculator) Calc(b *pobcode.Build) (*Result, error) {
 	c.applyBuffs(db, skills, res)
 	extraAuras(db)
 	c.mergeKeystones(db, keystones, res)
+	defenceForConditionals(db, gearMods)
 	charges(db)
 	rage(db, mainCfg(skills))
 	res.Skills = skillInfo(skills)

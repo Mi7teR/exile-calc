@@ -19,6 +19,7 @@ func chargeBaseMods(db *ModDB) {
 	db.NewMod("EnduranceChargesMax", "BASE", maxEnduranceCharges, "Base")
 	db.NewMod("InspirationChargesMax", "BASE", maxRighteousCharges, "Base")
 	db.NewMod("BloodChargesMax", "BASE", maxBloodCharges, "Base")
+	db.NewMod("MaximumRage", "BASE", 30, "Base") // characterConstants maximum_rage
 }
 
 func overrideOr(db *ModDB, name string, def float64) float64 {
