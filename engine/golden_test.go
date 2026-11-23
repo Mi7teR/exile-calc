@@ -24,6 +24,13 @@ var goldenStats = []string{
 
 const tolerance = 0.005
 
+// reportStats are compared and logged but not part of the ratchet yet.
+var reportStats = []string{
+	"SpellSuppressionChance", "AttackDodgeChance", "SpellDodgeChance",
+	"LifeRegenRecovery", "ManaRegenRecovery", "EnergyShieldRegenRecovery",
+	"EnergyShieldRecharge", "MovementSpeedMod",
+}
+
 // Ratchet: builds where every stat above is within tolerance. Raise it as
 // the engine improves; never lower it.
 const minBuildsWithinTolerance = 44
@@ -99,9 +106,17 @@ func TestGoldenCorpus(t *testing.T) {
 		if ok {
 			allOK++
 		}
-		t.Logf("%-14s %-12s ok=%v %s", name, b.AscendClassName, ok, strings.Join(diffs, ", "))
+		var extra []string
+		for _, s := range reportStats {
+			if within(res.Stats[s], want[s]) {
+				perStat[s]++
+			} else {
+				extra = append(extra, fmt.Sprintf("%s %g/%g", s, res.Stats[s], want[s]))
+			}
+		}
+		t.Logf("%-14s %-12s ok=%v %s | report: %s", name, b.AscendClassName, ok, strings.Join(diffs, ", "), strings.Join(extra, ", "))
 	}
-	for _, s := range goldenStats {
+	for _, s := range append(append([]string(nil), goldenStats...), reportStats...) {
 		t.Logf("%-16s within %.1f%%: %d/%d", s, tolerance*100, perStat[s], len(codes))
 	}
 	var tags []string

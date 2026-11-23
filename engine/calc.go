@@ -104,6 +104,7 @@ func (c *Calculator) Calc(b *pobcode.Build) (*Result, error) {
 		db.NewMod(r+"ResistMax", "BASE", baseMaxResist, "Base")
 	}
 	chargeBaseMods(db)
+	db.NewMod("ManaRegen", "BASE", manaRegenBase, "Base", map[string]any{"type": "PerStat", "stat": "Mana", "div": 1.0})
 	db.NewMod("BlockChanceMax", "BASE", 75, "Base")      // characterConstants maximum_block_%
 	db.NewMod("SpellBlockChanceMax", "BASE", 75, "Base") // base_maximum_spell_block_%
 	// inherent_block_while_dual_wielding_% = 20
@@ -397,6 +398,7 @@ func (c *Calculator) Calc(b *pobcode.Build) (*Result, error) {
 	res.Skills = skillInfo(skills)
 	c.resistances(db)
 	c.defence(db, gearMods, keystones)
+	avoidanceAndRecovery(db)
 	for k, v := range db.UnsupportedTags {
 		if res.UnsupportedTags == nil {
 			res.UnsupportedTags = map[string]int{}
@@ -868,6 +870,10 @@ func (c *Calculator) addItem(db *ModDB, res *Result, item *pobcode.Item, scale f
 		if sm, ok := slotTags(fromParsed(m, source), slot, slotNumber(it, slot)); ok {
 			db.Add(scaleMod(sm, scale))
 		}
+	}
+	if isArmour && it.Base.Armour.MovementPenalty != 0 {
+		db.Add(Mod{Name: "MovementSpeed", Type: "INC", Value: -it.Base.Armour.MovementPenalty, Source: source,
+			Tags: []map[string]any{{"type": "Condition", "var": "IgnoreMovementPenalties", "neg": true}}})
 	}
 	if slot != "" {
 		name := strings.Replace(slot, " Swap", "", 1)
