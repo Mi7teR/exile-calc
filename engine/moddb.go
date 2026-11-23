@@ -345,11 +345,35 @@ func (db *ModDB) target(t map[string]any) (*ModDB, bool) {
 // returns ok = false when a tag fails or is not ported (then counted).
 func (db *ModDB) eval(m *Mod, cfg *Cfg) (any, bool) {
 	value := m.Value
+	// scale is EvalMod's value * mult + tag.base, which for a table value
+	// scales its mod's value (LIST mods such as ExtraAura) or its value.
 	scale := func(mult float64, t map[string]any) {
 		base, _ := tagNum(t, "base")
 		if f, ok := num(value); ok {
 			value = f*mult + base
+			return
 		}
+		v, ok := value.(map[string]any)
+		if !ok {
+			return
+		}
+		cp := make(map[string]any, len(v))
+		for k, x := range v {
+			cp[k] = x
+		}
+		if mm, ok := v["mod"].(map[string]any); ok {
+			if f, ok := num(mm["value"]); ok {
+				m2 := make(map[string]any, len(mm))
+				for k, x := range mm {
+					m2[k] = x
+				}
+				m2["value"] = f*mult + base
+				cp["mod"] = m2
+			}
+		} else if f, ok := num(v["value"]); ok {
+			cp["value"] = f*mult + base
+		}
+		value = cp
 	}
 	for _, t := range m.Tags {
 		switch tagStr(t, "type") {

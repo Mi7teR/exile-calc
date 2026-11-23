@@ -442,6 +442,7 @@ func (c *Calculator) Calc(b *pobcode.Build) (*Result, error) {
 	c.applyCurses(db, skills, curses, res)
 	extraAuras(db)
 	guaranteedChills(db, chilling)
+	impaleStacks(db)
 	c.mergeKeystones(db, keystones, res)
 	defenceForConditionals(db, gearMods)
 	charges(db)

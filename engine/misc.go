@@ -355,6 +355,7 @@ func playerBaseMods(db *ModDB) {
 	db.NewMod("ActiveTotemLimit", "BASE", 1, "Base")      // base_number_of_totems_allowed
 	db.NewMod("EnemyCurseLimit", "BASE", 1, "Base")
 	db.NewMod("SocketedCursesHexLimitValue", "BASE", 1, "Base")
+	db.NewMod("ImpaleStacksMax", "BASE", 5, "Base") // impaled_debuff_number_of_reflected_hits
 	// movement_velocity_+%_per_10_rampage_stacks, max_rampage_stacks 1000
 	db.NewMod("MovementSpeed", "INC", 1, "Base", map[string]any{"type": "Multiplier", "var": "Rampage", "limit": 50.0, "div": 20.0})
 }
@@ -374,6 +375,28 @@ func heraldAuraCounts(db *ModDB, skills []*activeSkill) {
 		case !s.types[stHerald] && s.types[stAura] && !s.types[stAuraAffectsEnemies] && !truthy(s.data["auraCannotAffectSelf"]) && !auras[name]:
 			auras[name] = true
 			db.multipliers["AuraAffectingSelf"]++
+		}
+	}
+}
+
+// impaleStacks is "Fix the configured impale stacks on the enemy" of
+// calcs.perform: the maximum when not configured, capped otherwise.
+func impaleStacks(db *ModDB) {
+	max := db.Sum("BASE", "ImpaleStacksMax") * (1 + db.Sum("BASE", "ImpaleAdditionalDurationChance")/100)
+	combat := map[string]any{"type": "Condition", "var": "Combat"}
+	mods := db.enemy.mods["Multiplier:ImpaleStacks"]
+	has := false
+	for _, m := range mods {
+		has = has || m.Type == "BASE"
+	}
+	switch {
+	case !has:
+		db.enemy.NewMod("Multiplier:ImpaleStacks", "BASE", max, "Config", combat)
+	case db.enemy.Sum("BASE", "Multiplier:ImpaleStacks") > max:
+		for i := range mods {
+			if mods[i].Type == "BASE" && mods[i].Source == "Config" {
+				mods[i].Value = max
+			}
 		}
 	}
 }
