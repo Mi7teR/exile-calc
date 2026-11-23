@@ -50,6 +50,7 @@ type Result struct {
 	Incomplete      []string // parts of the build not computed (timeless data missing, ...)
 	UnsupportedTags map[string]int
 	Skills          []SkillInfo // the player's active skills, in PoB's order
+	Minions         []MinionResult
 }
 
 // SkillInfo describes one active skill: its effective gem level and
@@ -451,6 +452,7 @@ func (c *Calculator) Calc(b *pobcode.Build) (*Result, error) {
 	avoidanceAndRecovery(db)
 	recoup(db)
 	buildDefenceEstimations(db)
+	res.Minions = c.minionResults(db, skills, buffs, b.Level, res)
 	for k, v := range db.UnsupportedTags {
 		if res.UnsupportedTags == nil {
 			res.UnsupportedTags = map[string]int{}

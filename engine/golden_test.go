@@ -46,6 +46,63 @@ const minBuildsWithinTolerance = 44
 // minBuildsWithoutTimeless applies when the timeless jewel tables are absent.
 const minBuildsWithoutTimeless = 2
 
+// Minion ratchet: oracle minions (each minion skill as the main skill,
+// output.Minion) whose minionResultStats are all within tolerance.
+const minMinionsWithinTolerance = 37
+
+// goldenMinion is one entry of the oracle's "Minions" list.
+type goldenMinion struct {
+	Name   string             `json:"name"`
+	Minion string             `json:"minion"`
+	Output map[string]any `json:"output"`
+}
+
+// compareMinions matches the oracle's minions to ours by skill and minion
+// name and returns how many match on every stat, with the differences.
+func compareMinions(t *testing.T, raw json.RawMessage, got []MinionResult, perStat map[string]int) (ok, total int, diffs []string) {
+	var want []goldenMinion
+	if len(raw) > 0 {
+		if err := json.Unmarshal(raw, &want); err != nil {
+			t.Fatal(err)
+		}
+	}
+	used := map[int]bool{}
+	for _, w := range want {
+		total++
+		idx := -1
+		for i, g := range got {
+			if !used[i] && g.Skill == w.Name && g.Minion == w.Minion {
+				idx = i
+				break
+			}
+		}
+		if idx < 0 {
+			diffs = append(diffs, fmt.Sprintf("%s/%s missing", w.Name, w.Minion))
+			continue
+		}
+		used[idx] = true
+		wantStats := map[string]float64{}
+		for k, v := range w.Output {
+			if f, ok := v.(float64); ok {
+				wantStats[k] = f
+			}
+		}
+		all := true
+		for _, s := range minionResultStats {
+			if matches(got[idx].Stats[s], wantStats, s) {
+				perStat[s]++
+			} else {
+				all = false
+				diffs = append(diffs, fmt.Sprintf("%s %s %g/%g", w.Minion, s, got[idx].Stats[s], wantStats[s]))
+			}
+		}
+		if all {
+			ok++
+		}
+	}
+	return ok, total, diffs
+}
+
 // matches is within, plus: the oracle drops infinite numbers (math.huge)
 // from its JSON, so a missing stat matches our +Inf.
 func matches(got float64, want map[string]float64, stat string) bool {
@@ -75,6 +132,8 @@ func TestGoldenCorpus(t *testing.T) {
 
 	perStat := map[string]int{}
 	allOK := 0
+	minionPerStat := map[string]int{}
+	minionsOK, minionsTotal := 0, 0
 	unsupportedTags := map[string]int{}
 	for _, c := range codes {
 		name := strings.TrimSuffix(filepath.Base(c), ".code")
@@ -89,6 +148,12 @@ func TestGoldenCorpus(t *testing.T) {
 		}
 		var anyWant map[string]any
 		if err := json.Unmarshal(exp, &anyWant); err != nil {
+			t.Fatal(err)
+		}
+		var rawMinions struct {
+			Minions json.RawMessage `json:"Minions"`
+		}
+		if err := json.Unmarshal(exp, &rawMinions); err != nil {
 			t.Fatal(err)
 		}
 		want = map[string]float64{}
@@ -132,6 +197,12 @@ func TestGoldenCorpus(t *testing.T) {
 			}
 		}
 		t.Logf("%-14s %-12s ok=%v %s | report: %s", name, b.AscendClassName, ok, strings.Join(diffs, ", "), strings.Join(extra, ", "))
+		mOK, mTotal, mDiffs := compareMinions(t, rawMinions.Minions, res.Minions, minionPerStat)
+		minionsOK += mOK
+		minionsTotal += mTotal
+		if len(mDiffs) > 0 {
+			t.Logf("%-14s minions: %s", name, strings.Join(mDiffs, ", "))
+		}
 	}
 	for _, s := range append(append([]string(nil), goldenStats...), reportStats...) {
 		t.Logf("%-16s within %.1f%%: %d/%d", s, tolerance*100, perStat[s], len(codes))
@@ -142,6 +213,10 @@ func TestGoldenCorpus(t *testing.T) {
 	}
 	sort.Strings(tags)
 	t.Logf("unsupported tag types: %s", strings.Join(tags, ", "))
+	for _, s := range minionResultStats {
+		t.Logf("Minion %-16s within %.1f%%: %d/%d", s, tolerance*100, minionPerStat[s], minionsTotal)
+	}
+	t.Logf("minions with all stats within tolerance: %d/%d", minionsOK, minionsTotal)
 	t.Logf("builds with all stats within tolerance: %d/%d", allOK, len(codes))
 	ratchet := minBuildsWithinTolerance
 	if defaultTimelessDir() == "" {
@@ -152,5 +227,8 @@ func TestGoldenCorpus(t *testing.T) {
 	}
 	if allOK < ratchet {
 		t.Errorf("builds within tolerance %d < ratchet %d", allOK, ratchet)
+	}
+	if ratchet == minBuildsWithinTolerance && minionsOK < minMinionsWithinTolerance {
+		t.Errorf("minions within tolerance %d < ratchet %d", minionsOK, minMinionsWithinTolerance)
 	}
 }

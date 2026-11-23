@@ -3,7 +3,7 @@
 // them (github.com/Mi7teR/poe-pob-oracle).
 //
 //	goldencorpus add -name ID -source URL < code    # sanitise and store a build
-//	goldencorpus input > builds.jsonl               # oracle input: {"name","xml"}
+//	goldencorpus input > builds.jsonl               # oracle input: {"name","xml","minions"}
 //	goldencorpus expected < results.jsonl            # store oracle output
 //
 // Builds are stored after a pobcode round trip, which keeps only what the
@@ -107,7 +107,7 @@ func input(w io.Writer) error {
 			return fmt.Errorf("%s: %w", c, err)
 		}
 		name := strings.TrimSuffix(filepath.Base(c), ".code")
-		if err := enc.Encode(map[string]string{"name": name, "xml": string(x)}); err != nil {
+		if err := enc.Encode(map[string]any{"name": name, "xml": string(x), "minions": true}); err != nil {
 			return err
 		}
 	}
@@ -126,14 +126,20 @@ func expected(r io.Reader) error {
 	for sc.Scan() {
 		var res struct {
 			Name   string         `json:"name"`
-			Output map[string]any `json:"output"`
-			Error  string         `json:"error"`
+			Output  map[string]any `json:"output"`
+			Minions []any          `json:"minions"`
+			Error   string         `json:"error"`
 		}
 		if err := json.Unmarshal(sc.Bytes(), &res); err != nil {
 			return err
 		}
 		if res.Error != "" {
 			return fmt.Errorf("oracle failed on %s: %s", res.Name, res.Error)
+		}
+		// The oracle's {"minions": true} output: each minion skill's
+		// output.Minion, recalculated with that skill as the main skill.
+		if len(res.Minions) > 0 {
+			res.Output["Minions"] = res.Minions
 		}
 		data, err := json.MarshalIndent(res.Output, "", "  ")
 		if err != nil {

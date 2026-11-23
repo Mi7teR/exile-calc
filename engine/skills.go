@@ -212,6 +212,8 @@ type skillBuff struct {
 	cond, enemyCond string
 	activeSkillBuff bool
 	applyNotPlayer  bool
+	applyMinions    bool
+	applyAllies     bool
 	allowTotemBuff  bool
 	mods            []Mod
 }
@@ -1228,10 +1230,12 @@ func (c *Calculator) separateBuffs(s *activeSkill) {
 			if buff == nil {
 				buff = &skillBuff{typ: typ, name: bname, cond: tagStr(tag, "effectCond"),
 					enemyCond: tagStr(tag, "effectEnemyCond"), applyNotPlayer: tagBool(tag, "applyNotPlayer"),
-					allowTotemBuff: tagBool(tag, "allowTotemBuff")}
+					applyMinions: tagBool(tag, "applyMinions"), allowTotemBuff: tagBool(tag, "allowTotemBuff")}
 				if m.Source == "Skill:"+s.active.id {
 					buff.activeSkillBuff = true
 					buff.applyNotPlayer = buff.applyNotPlayer || truthy(s.data["buffNotPlayer"])
+					buff.applyMinions = buff.applyMinions || truthy(s.data["buffMinions"])
+					buff.applyAllies = truthy(s.data["buffAllies"])
 					buff.allowTotemBuff = truthy(s.data["allowTotemBuff"])
 				}
 				s.buffs = append(s.buffs, buff)
@@ -1334,29 +1338,7 @@ func (c *Calculator) applyBuffs(db *ModDB, skills []*activeSkill, res *Result) (
 					notBuff[b.name] = true
 				}
 			case "Aura":
-				var extra []Mod
-				for _, e := range db.List(cfg, "ExtraAuraEffect") {
-					v, _ := e.Value.(map[string]any)
-					mm, ok := v["mod"].(map[string]any)
-					if !ok {
-						continue
-					}
-					m := modFromMap(mm, e.Mod.Source)
-					merged := false
-					for i, x := range extra {
-						if sameParams(x, m) {
-							a, _ := num(x.Value)
-							bv, _ := num(m.Value)
-							x.Value = a + bv
-							extra[i] = x
-							merged = true
-							break
-						}
-					}
-					if !merged {
-						extra = append(extra, m)
-					}
-				}
+				extra := extraAuraMods(db, cfg)
 				if !truthy(s.data["auraCannotAffectSelf"]) {
 					mult := (1 + list.SumCfg(cfg, "INC", auraEffectNames...)/100) * list.MoreCfg(cfg, auraEffectNames...)
 					db.conditions["AffectedByAura"] = true
@@ -1425,6 +1407,35 @@ func (c *Calculator) applyBuffs(db *ModDB, skills []*activeSkill, res *Result) (
 		}
 	}
 	return curses, buffs
+}
+
+// extraAuraMods is the extraAuraModList of the Aura branch of
+// calcs.perform: ExtraAuraEffect mods, merged by parameters.
+func extraAuraMods(db *ModDB, cfg *Cfg) []Mod {
+	var extra []Mod
+	for _, e := range db.List(cfg, "ExtraAuraEffect") {
+		v, _ := e.Value.(map[string]any)
+		mm, ok := v["mod"].(map[string]any)
+		if !ok {
+			continue
+		}
+		m := modFromMap(mm, e.Mod.Source)
+		merged := false
+		for i, x := range extra {
+			if sameParams(x, m) {
+				a, _ := num(x.Value)
+				bv, _ := num(m.Value)
+				x.Value = a + bv
+				extra[i] = x
+				merged = true
+				break
+			}
+		}
+		if !merged {
+			extra = append(extra, m)
+		}
+	}
+	return extra
 }
 
 var auraEffectNames = []string{"AuraEffect", "BuffEffect", "BuffEffectOnSelf", "AuraEffectOnSelf", "AuraBuffEffect", "SkillAuraEffectOnSelf"}

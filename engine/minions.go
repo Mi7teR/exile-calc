@@ -150,59 +150,19 @@ func (c *Calculator) minionCounts(db *ModDB, skills []*activeSkill) {
 	db.conditions["OnlyMinion"] = summoned == 1
 }
 
-// minionLife builds the minion's ModDB the way initMinionModDB,
-// addMinionModifiers and doActorAttribsConditions do in calcs.perform and
-// returns its maximum life. Minion items and keystones are not ported.
+// minionLife is the life pool branch of calcs.perform for a minion that
+// is not env.minion: initMinionModDB, the skill's and buffs' minion
+// modifiers, keystones, then doActorAttribsConditions.
 func (c *Calculator) minionLife(db *ModDB, s *activeSkill, m *skillMinion, buffs map[string][]Mod, res *Result) float64 {
-	mon := c.data.Monster
-	table := mon.AllyLife
-	switch {
-	case m.data.LifeScaling == "AltLife1":
-		table = mon.Life2
-	case m.data.LifeScaling == "AltLife2":
-		table = mon.Life3
-	case s.flags["spectre"]:
-		table = mon.Life
-	}
-	if m.level > len(table) {
+	mdb := c.initMinionDB(db, s, m, res)
+	if mdb == nil {
 		return 0
 	}
-	mdb := NewModDB()
-	mdb.enemy, mdb.owner = db.enemy, db
-	mdb.multipliers["Level"] = float64(m.level)
-	initConditionMods(mdb)
-	mdb.NewMod("Life", "BASE", math.Floor(table[m.level-1]*m.data.Life), "Base")
-	if m.data.EnergyShield != 0 {
-		mdb.NewMod("EnergyShield", "BASE", math.Floor(mon.AllyLife[m.level-1]*m.data.Life*m.data.EnergyShield), "Base")
+	addMinionModifiers(mdb, s.mods.List(s.cfg, "MinionModifier"), m.typ)
+	for _, l := range buffMinionModifiers(buffs, s.cfg) {
+		addMinionModifiers(mdb, l, m.typ)
 	}
-	for _, mm := range m.data.ModList {
-		mdb.Add(modFromMap(mm, "Minion:"+m.data.Name))
-	}
-	if db.Sum("BASE", "StrengthAddedToMinions") > 0 {
-		mdb.NewMod("Str", "BASE", round(val(db, "Str")*db.Sum("BASE", "StrengthAddedToMinions")/100, 0), "Player")
-	}
-	add := func(l []ListEntry) {
-		for _, e := range l {
-			v, _ := e.Value.(map[string]any)
-			if t, ok := v["type"].(string); ok && t != m.typ {
-				continue
-			}
-			if mm, ok := v["mod"].(map[string]any); ok {
-				mdb.Add(modFromMap(mm, e.Mod.Source))
-			}
-		}
-	}
-	add(s.mods.List(s.cfg, "MinionModifier"))
-	for _, l := range buffs {
-		b := NewModDB()
-		for _, x := range l {
-			b.Add(x)
-		}
-		add(b.List(s.cfg, "MinionModifier"))
-	}
-	if len(mdb.List(nil, "Keystone")) > 0 {
-		res.Incomplete = append(res.Incomplete, "minion keystones not applied: "+m.data.Name)
-	}
+	c.mergeKeystones(mdb, map[string]bool{}, res)
 	c.attributes(mdb)
 	c.lifeMana(mdb)
 	return mdb.output["Life"]
