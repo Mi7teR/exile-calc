@@ -159,9 +159,22 @@ var hooks = map[string]Hook{
 		return map[string]any{"tag": map[string]any{"type": "Multiplier", "var": "ManaSpentRecently", "div": arg(a, 0),
 			"limit": toNumber(argS(a, 2)), "limitTotal": true}}
 	},
+	// ["per minion, up to ?a? ?m?a?x?i?m?u?m? ?o?f? (%d+)%%"] = function(num) return {
+	//   tag = { type = "Multiplier", var = "SummonedMinion", limit = tonumber(num), limitTotal = true } } end
+	"modTagList[per minion, up to ?a? ?m?a?x?i?m?u?m? ?o?f? (%d+)%%]": limitTotalTag("SummonedMinion"),
+	// ["per second you've been stationary, up to a maximum of (%d+)%%"] = function(num) return {
+	//   tag = { type = "Multiplier", var = "StationarySeconds", limit = tonumber(num), limitTotal = true } } end
+	"modTagList[per second you've been stationary, up to a maximum of (%d+)%%]": limitTotalTag("StationarySeconds"),
 	"modTagList[if (%d+) (%a+) items are equipped]": func(p *Parser, a []any) any {
 		return map[string]any{"tag": map[string]any{"type": "MultiplierThreshold", "var": firstToUpper(argS(a, 2)) + "Item", "threshold": arg(a, 0)}}
 	},
+}
+
+// limitTotalTag builds the "per X, up to N%" tag hooks.
+func limitTotalTag(v string) Hook {
+	return func(p *Parser, a []any) any {
+		return map[string]any{"tag": map[string]any{"type": "Multiplier", "var": v, "limit": toNumber(arg(a, 0)), "limitTotal": true}}
+	}
 }
 
 func corruptedJewelEffect(p *Parser, a []any) any {

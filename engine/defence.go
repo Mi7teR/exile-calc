@@ -42,6 +42,7 @@ func defenceForConditionals(db *ModDB, gearMods map[string][]modparser.Mod) {
 // and conversions.
 func (c *Calculator) defence(db *ModDB, gearMods map[string][]modparser.Mod, keystones map[string]bool) {
 	out := db.output
+	out["ActionSpeedMod"] = actionSpeedMod(db)
 	armour := map[string]armourData{}
 	for _, slot := range defenceSlots {
 		if it := db.items[slot]; it != nil && it.Base != nil && it.Base.Armour != nil {

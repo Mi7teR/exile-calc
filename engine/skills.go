@@ -1516,6 +1516,10 @@ func skillDuration(list *ModDB, cfg *Cfg, data map[string]any, enemy *ModDB) flo
 // "You are Cursed with ...") put the curse gem's curse mods on the player,
 // scaled by curse effect on self.
 func (c *Calculator) extraCurses(db *ModDB, res *Result) {
+	if db.Flag("Condition:OnConsecratedGround") {
+		effect := 1 + db.Sum("INC", "ConsecratedGroundEffect")/100
+		db.NewMod("CurseEffectOnSelf", "INC", -50*effect, "Consecrated Ground")
+	}
 	for _, e := range db.List(nil, "ExtraCurse") {
 		v, _ := e.Value.(map[string]any)
 		if !truthy(v["applyToPlayer"]) {

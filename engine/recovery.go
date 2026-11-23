@@ -14,6 +14,8 @@ const (
 	energyShieldRechargeBase = 2000.0 / 60 / 100 // energy_shield_recharge_rate_per_minute_%
 	energyShieldRechargeWait = 2                 // EnergyShieldRechargeDelay
 	damageReductionCap       = 90                // maximum_physical_damage_reduction_%
+	avoidChanceCap           = 75                // Data.lua data.misc.AvoidChanceCap
+	temporalChainsEffectCap  = 75
 )
 
 // avoidanceAndRecovery ports the parts of calcs.defence after the primary
@@ -186,6 +188,7 @@ func avoidanceAndRecovery(db *ModDB) {
 		drMax = damageReductionCap
 	}
 	out["DamageReductionMax"] = drMax
+	db.NewMod("ArmourAppliesToPhysicalDamageTaken", "BASE", 100, "")
 	for _, t := range []string{"Physical", "Lightning", "Cold", "Fire", "Chaos"} {
 		names := []string{t + "DamageReduction"}
 		if t == "Lightning" || t == "Cold" || t == "Fire" {
@@ -212,4 +215,84 @@ func avoidanceAndRecovery(db *ModDB) {
 	if db.Flag("MovementSpeedCannotBeBelowBase") {
 		out["MovementSpeedMod"] = math.Max(out["MovementSpeedMod"], 1)
 	}
+	out["EffectiveMovementSpeedMod"] = out["MovementSpeedMod"] * out["ActionSpeedMod"]
+
+	// Recovery on block.
+	out["LifeOnBlock"], out["LifeOnSuppress"] = 0, 0
+	if !db.Flag("CannotRecoverLifeOutsideLeech") {
+		out["LifeOnBlock"] = db.Sum("BASE", "LifeOnBlock")
+		out["LifeOnSuppress"] = db.Sum("BASE", "LifeOnSuppress")
+	}
+	out["ManaOnBlock"] = db.Sum("BASE", "ManaOnBlock")
+	out["EnergyShieldOnBlock"] = db.Sum("BASE", "EnergyShieldOnBlock")
+	out["EnergyShieldOnSpellBlock"] = db.Sum("BASE", "EnergyShieldOnSpellBlock")
+	out["EnergyShieldOnSuppress"] = db.Sum("BASE", "EnergyShieldOnSuppress")
+
+	// Damage and hit avoidance.
+	specific := false
+	for _, t := range dmgTypes {
+		out["Avoid"+t+"DamageChance"] = math.Min(db.Sum("BASE", "Avoid"+t+"DamageChance"), avoidChanceCap)
+		specific = specific || out["Avoid"+t+"DamageChance"] > 0
+	}
+	out["specificTypeAvoidance"] = 0 // a boolean in PoB
+	if specific {
+		out["specificTypeAvoidance"] = 1
+	}
+	out["AvoidProjectilesChance"] = math.Min(db.Sum("BASE", "AvoidProjectilesChance"), avoidChanceCap)
+	out["AvoidAllDamageFromHitsChance"] = math.Min(db.Sum("BASE", "AvoidAllDamageFromHitsChance"), avoidChanceCap)
+	immune := func(flag ...string) bool { return db.Flag(flag...) }
+	capped := func(v float64) float64 { return math.Min(v, 100) }
+	out["BlindAvoidChance"] = capped(db.Sum("BASE", "AvoidBlind"))
+	if immune("BlindImmune") {
+		out["BlindAvoidChance"] = 100
+	}
+	out["ImpaleAvoidChance"] = capped(db.Sum("BASE", "AvoidImpale"))
+	if immune("ImpaleImmune") {
+		out["ImpaleAvoidChance"] = 100
+	}
+	if db.Flag("SpellSuppressionAppliesToAilmentAvoidance") {
+		pct := db.Sum("BASE", "SpellSuppressionAppliesToAilmentAvoidancePercent") / 100
+		db.NewMod("AvoidElementalAilments", "BASE", math.Floor(pct*out["SpellSuppressionChance"]), "Ancestral Vision")
+	}
+	for _, a := range []string{"Bleed", "Poison"} {
+		out[a+"AvoidChance"] = math.Floor(capped(db.Sum("BASE", "Avoid"+a, "AvoidAilments")))
+		if immune(a + "Immune") {
+			out[a+"AvoidChance"] = 100
+		}
+	}
+	for _, a := range []string{"Ignite", "Chill", "Freeze", "Shock", "Scorch", "Brittle", "Sap"} {
+		v := db.Sum("BASE", "Avoid"+a, "AvoidAilments", "AvoidElementalAilments")
+		if db.Flag("ShockAvoidAppliesToElementalAilments") && a != "Shock" {
+			v += db.Sum("BASE", "AvoidShock")
+		}
+		out[a+"AvoidChance"] = math.Floor(capped(v))
+		if immune(a+"Immune", "ElementalAilmentImmune") {
+			out[a+"AvoidChance"] = 100
+		}
+	}
+	out["CurseAvoidChance"] = capped(db.Sum("BASE", "AvoidCurse"))
+	if immune("CurseImmune") {
+		out["CurseAvoidChance"] = 100
+	}
+	out["SilenceAvoidChance"] = out["CurseAvoidChance"]
+	if immune("SilenceImmune") {
+		out["SilenceAvoidChance"] = 100
+	}
+	out["CritExtraDamageReduction"] = capped(db.Sum("BASE", "ReduceCritExtraDamage"))
+	out["CurseEffectOnSelf"] = math.Max(db.More("CurseEffectOnSelf")*(100+db.Sum("INC", "CurseEffectOnSelf")), 0)
+	out["ExposureEffectOnSelf"] = db.More("ExposureEffectOnSelf") * (100 + db.Sum("INC", "ExposureEffectOnSelf"))
+	out["WitherEffectOnSelf"] = db.More("WitherEffectOnSelf") * (100 + db.Sum("INC", "WitherEffectOnSelf"))
+}
+
+var dmgTypes = []string{"Physical", "Lightning", "Cold", "Fire", "Chaos"} // CalcDefence.lua dmgTypeList
+
+// actionSpeedMod is calcs.actionSpeedMod (CalcPerform.lua).
+func actionSpeedMod(db *ModDB) float64 {
+	minimum, _ := maxSource(db, "", "MinimumActionSpeed")
+	mod := 1 + (math.Max(-temporalChainsEffectCap, db.Sum("INC", "TemporalChainsActionSpeed"))+db.Sum("INC", "ActionSpeed"))/100
+	mod = math.Max(minimum/100, mod)
+	if r, ok := maxSource(db, "", "MaximumActionSpeedReduction"); ok {
+		mod = math.Min((100-r)/100, mod)
+	}
+	return mod
 }
