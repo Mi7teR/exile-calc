@@ -82,11 +82,40 @@ func (c *Calculator) defence(db *ModDB, gearMods map[string][]modparser.Mod, key
 		out["SpellBlockChance"] = math.Min(total, out["SpellBlockChanceMax"])
 		out["SpellBlockChanceOverCap"] = math.Max(0, total-out["SpellBlockChanceMax"])
 	}
+	out["ProjectileBlockChance"] = math.Min(out["BlockChance"]+db.Sum("BASE", "ProjectileBlockChance")*calcMod(db, nil, "BlockChance"), out["BlockChanceMax"])
+	switch {
+	case db.Flag("MaxSpellBlockIfNotBlockedRecently"):
+		out["SpellProjectileBlockChance"] = out["SpellBlockChanceMax"]
+	case db.Flag("SpellBlockChanceIsBlockChance"):
+		out["SpellProjectileBlockChance"] = out["ProjectileBlockChance"]
+	default:
+		out["SpellProjectileBlockChance"] = math.Max(math.Min(out["SpellBlockChance"]+db.Sum("BASE", "ProjectileSpellBlockChance")*calcMod(db, nil, "SpellBlockChance"), out["SpellBlockChanceMax"]), 0)
+	}
 	if db.Flag("CannotBlockAttacks") {
-		out["BlockChance"] = 0
+		out["BlockChance"], out["ProjectileBlockChance"] = 0, 0
 	}
 	if db.Flag("CannotBlockSpells") {
-		out["SpellBlockChance"] = 0
+		out["SpellBlockChance"], out["SpellProjectileBlockChance"] = 0, 0
+	}
+	for _, t := range []string{"BlockChance", "ProjectileBlockChance", "SpellBlockChance", "SpellProjectileBlockChance"} {
+		out["Effective"+t] = math.Max(out[t]-db.enemy.Sum("BASE", "reduceEnemyBlock"), 0)
+		rolls := 0.0
+		if db.Flag(t + "IsLucky") {
+			rolls++
+		}
+		if db.Flag(t + "IsUnlucky") {
+			rolls--
+		}
+		if db.Flag("ExtremeLuck") {
+			rolls *= 2
+		}
+		out["Effective"+t] = luckyRolls(db, out["Effective"+t], rolls)
+	}
+	out["EffectiveAverageBlockChance"] = (out["EffectiveBlockChance"] + out["EffectiveProjectileBlockChance"] +
+		out["EffectiveSpellBlockChance"] + out["EffectiveSpellProjectileBlockChance"]) / 4
+	out["BlockEffect"] = 100 - db.Sum("BASE", "BlockEffect")
+	if out["BlockEffect"] != 0 {
+		out["DamageTakenOnBlock"] = 100 - out["BlockEffect"]
 	}
 
 	// Defences increased by resistances and block.

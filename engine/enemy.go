@@ -24,8 +24,10 @@ type enemyEnv struct {
 	level      int
 	damageType string  // enemyDamageType
 	worstOf    float64 // EHPUnluckyWorstOf
-	inputs     map[string]float64
-	holders    map[string]float64
+	// physConversion is monsterPhysConversionMultiTable at the level.
+	physConversion float64
+	inputs         map[string]float64
+	holders        map[string]float64
 }
 
 // num is the input if set, else the placeholder (tonumber(input) or placeholder).
@@ -124,6 +126,9 @@ func newEnemyEnv(set *pobcode.ConfigSet, opts []gamedata.ConfigOption, charLevel
 		}
 		h["enemyChaosDamage"] = round(d/chaosDiv, 0)
 		h["enemyChaosResist"] = 30
+	}
+	if l := max(1, min(e.level, len(mon.PhysConversionMulti))); l > 0 {
+		e.physConversion = mon.PhysConversionMulti[l-1]
 	}
 	return e
 }

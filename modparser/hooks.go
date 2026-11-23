@@ -16,6 +16,66 @@ type Hook func(p *Parser, args []any) any
 // table and the key in ModParser.lua; each port quotes its Lua source.
 // Unported hooks make a line unsupported, never wrong.
 var hooks = map[string]Hook{
+	// ["you are cursed with level (%d+) (%D+)"] = function(num, _, name) return {
+	//   mod("ExtraCurse", "LIST", { skillId = gemIdLookup[name], level = num, applyToPlayer = true }) } end
+	"specialModList[^you are cursed with level (%d+) (%D+)$]": func(p *Parser, a []any) any {
+		return []any{newMod("ExtraCurse", "LIST", p.curseOnSelf(argS(a, 2), arg(a, 0)), 0, 0)}
+	},
+	// ["you are cursed with (%D+)"] = function(_, skill) return {
+	//   mod("ExtraCurse", "LIST", { skillId = gemIdLookup[skill], level = 1, applyToPlayer = true }) } end
+	"specialModList[^you are cursed with (%D+)$]": func(p *Parser, a []any) any {
+		return []any{newMod("ExtraCurse", "LIST", p.curseOnSelf(argS(a, 1), 1.0), 0, 0)}
+	},
+	// ["you are cursed with (%D+), with (%d+)%% increased effect"] = function(_, skill, num) return {
+	//   mod("ExtraCurse", "LIST", { skillId = gemIdLookup[skill], level = 1, applyToPlayer = true }),
+	//   mod("CurseEffectOnSelf", "INC", tonumber(num), { type = "SkillName", skillName = string.gsub(" "..skill, "%W%l", string.upper):sub(2) }) } end
+	"specialModList[^you are cursed with (%D+), with (%d+)%% increased effect$]": func(p *Parser, a []any) any {
+		skill := argS(a, 1)
+		return []any{newMod("ExtraCurse", "LIST", p.curseOnSelf(skill, 1.0), 0, 0),
+			withTags(newMod("CurseEffectOnSelf", "INC", toNumber(argS(a, 2)), 0, 0),
+				map[string]any{"type": "SkillName", "skillName": upperAfterNonWord(" " + skill)[1:]})}
+	},
+	// ["(%d+)%% less damage taken per (%d+) rage, up to a maximum of (%d+)%%"] = function(num, _, div, limit) return {
+	//   mod("DamageTaken", "MORE", -num, { type = "Multiplier", var = "Rage", div = div, limit = -tonumber(limit), limitNegTotal = true }) } end
+	"specialModList[^(%d+)%% less damage taken per (%d+) rage, up to a maximum of (%d+)%%$]": func(p *Parser, a []any) any {
+		n, _ := toNumber(arg(a, 0)).(float64)
+		limit, _ := toNumber(argS(a, 3)).(float64)
+		return []any{withTags(newMod("DamageTaken", "MORE", -n, 0, 0),
+			map[string]any{"type": "Multiplier", "var": "Rage", "div": argS(a, 2), "limit": -limit, "limitNegTotal": true})}
+	},
+	// ["take (%d+)%% less damage from hits for (%d+) seconds"] = function(num, _, duration) return {
+	//   mod("DamageTakenWhenHit", "MORE", -num, { type = "Condition", var = "HeartstopperHIT" }),
+	//   mod("DamageTakenWhenHit", "MORE", -num * tonumber(duration) / 10, { type = "Condition", var = "HeartstopperAVERAGE" }) } end
+	"specialModList[^take (%d+)%% less damage from hits for (%d+) seconds$]": heartstopper("DamageTakenWhenHit", "HeartstopperHIT"),
+	// ["take (%d+)%% less damage over time for (%d+) seconds"]: the same for DamageTakenOverTime and HeartstopperDOT.
+	"specialModList[^take (%d+)%% less damage over time for (%d+) seconds$]": heartstopper("DamageTakenOverTime", "HeartstopperDOT"),
+	// ["(%d+)%% of (%a+) and (%a+) damage from hits taken as (%a+) damage"] = function(num, _, type1, type2, type3)
+	//   ... return fromType1 and fromType2 and toType and { mod(from1.."DamageFromHitsTakenAs"..to, "BASE", num), mod(from2..., "BASE", num) } end
+	"specialModList[^(%d+)%% of (%a+) and (%a+) damage from hits taken as (%a+) damage$]": func(p *Parser, a []any) any {
+		from1, from2, to := dmgTypeNames[argS(a, 2)], dmgTypeNames[argS(a, 3)], dmgTypeNames[argS(a, 4)]
+		if from1 == "" || from2 == "" || to == "" {
+			return nil
+		}
+		return []any{newMod(from1+"DamageFromHitsTakenAs"+to, "BASE", arg(a, 0), 0, 0), newMod(from2+"DamageFromHitsTakenAs"+to, "BASE", arg(a, 0), 0, 0)}
+	},
+	// ["with at least one nearby corpse, nearby enemies deal (%d+)%% reduced damage"] = function(num) return {
+	//   mod("EnemyModifier", "LIST", { mod = mod("Damage", "INC", -num) }, { type = "MultiplierThreshold", var = "NearbyCorpse", threshold = 1 }) } end
+	"specialModList[^with at least one nearby corpse, nearby enemies deal (%d+)%% reduced damage$]": enemyModifier("Damage", "INC",
+		map[string]any{"type": "MultiplierThreshold", "var": "NearbyCorpse", "threshold": 1.0}),
+	// ["nearby hindered enemies deal (%d+)%% reduced damage over time"] = function(num) return {
+	//   mod("EnemyModifier", "LIST", { mod = mod("DamageOverTime", "INC", -num) }, { type = "ActorCondition", actor = "enemy", var = "Hindered" }) } end
+	"specialModList[^nearby hindered enemies deal (%d+)%% reduced damage over time$]": enemyModifier("DamageOverTime", "INC",
+		map[string]any{"type": "ActorCondition", "actor": "enemy", "var": "Hindered"}),
+	// ["nearby chilled enemies deal (%d+)%% reduced damage with hits"] = function(num) return {
+	//   mod("EnemyModifier", "LIST", { mod = mod("Damage", "INC", -num) }, { type = "ActorCondition", actor = "enemy", var = "Chilled" }) } end
+	"specialModList[^nearby chilled enemies deal (%d+)%% reduced damage with hits$]": enemyModifier("Damage", "INC",
+		map[string]any{"type": "ActorCondition", "actor": "enemy", "var": "Chilled"}),
+	// ["enemies ignited by you have (%d+)%% of (%a+) damage they deal converted to (%a+)"] = function(num, _, damageFrom, damageTo) return {
+	//   mod("EnemyModifier", "LIST", { mod = mod(From.."DamageConvertTo"..To, "BASE", num, { type = "Condition", var = "Ignited" }) }) } end
+	// (and the shocked and poisoned variants)
+	"specialModList[^enemies ignited by you have (%d+)%% of (%a+) damage they deal converted to (%a+)$]":  enemyConversion("Ignited"),
+	"specialModList[^enemies shocked by you have (%d+)%% of (%a+) damage they deal converted to (%a+)$]":  enemyConversion("Shocked"),
+	"specialModList[^enemies poisoned by you have (%d+)%% of (%a+) damage they deal converted to (%a+)$]": enemyConversion("Poisoned"),
 	// ["marked enemy has (%d+)%% reduced accuracy rating"] = function(num) return {
 	//   mod("EnemyModifier", "LIST", { mod = mod("Accuracy", "INC", -num) }, {type = "ActorCondition", actor = "enemy", var = "Marked" }) } end
 	"specialModList[^marked enemy has (%d+)%% reduced accuracy rating$]": func(p *Parser, a []any) any {
@@ -175,6 +235,63 @@ var hooks = map[string]Hook{
 	"modTagList[if (%d+) (%a+) items are equipped]": func(p *Parser, a []any) any {
 		return map[string]any{"tag": map[string]any{"type": "MultiplierThreshold", "var": firstToUpper(argS(a, 2)) + "Item", "threshold": arg(a, 0)}}
 	},
+}
+
+// enemyModifier builds the hooks that give the enemy "num% reduced <name>".
+func enemyModifier(name, typ string, tag map[string]any) Hook {
+	return func(p *Parser, a []any) any {
+		n, _ := toNumber(arg(a, 0)).(float64)
+		return []any{withTags(newMod("EnemyModifier", "LIST", map[string]any{"mod": newMod(name, typ, -n, 0, 0)}, 0, 0), tag)}
+	}
+}
+
+// enemyConversion builds the "enemies <cond> by you have N% of X damage
+// they deal converted to Y" hooks.
+func enemyConversion(cond string) Hook {
+	return func(p *Parser, a []any) any {
+		n, _ := toNumber(arg(a, 0)).(float64)
+		inner := withTags(newMod(firstToUpper(argS(a, 2))+"DamageConvertTo"+firstToUpper(argS(a, 3)), "BASE", n, 0, 0),
+			map[string]any{"type": "Condition", "var": cond})
+		return []any{newMod("EnemyModifier", "LIST", map[string]any{"mod": inner}, 0, 0)}
+	}
+}
+
+// curseOnSelf is { skillId = gemIdLookup[name], level = level, applyToPlayer = true }.
+func (p *Parser) curseOnSelf(name string, level any) map[string]any {
+	v := map[string]any{"level": level, "applyToPlayer": true}
+	if id, ok := p.t.exact["gemIdLookup"][name]; ok {
+		v["skillId"] = id
+	}
+	return v
+}
+
+// upperAfterNonWord is gsub(s, "%W%l", string.upper).
+func upperAfterNonWord(s string) string {
+	b := []byte(s)
+	for i := 0; i+1 < len(b); i++ {
+		c := b[i]
+		isWord := c >= '0' && c <= '9' || c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z'
+		if !isWord && b[i+1] >= 'a' && b[i+1] <= 'z' {
+			b[i+1] -= 'a' - 'A'
+			i++
+		}
+	}
+	return string(b)
+}
+
+// dmgTypeNames is ModParser.lua's local dmgTypes.
+var dmgTypeNames = map[string]string{"physical": "Physical", "lightning": "Lightning", "cold": "Cold", "fire": "Fire", "chaos": "Chaos"}
+
+// heartstopper builds the two Heartstopper hooks.
+func heartstopper(name, cond string) Hook {
+	return func(p *Parser, a []any) any {
+		n, _ := toNumber(arg(a, 0)).(float64)
+		d, _ := toNumber(argS(a, 2)).(float64)
+		return []any{
+			withTags(newMod(name, "MORE", -n, 0, 0), map[string]any{"type": "Condition", "var": cond}),
+			withTags(newMod(name, "MORE", -n*d/10, 0, 0), map[string]any{"type": "Condition", "var": "HeartstopperAVERAGE"}),
+		}
+	}
 }
 
 // limitTotalTag builds the "per X, up to N%" tag hooks.

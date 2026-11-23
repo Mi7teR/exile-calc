@@ -443,6 +443,7 @@ func (c *Calculator) Calc(b *pobcode.Build) (*Result, error) {
 	c.resistances(db)
 	c.defence(db, gearMods, keystones)
 	avoidanceAndRecovery(db)
+	buildDefenceEstimations(db)
 	for k, v := range db.UnsupportedTags {
 		if res.UnsupportedTags == nil {
 			res.UnsupportedTags = map[string]int{}
@@ -1205,13 +1206,16 @@ func (c *Calculator) resistances(db *ModDB) {
 		}
 		max := resistMax(elem)
 		total, ok := db.Override(elem + "Resist")
+		dotTotal := total
 		if !ok {
 			base := db.Sum("BASE", names...)
 			inc := math.Max((1+db.Sum("INC", names...)/100)*db.More(names...), 0)
 			total = base * inc
+			dotTotal = db.SumCfg(&Cfg{Flags: mfDot}, "BASE", names...) * inc
 		}
-		total, max = modfInt(total), modfInt(max)
+		total, max, dotTotal = modfInt(total), modfInt(max), modfInt(dotTotal)
 		final := math.Max(math.Min(total, max), resistFloor)
+		out[elem+"ResistOverTime"] = math.Max(math.Min(dotTotal, max), resistFloor)
 		out[elem+"Resist"] = final
 		out[elem+"ResistTotal"] = total
 		out[elem+"ResistOverCap"] = math.Max(0, total-max)

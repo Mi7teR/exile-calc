@@ -52,17 +52,7 @@ func avoidanceAndRecovery(db *ModDB) {
 	if db.Flag("ExtremeLuck") {
 		rolls *= 2
 	}
-	if rolls != 0 {
-		p := out["EffectiveSpellSuppressionChance"] / 100
-		switch {
-		case db.Flag("Unexciting"):
-			out["EffectiveSpellSuppressionChance"] = (3*p*p - 2*p*p*p) * 100
-		case rolls > 0:
-			out["EffectiveSpellSuppressionChance"] = (1 - math.Pow(1-p, float64(rolls+1))) * 100
-		default:
-			out["EffectiveSpellSuppressionChance"] = math.Pow(p, float64(-rolls)) * out["EffectiveSpellSuppressionChance"]
-		}
-	}
+	out["EffectiveSpellSuppressionChance"] = luckyRolls(db, out["EffectiveSpellSuppressionChance"], float64(rolls))
 	out["SpellSuppressionChanceOverCap"] = math.Max(0, total-suppressionChanceCap)
 
 	// Dodge.
@@ -74,6 +64,20 @@ func avoidanceAndRecovery(db *ModDB) {
 	}
 	out["AttackDodgeChance"] = math.Min(attackDodge, dodgeChanceCap)
 	out["SpellDodgeChance"] = math.Min(spellDodge, spellDodgeMax)
+	reduce := 0.0
+	cannot := false
+	if enemy != nil {
+		reduce, cannot = enemy.Sum("BASE", "reduceEnemyDodge"), enemy.Flag("CannotBeDodged")
+	}
+	out["EffectiveAttackDodgeChance"], out["EffectiveSpellDodgeChance"] = 0, 0
+	if !cannot {
+		out["EffectiveAttackDodgeChance"] = math.Min(math.Max(attackDodge-reduce, 0), dodgeChanceCap)
+		out["EffectiveSpellDodgeChance"] = math.Min(math.Max(spellDodge-reduce, 0), spellDodgeMax)
+	}
+	if db.Flag("DodgeChanceIsUnlucky") {
+		out["EffectiveAttackDodgeChance"] *= out["EffectiveAttackDodgeChance"] / 100
+		out["EffectiveSpellDodgeChance"] *= out["EffectiveSpellDodgeChance"] / 100
+	}
 	out["AttackDodgeChanceOverCap"] = math.Max(0, attackDodge-dodgeChanceCap)
 	out["SpellDodgeChanceOverCap"] = math.Max(0, spellDodge-spellDodgeMax)
 
@@ -278,10 +282,31 @@ func avoidanceAndRecovery(db *ModDB) {
 	if immune("SilenceImmune") {
 		out["SilenceAvoidChance"] = 100
 	}
+	ad, _ := maxSource(db, "", "ArmourDefense")
+	out["ArmourDefense"] = ad / 100
 	out["CritExtraDamageReduction"] = capped(db.Sum("BASE", "ReduceCritExtraDamage"))
 	out["CurseEffectOnSelf"] = math.Max(db.More("CurseEffectOnSelf")*(100+db.Sum("INC", "CurseEffectOnSelf")), 0)
 	out["ExposureEffectOnSelf"] = db.More("ExposureEffectOnSelf") * (100 + db.Sum("INC", "ExposureEffectOnSelf"))
 	out["WitherEffectOnSelf"] = db.More("WitherEffectOnSelf") * (100 + db.Sum("INC", "WitherEffectOnSelf"))
+}
+
+// luckyRolls applies CalcDefence.lua's lucky/unlucky rolls to a chance in
+// percent, with the EHPUnluckyWorstOf config overriding the rolls.
+func luckyRolls(db *ModDB, chance, rolls float64) float64 {
+	if e := db.enemyEnv; e != nil && e.worstOf != 1 {
+		rolls = -e.worstOf / 2
+	}
+	if rolls == 0 {
+		return chance
+	}
+	p := chance / 100
+	switch {
+	case db.Flag("Unexciting"):
+		return (3*p*p - 2*p*p*p) * 100
+	case rolls > 0:
+		return (1 - math.Pow(1-p, rolls+1)) * 100
+	}
+	return math.Pow(p, -rolls) * chance
 }
 
 var dmgTypes = []string{"Physical", "Lightning", "Cold", "Fire", "Chaos"} // CalcDefence.lua dmgTypeList

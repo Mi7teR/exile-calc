@@ -49,6 +49,7 @@ const (
 	mfAttack     = 0x1
 	mfSpell      = 0x2
 	mfHit        = 0x4
+	mfDot        = 0x8
 	mfCast       = 0x10
 	mfMelee      = 0x100
 	mfArea       = 0x200
