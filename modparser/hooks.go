@@ -99,6 +99,20 @@ var hooks = map[string]Hook{
 	// and the same for maximum energy shield.
 	"specialModList[^grants armour equal to (%d+)%% of your reserved mana to you and nearby allies$]":                reservedManaAura("Armour"),
 	"specialModList[^grants maximum energy shield equal to (%d+)%% of your reserved mana to you and nearby allies$]": reservedManaAura("EnergyShield"),
+	// ["modifiers to maximum (%a+) resistance also apply to maximum (%a+) and (%a+) resistances"] =
+	//   function(_, resFrom, resTo1, resTo2) return { mod(From.."MaxResConvertTo"..To1, "BASE", 100), (To2) } end
+	"specialModList[^modifiers to maximum (%a+) resistance also apply to maximum (%a+) and (%a+) resistances$]": func(p *Parser, a []any) any {
+		from := firstToUpper(argS(a, 1))
+		return []any{newMod(from+"MaxResConvertTo"+firstToUpper(argS(a, 2)), "BASE", 100.0, 0, 0),
+			newMod(from+"MaxResConvertTo"+firstToUpper(argS(a, 3)), "BASE", 100.0, 0, 0)}
+	},
+	// ["modifiers to (%a+) resistance also apply to (%a+) and (%a+) resistances at (%d+)%% of their value"] =
+	//   function(_, resFrom, resTo1, resTo2, rate) return { mod(From.."ResConvertTo"..To1, "BASE", tonumber(rate)), (To2) } end
+	"specialModList[^modifiers to (%a+) resistance also apply to (%a+) and (%a+) resistances at (%d+)%% of their value$]": func(p *Parser, a []any) any {
+		from, rate := firstToUpper(argS(a, 1)), toNumber(argS(a, 4))
+		return []any{newMod(from+"ResConvertTo"+firstToUpper(argS(a, 2)), "BASE", rate, 0, 0),
+			newMod(from+"ResConvertTo"+firstToUpper(argS(a, 3)), "BASE", rate, 0, 0)}
+	},
 	// ["grants level (%d+) (.+)"] = function(num, _, skill) return grantedExtraSkill(skill, num) end
 	"specialModList[^grants level (%d+) (.+)$]": func(p *Parser, a []any) any {
 		return p.grantedExtraSkill(argS(a, 2), arg(a, 0), nil)
