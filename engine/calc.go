@@ -340,6 +340,7 @@ func (c *Calculator) Calc(b *pobcode.Build) (*Result, error) {
 		}
 	}
 	itemConditions(db, gear)
+	c.socketCounts(db, b, gear, config)
 	// Kalandra's Touch: influence and corruption multipliers of the other ring.
 	for _, o := range reflected {
 		for mult, infl := range influenceMultipliers {
