@@ -388,6 +388,7 @@ func (c *Calculator) Calc(b *pobcode.Build) (*Result, error) {
 	reservations(db, skills, res)
 	charges(db) // early, for stats that depend on charges
 	c.applyBuffs(db, skills, res)
+	c.extraCurses(db, res)
 	extraAuras(db)
 	c.mergeKeystones(db, keystones, res)
 	defenceForConditionals(db, gearMods)

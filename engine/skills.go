@@ -1487,6 +1487,51 @@ func skillDuration(list *ModDB, cfg *Cfg, data map[string]any, enemy *ModDB) flo
 	return d
 }
 
+// extraCurses ports the player part of "Check for extra curses"
+// (CalcPerform.lua): ExtraCurse mods with applyToPlayer (config options,
+// "You are Cursed with ...") put the curse gem's curse mods on the player,
+// scaled by curse effect on self.
+func (c *Calculator) extraCurses(db *ModDB, res *Result) {
+	for _, e := range db.List(nil, "ExtraCurse") {
+		v, _ := e.Value.(map[string]any)
+		if !truthy(v["applyToPlayer"]) {
+			continue // curses on the enemy only change enemy stats
+		}
+		id, _ := v["skillId"].(string)
+		ge := c.data.Skills.Effects[id]
+		if ge == nil {
+			res.Incomplete = append(res.Incomplete, fmt.Sprintf("curse on you: unknown skill %q", id))
+			continue
+		}
+		lvl, _ := num(v["level"])
+		gem := NewModDB()
+		c.mergeSkillInstanceMods(gem, &skillEffect{id: id, ge: ge, level: int(lvl)}, nil)
+		var curse []Mod
+		for _, ms := range gem.mods {
+			for _, m := range ms {
+				for _, t := range m.Tags {
+					if tagStr(t, "type") == "GlobalEffect" && tagStr(t, "effectType") == "Curse" {
+						curse = append(curse, m)
+						break
+					}
+				}
+			}
+		}
+		if db.Sum("BASE", "AvoidCurse") >= 100 {
+			continue
+		}
+		db.conditions["Cursed"] = true
+		db.multipliers["CurseOnSelf"]++
+		db.conditions["AffectedBy"+strings.ReplaceAll(ge.Name, " ", "")] = true
+		cfg := &Cfg{SkillName: ge.Name}
+		inc := db.SumCfg(cfg, "INC", "CurseEffectOnSelf") + gem.Sum("INC", "CurseEffectAgainstPlayer")
+		more := db.MoreCfg(cfg, "CurseEffectOnSelf") * gem.More("CurseEffectAgainstPlayer")
+		for _, m := range scaleMods(curse, math.Max((1+inc/100)*more, 0)) {
+			db.Add(m)
+		}
+	}
+}
+
 // extraAuras ports the ExtraAura loop of calcs.perform: aura mods granted
 // by other mods ("you and nearby allies have ...") apply to the player
 // scaled by buff and aura effect on self.
