@@ -231,7 +231,9 @@ func (c *Calculator) Calc(b *pobcode.Build) (*Result, error) {
 					it, mods := c.itemMods(b.Item(slot.ItemID), res)
 					for _, m := range mods {
 						if m.Name == "ExtraSkill" {
-							db.Add(slotTags(fromParsed(m, itemSource(b.Item(slot.ItemID), it)), slot.Name))
+							if sm, ok := slotTags(fromParsed(m, itemSource(b.Item(slot.ItemID), it)), slot.Name, slotNumber(it, slot.Name)); ok {
+								db.Add(sm)
+							}
 						}
 					}
 					gear = append(gear, equipped{slot.Name, it})
@@ -282,7 +284,9 @@ func (c *Calculator) Calc(b *pobcode.Build) (*Result, error) {
 						continue mods
 					}
 				}
-				db.Add(slotTags(fromParsed(m, source), k.slot))
+				if sm, ok := slotTags(fromParsed(m, source), k.slot, slotNumber(k.it, k.slot)); ok {
+					db.Add(sm)
+				}
 			}
 			reflected = append(reflected, oit)
 		}
@@ -859,7 +863,9 @@ func (c *Calculator) addItem(db *ModDB, res *Result, item *pobcode.Item, scale f
 		if isWeapon && m.Flags != 0 {
 			continue // local weapon stats: part of the weapon's own data
 		}
-		db.Add(scaleMod(slotTags(fromParsed(m, source), slot), scale))
+		if sm, ok := slotTags(fromParsed(m, source), slot, slotNumber(it, slot)); ok {
+			db.Add(scaleMod(sm, scale))
+		}
 	}
 	if slot != "" {
 		name := strings.Replace(slot, " Swap", "", 1)
@@ -925,14 +931,38 @@ func socketMultipliers(db *ModDB, it *itemtext.Item, slot string) {
 
 // slotTags is the tag substitution of ItemClass:BuildModListForSlotNum:
 // {SlotName}, {Hand} and {OtherSlotNum} for the slot the item is in.
-func slotTags(m Mod, slot string) Mod {
-	if slot == "" {
-		return m
+// slotNumber is the slotNum ItemClass:BuildModList builds a list for:
+// weapons and rings have one per slot, other items none (0).
+func slotNumber(it *itemtext.Item, slot string) int {
+	if it == nil || it.Base == nil || (it.Base.Weapon == nil && it.Base.Type != "Ring") {
+		return 0
 	}
 	slot = strings.Replace(slot, " Swap", "", 1)
-	hand, other := "MainHand", "2"
-	if strings.HasSuffix(slot, " 2") {
-		hand, other = "OffHand", "1"
+	if i := strings.LastIndex(slot, " "); i >= 0 {
+		n, _ := strconv.Atoi(slot[i+1:])
+		return n
+	}
+	return 0
+}
+
+// slotTags is the tag handling of ItemClass:BuildModListForSlotNum: mods
+// for another slot number (SlotNumber, InSlot) are dropped, and
+// {SlotName}, {Hand} and {OtherSlotNum} are filled in.
+func slotTags(m Mod, slot string, slotNum int) (Mod, bool) {
+	if slot == "" {
+		return m, true
+	}
+	for _, t := range m.Tags {
+		if typ := tagStr(t, "type"); typ == "SlotNumber" || typ == "InSlot" {
+			if n, _ := tagNum(t, "num"); int(n) != slotNum {
+				return m, false
+			}
+		}
+	}
+	slot = strings.Replace(slot, " Swap", "", 1)
+	hand, other := "OffHand", "1"
+	if slotNum == 1 {
+		hand, other = "MainHand", "2"
 	}
 	r := strings.NewReplacer("{SlotName}", slot, "{Hand}", hand, "{OtherSlotNum}", other)
 	var tags []map[string]any
@@ -956,7 +986,7 @@ func slotTags(m Mod, slot string) Mod {
 	if tags != nil {
 		m.Tags = tags
 	}
-	return m
+	return m, true
 }
 
 func abyssalSockets(it *itemtext.Item) int {
