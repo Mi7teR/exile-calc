@@ -186,6 +186,41 @@ type Node struct {
 	GrantedIntelligence    int             `json:"grantedIntelligence,omitempty" lua:"grantedIntelligence"`
 	GrantedPassivePoints   int             `json:"grantedPassivePoints,omitempty" lua:"grantedPassivePoints"`
 	ClassStartIndex        *int            `json:"classStartIndex,omitempty" lua:"classStartIndex"`
+	ExpansionJewel         *ExpansionJewel `json:"expansionJewel,omitempty" lua:"expansionJewel"`
+}
+
+// ExpansionJewel marks a cluster jewel socket: its size (0 small, 1 medium,
+// 2 large), its index among sibling sockets, the proxy node whose group
+// positions the generated subgraph, and the parent socket.
+type ExpansionJewel struct {
+	Size   int `json:"size" lua:"size"`
+	Index  int `json:"index" lua:"index"`
+	Proxy  int `json:"proxy" lua:"proxy"`
+	Parent int `json:"parent,omitempty" lua:"parent"`
+}
+
+// ClusterJewels is Data/ClusterJewels.lua: how each cluster jewel base lays
+// out its subgraph, and the order notables take on it.
+type ClusterJewels struct {
+	Jewels           map[string]*ClusterJewel `json:"jewels" lua:"jewels"`
+	NotableSortOrder map[string]float64       `json:"notableSortOrder" lua:"notableSortOrder"`
+}
+
+type ClusterJewel struct {
+	Size            string                  `json:"size" lua:"size"`
+	SizeIndex       int                     `json:"sizeIndex" lua:"sizeIndex"`
+	MinNodes        int                     `json:"minNodes" lua:"minNodes"`
+	MaxNodes        int                     `json:"maxNodes" lua:"maxNodes"`
+	SmallIndicies   []int                   `json:"smallIndicies" lua:"smallIndicies"`
+	NotableIndicies []int                   `json:"notableIndicies" lua:"notableIndicies"`
+	SocketIndicies  []int                   `json:"socketIndicies" lua:"socketIndicies"`
+	TotalIndicies   int                     `json:"totalIndicies" lua:"totalIndicies"`
+	Skills          map[string]ClusterSkill `json:"skills" lua:"skills"`
+}
+
+type ClusterSkill struct {
+	Name  string   `json:"name" lua:"name"`
+	Stats []string `json:"stats" lua:"stats"`
 }
 
 type MasteryEffect struct {

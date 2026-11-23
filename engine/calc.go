@@ -103,7 +103,12 @@ func (c *Calculator) Calc(b *pobcode.Build) (*Result, error) {
 	for _, m := range spec.MasteryEffects {
 		mastery[m.Node] = m.Effect
 	}
+	cluster := c.clusterGraph(spec, b, res)
 	for _, id := range spec.Nodes {
+		if g, ok := cluster[id]; ok {
+			c.addNode(db, res, g.stats, g.incEffect, fmt.Sprintf("Tree:%d", id))
+			continue
+		}
 		node := tree.Nodes[id]
 		if node == nil {
 			continue
@@ -117,9 +122,7 @@ func (c *Calculator) Calc(b *pobcode.Build) (*Result, error) {
 				}
 			}
 		}
-		for _, line := range stats {
-			c.addLine(db, res, line, fmt.Sprintf("Tree:%d", id))
-		}
+		c.addNode(db, res, stats, 0, fmt.Sprintf("Tree:%d", id))
 	}
 
 	// Items in the active set; jewels in allocated tree sockets.
@@ -188,14 +191,31 @@ func configString(c *pobcode.ConfigSet, name, def string) string {
 	return def
 }
 
-func (c *Calculator) addLine(db *ModDB, res *Result, line, source string) {
-	r := c.parser.Parse(line)
-	if !r.Parsed() {
-		res.Unparsed = append(res.Unparsed, line)
-		return
+// addNode adds one passive's mods, scaled by its PassiveSkillEffect
+// (CalcSetup.lua buildModListForNode: calcLib.mod(modList, nil, "PassiveSkillEffect")).
+// incEffect is the cluster jewel's "increased Effect" of small passives.
+func (c *Calculator) addNode(db *ModDB, res *Result, stats []string, incEffect float64, source string) {
+	node := NewModDB()
+	var mods []Mod
+	for _, line := range stats {
+		r := c.parser.Parse(line)
+		if !r.Parsed() {
+			res.Unparsed = append(res.Unparsed, line)
+			continue
+		}
+		for _, m := range r.Mods {
+			mods = append(mods, fromParsed(m, source))
+		}
 	}
-	for _, m := range r.Mods {
-		db.Add(fromParsed(m, source))
+	if incEffect != 0 {
+		mods = append(mods, Mod{Name: "PassiveSkillEffect", Type: "INC", Value: incEffect, Source: source})
+	}
+	for _, m := range mods {
+		node.Add(m)
+	}
+	scale := (1 + node.Sum("INC", "PassiveSkillEffect")/100) * node.More("PassiveSkillEffect")
+	for _, m := range mods {
+		db.Add(scaleMod(m, scale))
 	}
 }
 

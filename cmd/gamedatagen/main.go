@@ -125,6 +125,15 @@ func run(src, out, parserOut string) error {
 		return err
 	}
 
+	clusterSrc, err := read("Data/ClusterJewels.lua")
+	if err != nil {
+		return err
+	}
+	var cluster gamedata.ClusterJewels
+	if err := evalInto("Data/ClusterJewels.lua", clusterSrc, &cluster); err != nil {
+		return err
+	}
+
 	if err := os.MkdirAll(out, 0o755); err != nil {
 		return err
 	}
@@ -134,6 +143,7 @@ func run(src, out, parserOut string) error {
 	}
 	for name, v := range map[string]any{
 		"bases": bases, "mods": mods, "gems": gems, "uniques": uniques, "tree": tree,
+		"clusterjewels": &cluster,
 	} {
 		if err := writeGzipJSON(filepath.Join(out, name+".json.gz"), v); err != nil {
 			return fmt.Errorf("%s: %w", name, err)
