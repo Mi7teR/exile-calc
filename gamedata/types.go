@@ -419,6 +419,8 @@ type SkillLevel struct {
 	AttackTime            float64 `json:"attackTime,omitempty"`
 	AttackSpeedMultiplier float64 `json:"attackSpeedMultiplier,omitempty"`
 	StoredUses            float64 `json:"storedUses,omitempty"`
+	// Cost is the level's cost by resource (Data/Costs.lua names).
+	Cost map[string]float64 `json:"cost,omitempty"`
 }
 
 // Minion is an entry of Data/Minions.lua or Data/Spectres.lua (data.minions);

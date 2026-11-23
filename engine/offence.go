@@ -2,6 +2,7 @@ package engine
 
 import (
 	"math"
+	"strings"
 
 	"github.com/Mi7teR/poe-lib/modparser"
 )
@@ -175,6 +176,45 @@ func (c *Calculator) offence(actor *ModDB, s *activeSkill, w1 hitSource, w2 *hit
 	for _, e := range list.List(cfg, "SkillData") {
 		skillData(data, e.Value)
 	}
+	// Additional stat bonuses.
+	if list.Flag("IronGrip") {
+		list.Add(Mod{Name: "PhysicalDamage", Type: "INC", Value: actor.strDmgBonus, Flags: mfAttack | mfProjectile, Source: "Strength"})
+	}
+	if list.Flag("IronWill") {
+		list.Add(Mod{Name: "Damage", Type: "INC", Value: actor.strDmgBonus, Flags: mfSpell, Source: "Strength"})
+	}
+	const transfiguration = 0.3 // data.misc.Transfiguration
+	for _, x := range []struct {
+		flag, stat, source string
+		flags              uint64
+	}{
+		{"TransfigurationOfBody", "Life", "Transfiguration of Body", mfAttack},
+		{"TransfigurationOfMind", "Mana", "Transfiguration of Mind", 0},
+		{"TransfigurationOfSoul", "EnergyShield", "Transfiguration of Soul", mfSpell},
+	} {
+		if list.Flag(x.flag) {
+			list.Add(Mod{Name: "Damage", Type: "INC", Value: math.Floor(list.Sum("INC", x.stat) * transfiguration), Flags: x.flags, Source: x.source})
+		}
+	}
+	c.offenceStatConversions(actor, s, w1, w2, out)
+	costs := map[string]float64{}
+	skillCosts(actor, s, costs)
+	for k, v := range costs {
+		actor.output[k] = v
+		out[k] = v
+	}
+	// Sacrifice Support: added chaos damage from unreserved life.
+	if pct, ok := num(data["sacrificeLifePercent"]); ok {
+		life := actor.output["LifeUnreserved"]
+		if s.flags["totem"] {
+			life = c.totemLife(s)
+		}
+		asChaos, _ := num(data["sacrificeLifeAsChaos"])
+		add := math.Floor(life * pct / 100 * (asChaos / 100))
+		list.Add(Mod{Name: "ChaosMin", Type: "BASE", Value: add, Source: "Sacrifice Support"})
+		list.Add(Mod{Name: "ChaosMax", Type: "BASE", Value: add, Source: "Sacrifice Support"})
+	}
+	preDamageFunc(actor, s)
 	// Corpse and enemy explosions: base damage from the monster's life.
 	monsterLife := 100.0
 	if v, ok := num(data["corpseLife"]); ok {
@@ -200,27 +240,6 @@ func (c *Calculator) offence(actor *ModDB, s *activeSkill, w1 hitSource, w2 *hit
 			data[t+"Min"], data[t+"Max"] = p*monsterLife/100, p*monsterLife/100
 		}
 	}
-	// Additional stat bonuses.
-	if list.Flag("IronGrip") {
-		list.Add(Mod{Name: "PhysicalDamage", Type: "INC", Value: actor.strDmgBonus, Flags: mfAttack | mfProjectile, Source: "Strength"})
-	}
-	if list.Flag("IronWill") {
-		list.Add(Mod{Name: "Damage", Type: "INC", Value: actor.strDmgBonus, Flags: mfSpell, Source: "Strength"})
-	}
-	const transfiguration = 0.3 // data.misc.Transfiguration
-	for _, x := range []struct {
-		flag, stat, source string
-		flags              uint64
-	}{
-		{"TransfigurationOfBody", "Life", "Transfiguration of Body", mfAttack},
-		{"TransfigurationOfMind", "Mana", "Transfiguration of Mind", 0},
-		{"TransfigurationOfSoul", "EnergyShield", "Transfiguration of Soul", mfSpell},
-	} {
-		if list.Flag(x.flag) {
-			list.Add(Mod{Name: "Damage", Type: "INC", Value: math.Floor(list.Sum("INC", x.stat) * transfiguration), Flags: x.flags, Source: x.source})
-		}
-	}
-	c.offenceStatConversions(actor, s, w1, w2)
 	isAttack := s.flags["attack"]
 	var passes []*hitPass
 	if isAttack {
@@ -306,6 +325,7 @@ func (c *Calculator) offence(actor *ModDB, s *activeSkill, w1 hitSource, w2 *hit
 	}
 	dpsMult *= (1 + list.SumCfg(cfg, "INC", "DPS")/100) * list.MoreCfg(cfg, "DPS")
 	quantity := math.Max(list.SumCfg(cfg, "BASE", "QuantityMultiplier"), 1)
+	pacts(actor, s, out)
 	for _, p := range passes {
 		c.hitDamage(actor, s, p)
 		p.out["TotalDPS"] = p.out["AverageDamage"] * out["Speed"] * dpsMult * quantity
@@ -657,4 +677,86 @@ func playerWeapons(db *ModDB, gear map[string][]modparser.Mod, classID int) (hit
 		return w1, &w2
 	}
 	return w1, nil
+}
+
+// preDamageFunc ports the skills' preDamageFunc (Data/Skills/*.lua) that
+// set skill data before the damage passes.
+func preDamageFunc(actor *ModDB, s *activeSkill) {
+	data := s.data
+	switch s.active.ge.Name {
+	case "Bodyswap", "Bodyswap of Sacrifice":
+		if s.part == 1 {
+			m, _ := num(data["selfFireExplosionLifeMultiplier"])
+			life := actor.output["Life"]
+			if s.flags["totem"] {
+				life = actor.output["TotemLife"]
+			}
+			data["FireBonusMin"], data["FireBonusMax"] = life*m, life*m
+		}
+	}
+}
+
+// pacts is the Pact part of the damage passes of calcs.offence: each
+// "Pact of X" skill the actor has adds its damage scaled by its uptime to
+// the spells it empowers. Pact of Beidat's extra projectiles, chains and
+// cascades are not ported.
+func pacts(actor *ModDB, s *activeSkill, out map[string]float64) {
+	const stDamageOverTime, stCascadable, stBrand = 35, 56, 65
+	if !s.types[stSpell] || s.types[stBrand] {
+		return
+	}
+	list := s.mods
+	done := map[string]bool{}
+	for _, v := range actor.activeSkills {
+		name := v.active.ge.Name
+		key, ok := strings.CutPrefix(name, "Pact of ")
+		if !ok {
+			continue
+		}
+		if key == "K'Tash" {
+			key = "Ktash"
+		}
+		vaal := s.types[stVaal]
+		applies := false
+		switch key {
+		case "Beidat":
+			applies = !vaal && !s.types[stChannel] && (s.flags["projectile"] || s.types[stCascadable] || s.flags["chaining"] && !s.flags["projectile"])
+		case "Ghorr":
+			applies = !vaal && s.types[stDamageOverTime]
+		case "Ktash":
+			applies = vaal && (s.types[stDamage] || s.types[stDamageOverTime])
+		case "Lycia":
+			applies = !vaal && s.types[stChannel] && s.flags["selfCast"]
+		}
+		if !applies || done[key] || v.disabled {
+			continue
+		}
+		cooldown, _ := skillCooldown(v.mods, v.cfg, v.data)
+		castRate := 1 / v.active.ge.CastTime * calcMod(v.mods, v.cfg, "Speed") * actionSpeedMod(actor)
+		castTime := 1 / math.Min(castRate, serverTickRate)
+		count := v.mods.SumCfg(v.cfg, "BASE", key+"EmpoweredSpells")
+		stored, _ := num(v.data["storedUses"])
+		stored += v.mods.SumCfg(v.cfg, "BASE", "AdditionalCooldownUses")
+		rate := out["Speed"] / out["Repeats"]
+		uptime := 100.0
+		if rate != 0 {
+			uptime = math.Min((count/rate)/(cooldown+castTime), 1) * 100
+		}
+		uptime = math.Min(100, uptime*stored)
+		effect := uptime
+		if list.Flag("Condition:PactMaxHit") {
+			effect = 100
+		}
+		out[key+"UpTimeRatio"] = uptime
+		if l := v.mods.List(v.cfg, key+"PactDamage"); len(l) > 0 {
+			if mv, ok := l[0].Value.(map[string]any); ok {
+				if mm, ok := mv["mod"].(map[string]any); ok {
+					m := modFromMap(mm, "Uptime Scaled "+name)
+					m.Value = mulValue(m.Value, effect/100)
+					list.Add(m)
+				}
+			}
+		}
+		done[key] = true
+	}
 }

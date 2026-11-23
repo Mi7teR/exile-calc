@@ -298,6 +298,16 @@ func skillLevels(v luadata.Value) (map[int]*gamedata.SkillLevel, error) {
 		l.DamageEffectiveness, l.DamageMultiplier = num("damageEffectiveness"), num("damageMultiplier")
 		l.AttackTime, l.AttackSpeedMultiplier = num("attackTime"), num("attackSpeedMultiplier")
 		l.StoredUses = num("storedUses")
+		if ct, ok := lt.Get("cost").(*luadata.Table); ok {
+			for _, k := range ct.Keys {
+				if f, ok := ct.Get(k).(luadata.Number); ok {
+					if l.Cost == nil {
+						l.Cost = map[string]float64{}
+					}
+					l.Cost[keyText(k)] = float64(f)
+				}
+			}
+		}
 		out[n] = l
 		return nil
 	}

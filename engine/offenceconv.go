@@ -38,7 +38,7 @@ func (db *ModDB) replaceMod(m Mod) {
 // offenceStatConversions ports the stat conversions at the start of
 // calcs.offence (CalcOffence.lua, from "account for Battlemage" to the
 // random physical conversions): mods that apply to other stats.
-func (c *Calculator) offenceStatConversions(actor *ModDB, s *activeSkill, w1 hitSource, w2 *hitSource) {
+func (c *Calculator) offenceStatConversions(actor *ModDB, s *activeSkill, w1 hitSource, w2 *hitSource, out map[string]float64) {
 	list, cfg, data := s.mods, s.cfg, s.data
 	mfClaw, mfUnarmed, mfBow := modFlagByName["Claw"], modFlagByName["Unarmed"], modFlagByName["Bow"]
 	improved := func(name string) float64 {
@@ -208,6 +208,7 @@ func (c *Calculator) offenceStatConversions(actor *ModDB, s *activeSkill, w1 hit
 		!list.Flag("SingleProjectile") && !list.Flag("TriggeredBySnipe") {
 		data["dpsMultiplier"] = list.SumCfg(cfg, "BASE", "ProjectileCount")
 	}
+	repeats(actor, s, out)
 	if list.Flag("WeaponPhysAppliesToSpells") {
 		// Runegraft of the Spellbound.
 		mult := list.SumCfg(cfg, "BASE", "WeaponPhysAppliesToSpellsPercent") / 100
@@ -298,4 +299,111 @@ func mulValue(v any, mult float64) any {
 		return f * mult
 	}
 	return v
+}
+
+// repeats is the Repeats block of calcs.offence: the repeat count and the
+// damage and area mods of repeating supports (Spell Echo, Multistrike),
+// for the config's repeatMode (default AVERAGE).
+func repeats(actor *ModDB, s *activeSkill, out map[string]float64) {
+	const stInstant, stRetaliation, stNonRepeatable = 64, 121, 94
+	list, cfg := s.mods, s.cfg
+	out["Repeats"] = 1
+	for _, t := range []int{stInstant, stChannel, stTriggered, stRetaliation, stNonRepeatable} {
+		if s.types[t] {
+			return
+		}
+	}
+	if list.Flag("CannotRepeat") || !(s.types[stAttack] || s.types[stSpell]) {
+		return
+	}
+	n := 1 + list.SumCfg(cfg, "BASE", "RepeatCount")
+	out["Repeats"] = n
+	if n <= 1 {
+		return
+	}
+	out["RepeatCount"] = n
+	mode := "AVERAGE"
+	if actor.build != nil {
+		mode = configString(actor.build.ActiveConfig(), "repeatMode", "AVERAGE")
+	}
+	if mode == "NONE" {
+		return
+	}
+	avg := mode == "AVERAGE"
+	add := func(m Mod, name, typ string, v float64) {
+		list.Add(Mod{Name: name, Type: typ, Value: v, Flags: m.Flags, KeywordFlags: m.KeywordFlags, Source: m.Source, Tags: m.Tags})
+	}
+	val := func(m Mod) float64 { f, _ := num(m.Value); return f }
+	for _, m := range appliedMods(list, cfg, "INC", "RepeatFinalAreaOfEffect") {
+		v := val(m)
+		if avg {
+			v /= n
+		}
+		add(m, "AreaOfEffect", "INC", v)
+	}
+	for _, m := range appliedMods(list, cfg, "INC", "RepeatPerRepeatAreaOfEffect") {
+		v := val(m) * (n - 1)
+		if avg {
+			v /= 2
+		}
+		add(m, "AreaOfEffect", "INC", v)
+	}
+	for _, m := range appliedMods(list, cfg, "BASE", "RepeatFinalDoubleDamageChance") {
+		v := val(m)
+		if avg {
+			v /= n
+		}
+		add(m, "DoubleDamageChance", "BASE", v)
+	}
+	finalMore, moreTotal := 1.0, 0.0
+	for _, m := range appliedMods(list, cfg, "MORE", "RepeatFinalDamage") {
+		v := val(m)
+		finalMore *= 1 + v/100
+		moreTotal += v
+		if avg && !list.Flag("OnlyFinalRepeat") {
+			v /= n
+		}
+		add(m, "Damage", "MORE", v)
+	}
+	for _, m := range appliedMods(list, cfg, "MORE", "RepeatPerRepeatDamage") {
+		v := val(m) * (n - 1)
+		if avg {
+			if finalMore != 1 {
+				v = ((100+val(m)*(n-2)/2)*(n-1)+(100+val(m)*(n-1))*finalMore)/(n+moreTotal/100) - 100
+			} else {
+				v /= 2
+			}
+		}
+		add(m, "Damage", "MORE", v)
+	}
+	var last *Mod
+	finalMore = moreTotal
+	for i, name := range []string{"One", "Two", "Three"} {
+		count := float64(i + 2)
+		if count > n {
+			break
+		}
+		if avg {
+			for _, m := range appliedMods(list, cfg, "MORE", "Repeat"+name+"Damage") {
+				moreTotal += val(m)
+				mc := m
+				last = &mc
+			}
+		} else if count == n {
+			for _, m := range appliedMods(list, cfg, "MORE", "Repeat"+name+"Damage") {
+				add(m, "Damage", "MORE", val(m))
+			}
+		}
+	}
+	if avg && last != nil {
+		add(*last, "Damage", "MORE", (moreTotal/n+100)/(1+finalMore/n/100)-100)
+	}
+	if list.Flag("FinalRepeatSumsDamage") {
+		for _, m := range appliedMods(list, cfg, "FLAG", "FinalRepeatSumsDamage") {
+			add(m, "Damage", "MORE", (100*n+finalMore)/(1+finalMore/100)-100)
+		}
+	}
+	if s.flags["trap"] || s.flags["mine"] {
+		list.NewMod("DPS", "MORE", (n-1)*100, "Repeat Count")
+	}
 }

@@ -40,13 +40,15 @@ type ModDB struct {
 	enemy       *ModDB
 	items       map[string]*itemtext.Item // the actor's itemList, by slot name
 	tags        itemTags
-	classConds  map[string]string           // conditions[item title] = item.classRestriction
-	build       *pobcode.Build              // the build being calculated (minion item sets)
-	strDmgBonus float64                     // actor.strDmgBonus
-	gearMods    map[string][]modparser.Mod  // the player's parsed gear mods per slot (weaponData)
-	parent      *ModDB                      // a skill's mod list reads through to the actor's ModDB
-	owner       *ModDB                      // a minion's parent actor (tag actor "parent")
-	gameIDs     func(gemName string) string // calcLib.getGameIdFromGemName(name, true)
+	classConds  map[string]string          // conditions[item title] = item.classRestriction
+	build       *pobcode.Build             // the build being calculated (minion item sets)
+	strDmgBonus float64                    // actor.strDmgBonus
+	gearMods    map[string][]modparser.Mod // the player's parsed gear mods per slot (weaponData)
+	parent      *ModDB                     // a skill's mod list reads through to the actor's ModDB
+	owner       *ModDB                     // a minion's parent actor (tag actor "parent")
+	// activeSkills is actor.activeSkillList.
+	activeSkills []*activeSkill
+	gameIDs      func(gemName string) string // calcLib.getGameIdFromGemName(name, true)
 
 	// UnsupportedTags counts tag types EvalMod does not port yet; mods
 	// carrying them are left out of every sum.

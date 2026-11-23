@@ -386,6 +386,7 @@ func (c *Calculator) mainMinion(db *ModDB, skills []*activeSkill, buffs map[stri
 	weapon, weaponType, weapon2, weapon2Type := c.minionWeapon(s, m, mdb, gear)
 	mskills := c.createMinionSkills(mdb, s, m, [2]string{weaponType, weapon2Type}, res)
 	ms := mskills[0]
+	mdb.activeSkills = mskills
 	addMinionModifiers(mdb, s.mods.List(s.cfg, "MinionModifier"), m.typ)
 	c.mergeKeystones(mdb, map[string]bool{}, res)
 	c.attributes(mdb)

@@ -407,6 +407,7 @@ func (c *Calculator) Calc(b *pobcode.Build) (*Result, error) {
 	c.customMods(db, res, config)
 	shrineBaseMods(db)
 	skills := c.setupSkills(db, b, useSwap, res)
+	db.activeSkills = skills
 	for _, s := range skills {
 		c.buildSkillMods(db, s, res)
 	}
@@ -469,11 +470,11 @@ func (c *Calculator) Calc(b *pobcode.Build) (*Result, error) {
 	res.Minion = c.mainMinion(db, skills, buffs, b.Level, res)
 	if s := mainSkill(skills); s != nil {
 		w1, w2 := playerWeapons(db, gearMods, spec.ClassID)
-		if debugPlayerSkill != nil {
-			debugPlayerSkill(s)
-		}
 		for k, v := range c.offence(db, s, w1, w2) {
 			db.output[k] = v
+		}
+		if debugPlayerSkill != nil {
+			debugPlayerSkill(s)
 		}
 	}
 	for k, v := range db.UnsupportedTags {
