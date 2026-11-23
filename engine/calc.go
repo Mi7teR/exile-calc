@@ -3,6 +3,7 @@ package engine
 import (
 	"fmt"
 	"math"
+	"strconv"
 	"strings"
 
 	"github.com/Mi7teR/poe-lib/gamedata"
@@ -140,7 +141,16 @@ func (c *Calculator) Calc(b *pobcode.Build) (*Result, error) {
 
 	// Items in the active set; jewels in allocated tree sockets.
 	var flasks []*pobcode.Item
+	var gear []equipped
 	if set := b.ActiveItems(); set != nil {
+		type abyss struct {
+			slot, parent string
+			num          int
+			item         *pobcode.Item
+		}
+		var abyssal []abyss
+		parents := map[string]*itemtext.Item{}
+		jewelEffect := map[string]float64{}
 		for _, slot := range set.Slots {
 			if slot.ItemID == 0 {
 				continue
@@ -154,15 +164,42 @@ func (c *Calculator) Calc(b *pobcode.Build) (*Result, error) {
 			if skipSlot(slot.Name, set.UseSecondWeaponSet) {
 				continue
 			}
-			c.addItem(db, res, b.Item(slot.ItemID), "")
+			if i := strings.Index(slot.Name, " Abyssal Socket "); i >= 0 {
+				n, _ := strconv.Atoi(slot.Name[i+len(" Abyssal Socket "):])
+				abyssal = append(abyssal, abyss{slot.Name, slot.Name[:i], n, b.Item(slot.ItemID)})
+				continue
+			}
+			it, mods := c.addItem(db, res, b.Item(slot.ItemID), 1)
+			if it != nil {
+				gear = append(gear, equipped{slot.Name, it})
+				parents[slot.Name] = it
+				for _, m := range mods {
+					if m.Name == "SocketedJewelEffect" && m.Type == "INC" {
+						if f, ok := num(m.Value); ok {
+							jewelEffect[slot.Name] += f
+						}
+					}
+				}
+			}
+		}
+		// CalcSetup.lua: an abyss jewel counts only if its parent has that
+		// many abyssal sockets, scaled by the parent's socketed jewel effect.
+		for _, a := range abyssal {
+			parent := parents[a.parent]
+			if parent == nil || abyssalSockets(parent) < a.num {
+				continue
+			}
+			c.addItem(db, res, a.item, 1+jewelEffect[a.parent]/100)
 		}
 	}
 	for _, s := range spec.Sockets {
 		if s.ItemID != 0 && allocated[s.NodeID] {
-			c.addItem(db, res, b.Item(s.ItemID), "")
+			c.addItem(db, res, b.Item(s.ItemID), 1)
 		}
 	}
 
+	itemConditions(db, gear)
+	buffMode(db)
 	c.applyFlasks(db, res, flasks)
 	c.attributes(db)
 	c.lifeMana(db)
@@ -356,13 +393,15 @@ func itemSource(item *pobcode.Item, it *itemtext.Item) string {
 	return fmt.Sprintf("Item:%d:%s, %s", item.ID, it.Name, it.BaseName)
 }
 
-func (c *Calculator) addItem(db *ModDB, res *Result, item *pobcode.Item, _ string) {
+// addItem adds an item's global mods, scaled (abyss jewels), and returns
+// the parsed item and all its mods.
+func (c *Calculator) addItem(db *ModDB, res *Result, item *pobcode.Item, scale float64) (*itemtext.Item, []modparser.Mod) {
 	if item == nil {
-		return
+		return nil, nil
 	}
 	it, mods := c.itemMods(item, res)
 	if it == nil {
-		return
+		return nil, nil
 	}
 	source := itemSource(item, it)
 	isArmour := it.Base != nil && it.Base.Armour != nil
@@ -374,8 +413,19 @@ func (c *Calculator) addItem(db *ModDB, res *Result, item *pobcode.Item, _ strin
 		if isWeapon && m.Flags != 0 {
 			continue // local weapon stats: part of the weapon's own data
 		}
-		db.Add(fromParsed(m, source))
+		db.Add(scaleMod(fromParsed(m, source), scale))
 	}
+	return it, mods
+}
+
+func abyssalSockets(it *itemtext.Item) int {
+	n := 0
+	for _, s := range it.Sockets {
+		if s.Color == 'A' {
+			n++
+		}
+	}
+	return n
 }
 
 func containsInt(s []int, v int) bool {

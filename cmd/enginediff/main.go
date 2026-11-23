@@ -27,8 +27,10 @@ func main() {
 	stats := flag.String("stats", "Str,Dex,Int,Life,Mana", "comma-separated mod names")
 	oracle := flag.String("oracle", "../poe-pob-oracle/run.sh", "oracle run.sh")
 	source := flag.String("source", "", "only sources with this prefix (e.g. Item:)")
+	conds := flag.Bool("conditions", false, "compare conditions and multipliers instead of mods")
 	flag.Parse()
 	sourcePrefix = *source
+	compareConditions = *conds
 	if err := run(*builds, strings.Split(*stats, ","), *oracle); err != nil {
 		fmt.Fprintln(os.Stderr, "enginediff:", err)
 		os.Exit(1)
@@ -37,7 +39,10 @@ func main() {
 
 type key struct{ typ, source string }
 
-var sourcePrefix string
+var (
+	sourcePrefix      string
+	compareConditions bool
+)
 
 func run(ids string, stats []string, oracle string) error {
 	codes, _ := filepath.Glob("testdata/golden/builds/*.code")
@@ -53,6 +58,7 @@ func run(ids string, stats []string, oracle string) error {
 	}
 	var input bytes.Buffer
 	ours := map[string]map[string]map[key]float64{}
+	oursCond := map[string]map[string]float64{}
 	enc := json.NewEncoder(&input)
 	for _, c := range codes {
 		name := strings.TrimSuffix(filepath.Base(c), ".code")
@@ -72,6 +78,7 @@ func run(ids string, stats []string, oracle string) error {
 		if err != nil {
 			return err
 		}
+		oursCond[name] = res.DB.Conditions()
 		ours[name] = map[string]map[key]float64{}
 		for _, s := range stats {
 			ours[name][s] = map[key]float64{}
@@ -81,7 +88,7 @@ func run(ids string, stats []string, oracle string) error {
 				}
 			}
 		}
-		if err := enc.Encode(map[string]any{"name": name, "xml": string(x), "tabulate": stats}); err != nil {
+		if err := enc.Encode(map[string]any{"name": name, "xml": string(x), "tabulate": stats, "conditions": compareConditions}); err != nil {
 			return err
 		}
 	}
@@ -96,9 +103,11 @@ func run(ids string, stats []string, oracle string) error {
 	sc.Buffer(make([]byte, 1<<20), 64<<20)
 	for sc.Scan() {
 		var r struct {
-			Name     string `json:"name"`
-			Error    string `json:"error"`
-			Tabulate map[string][]struct {
+			Name        string             `json:"name"`
+			Error       string             `json:"error"`
+			Conditions  []string           `json:"conditions"`
+			Multipliers map[string]float64 `json:"multipliers"`
+			Tabulate    map[string][]struct {
 				Type   string `json:"type"`
 				Value  any    `json:"value"`
 				Source string `json:"source"`
@@ -112,6 +121,31 @@ func run(ids string, stats []string, oracle string) error {
 			continue
 		}
 		fmt.Printf("== %s\n", r.Name)
+		if compareConditions {
+			pob := map[string]float64{}
+			for _, c := range r.Conditions {
+				pob["Condition:"+c] = 1
+			}
+			for k, v := range r.Multipliers {
+				pob["Multiplier:"+k] = v
+			}
+			var lines []string
+			for k, v := range pob {
+				if oursCond[r.Name][k] != v {
+					lines = append(lines, fmt.Sprintf("  %-50s ours %-8g pob %g", k, oursCond[r.Name][k], v))
+				}
+			}
+			for k, v := range oursCond[r.Name] {
+				if _, ok := pob[k]; !ok && v != 0 {
+					lines = append(lines, fmt.Sprintf("  %-50s ours %-8g pob 0", k, v))
+				}
+			}
+			sort.Strings(lines)
+			for _, l := range lines {
+				fmt.Println(l)
+			}
+			continue
+		}
 		for _, s := range stats {
 			pob := map[key]float64{}
 			for _, row := range r.Tabulate[s] {

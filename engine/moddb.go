@@ -403,3 +403,20 @@ func (db *ModDB) Tabulate(name string) []Row {
 	}
 	return rows
 }
+
+// Conditions returns the actor's set conditions ("Condition:X" = 1) and
+// multipliers ("Multiplier:X" = value), for comparing with PoB.
+func (db *ModDB) Conditions() map[string]float64 {
+	out := map[string]float64{}
+	for k, v := range db.conditions {
+		if v {
+			out["Condition:"+k] = 1
+		}
+	}
+	for k, v := range db.multipliers {
+		if v != 0 {
+			out["Multiplier:"+k] = v
+		}
+	}
+	return out
+}
