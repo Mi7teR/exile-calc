@@ -92,6 +92,15 @@ func reservations(db *ModDB, skills []*activeSkill, res *Result) {
 			} else if b := modfInt(p.percent * 100 * mult); b != 0 {
 				pct = math.Max(round(stage(b)/(1+eff/100)/effMore, 0)/100, 0)
 			}
+			// CalcPerform.lua: the skill's own reservation, for GetStat
+			// ManaReservedPercent and LifeReservedPercent.
+			if flat != 0 {
+				s.data[name+"ReservedBase"] = flat
+			}
+			if pct != 0 {
+				s.data[name+"ReservedPercent"] = pct
+				s.data[name+"ReservedBase"] = flat + math.Ceil(out[name]*pct/100)
+			}
 			reservedBase[name] += flat
 			reservedPercent[name] += pct
 			if list.FlagCfg(cfg, "HasUncancellableReservation") {

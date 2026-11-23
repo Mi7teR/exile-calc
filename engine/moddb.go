@@ -318,7 +318,37 @@ func (db *ModDB) getCondition(v string, cfg *Cfg, noMod bool) bool {
 }
 
 // GetStat is ModStoreClass:GetStat for plain output stats.
-func (db *ModDB) GetStat(stat string) float64 { return db.output[stat] }
+func (db *ModDB) GetStat(stat string) float64 { return db.getStat(stat, nil) }
+
+// getStat is ModStoreClass:GetStat: ManaReservedPercent and
+// LifeReservedPercent are the queried skill's own reservation (the skill
+// whose buff has the cfg's skill name), else the actor's output.
+func (db *ModDB) getStat(stat string, cfg *Cfg) float64 {
+	if stat == "ManaReservedPercent" || stat == "LifeReservedPercent" {
+		actor := db.root()
+		pool := strings.TrimSuffix(stat, "ReservedPercent")
+		total := actor.output[pool]
+		if total == 0 {
+			return 0
+		}
+		pct := 0.0
+		for _, s := range actor.activeSkills {
+			if !s.types[stHasReservation] || s.disabled || len(s.buffs) == 0 || cfg == nil {
+				continue
+			}
+			match := false
+			for _, b := range s.buffs {
+				match = match || b.name == cfg.SkillName || (cfg.SummonSkillName != "" && b.name == cfg.SummonSkillName)
+			}
+			if match {
+				pct = math.Floor(numOr(s.data[pool+"ReservedBase"], 0) / total * 100)
+				break
+			}
+		}
+		return math.Min(pct, 100)
+	}
+	return db.output[stat]
+}
 
 func tagNum(t map[string]any, k string) (float64, bool) { return num(t[k]) }
 
@@ -452,10 +482,10 @@ func (db *ModDB) eval(m *Mod, cfg *Cfg) (any, bool) {
 			base := 0.0
 			if stats := tagList(t, "statList"); stats != nil {
 				for _, s := range stats {
-					base += target.GetStat(s)
+					base += target.getStat(s, cfg)
 				}
 			} else {
-				base = target.GetStat(tagStr(t, "stat"))
+				base = target.getStat(tagStr(t, "stat"), cfg)
 			}
 			div, ok := tagNum(t, "div")
 			if !ok || div == 0 {
