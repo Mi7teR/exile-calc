@@ -8,6 +8,7 @@ import (
 	"reflect"
 	"regexp"
 	"sort"
+	"strconv"
 	"testing"
 )
 
@@ -47,7 +48,7 @@ var knownDifferences = map[string]string{
 
 // Ratchet: raise these as hooks and fixes land; never lower them.
 const (
-	minMatched = 18523 // of 19265 lines PoB v2.68.1 parses fully (96.0%)
+	minMatched = 18540 // of 19265 lines PoB v2.68.1 parses fully (96.0%)
 	maxWrong   = 0
 )
 
@@ -151,7 +152,29 @@ func equalMods(got []any, want any) bool {
 	g, _ := json.Marshal(got)
 	var gv any
 	_ = json.Unmarshal(g, &gv)
-	return reflect.DeepEqual(gv, want) || (len(got) == 0 && fmt.Sprint(want) == "[]")
+	// ModCache.lua prints numbers with 14 significant digits.
+	return reflect.DeepEqual(sig14(gv), sig14(want)) || (len(got) == 0 && fmt.Sprint(want) == "[]")
+}
+
+func sig14(v any) any {
+	switch x := v.(type) {
+	case float64:
+		f, _ := strconv.ParseFloat(strconv.FormatFloat(x, 'g', 14, 64), 64)
+		return f
+	case []any:
+		out := make([]any, len(x))
+		for i, e := range x {
+			out[i] = sig14(e)
+		}
+		return out
+	case map[string]any:
+		out := make(map[string]any, len(x))
+		for k, e := range x {
+			out[k] = sig14(e)
+		}
+		return out
+	}
+	return v
 }
 
 func TestParseBasics(t *testing.T) {

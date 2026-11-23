@@ -1,6 +1,7 @@
 package modparser
 
 import (
+	"math"
 	"regexp"
 	"strings"
 )
@@ -16,6 +17,35 @@ type Hook func(p *Parser, args []any) any
 // table and the key in ModParser.lua; each port quotes its Lua source.
 // Unported hooks make a line unsupported, never wrong.
 var hooks = map[string]Hook{
+	// ["(%d+)%% chance to defend with (%d+)%% of armour"] = function(numChance, _, numArmourMultiplier) return {
+	//   mod("ArmourDefense", "MAX", tonumber(numArmourMultiplier) - 100, "Armour Mastery: Max Calc", { type = "Condition", var = "ArmourMax" }),
+	//   mod("ArmourDefense", "MAX", math.min(numChance / 100, 1.0) * (tonumber(numArmourMultiplier) - 100), "Armour Mastery: Average Calc", { type = "Condition", var = "ArmourAvg" }),
+	//   mod("ArmourDefense", "MAX", math.min(math.floor(numChance / 100), 1.0) * (tonumber(numArmourMultiplier) - 100), "Armour Mastery: Min Calc",
+	//     { type = "Condition", var = "ArmourMax", neg = true }, { type = "Condition", var = "ArmourAvg", neg = true }) } end
+	"specialModList[^(%d+)%% chance to defend with (%d+)%% of armour$]": func(p *Parser, a []any) any {
+		chance, _ := toNumber(arg(a, 0)).(float64)
+		mult, _ := toNumber(argS(a, 2)).(float64)
+		withSource := func(m map[string]any, src string) map[string]any { m["source"] = src; return m }
+		cond := func(v string, neg bool) map[string]any {
+			t := map[string]any{"type": "Condition", "var": v}
+			if neg {
+				t["neg"] = true
+			}
+			return t
+		}
+		return []any{
+			withTags(withSource(newMod("ArmourDefense", "MAX", mult-100, 0, 0), "Armour Mastery: Max Calc"), cond("ArmourMax", false)),
+			withTags(withSource(newMod("ArmourDefense", "MAX", math.Min(chance/100, 1)*(mult-100), 0, 0), "Armour Mastery: Average Calc"), cond("ArmourAvg", false)),
+			withTags(withSource(newMod("ArmourDefense", "MAX", math.Min(math.Floor(chance/100), 1)*(mult-100), 0, 0), "Armour Mastery: Min Calc"),
+				cond("ArmourMax", true), cond("ArmourAvg", true)),
+		}
+	},
+	// ["(%d+)%% of chaos damage t?a?k?e?n? ?does not bypass energy shield"] = function(num) return {
+	//   mod("ChaosEnergyShieldBypass", "BASE", -num) } end
+	"specialModList[^(%d+)%% of chaos damage t?a?k?e?n? ?does not bypass energy shield$]": func(p *Parser, a []any) any {
+		n, _ := toNumber(arg(a, 0)).(float64)
+		return []any{newMod("ChaosEnergyShieldBypass", "BASE", -n, 0, 0)}
+	},
 	// ["you count as on low (%a+) while at (%d+)%% of maximum (%a+) or below"] = function(_, resourceType, numStr) return {
 	//   mod("Low"..resourceType:gsub("^%l", string.upper).."Percentage", "BASE", tonumber(numStr) / 100.0) } end
 	"specialModList[^you count as on low (%a+) while at (%d+)%% of maximum (%a+) or below$]": poolPercentage("Low"),
