@@ -313,13 +313,13 @@ func (c *Calculator) resolveGem(g *pobcode.Gem) (*gamedata.Gem, string, bool) {
 			return nil, "", false
 		}
 	case g.SkillID != "":
-		if id, ok := idx.forSkill[g.SkillID]; ok {
-			gem = idx.gems[id]
-		} else if skills[g.SkillID] != nil {
+		// Data.lua keys data.gemForSkill by the granted effect table, while
+		// ProcessSocketGroup looks it up by skill id: a gem given only by
+		// skill id (skills granted by items) never gets gem data.
+		if skills[g.SkillID] != nil {
 			return nil, g.SkillID, true
-		} else {
-			return nil, "", false
 		}
+		return nil, "", false
 	default:
 		return nil, "", false
 	}
