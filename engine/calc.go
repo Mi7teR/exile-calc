@@ -444,6 +444,7 @@ func (c *Calculator) Calc(b *pobcode.Build) (*Result, error) {
 	enemyAilments(db, skills)
 	actorMisc(db.enemy, nil, false, -100)
 	res.Skills = skillInfo(skills)
+	c.allyLifeMods(db, skills, res)
 	c.resistances(db)
 	c.defence(db, gearMods, keystones)
 	avoidanceAndRecovery(db)

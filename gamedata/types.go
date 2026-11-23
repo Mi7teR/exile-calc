@@ -217,6 +217,9 @@ type MonsterTables struct {
 	Damage              []float64 `json:"damage"`
 	Armour              []float64 `json:"armour"`
 	PhysConversionMulti []float64 `json:"physConversionMulti"`
+	AllyLife            []float64 `json:"allyLife"`
+	// TotemLifeMult is data.totemLifeMult by skillTotemId.
+	TotemLifeMult map[int]float64 `json:"totemLifeMult"`
 }
 
 // Pantheon is a god of Data/Pantheons.lua; Souls[0] is the god's own soul
@@ -353,6 +356,9 @@ type Skill struct {
 	BaseEffectiveness        float64             `json:"baseEffectiveness,omitempty"`
 	IncrementalEffectiveness float64             `json:"incrementalEffectiveness,omitempty"`
 	HasGlobalEffect          bool                `json:"hasGlobalEffect,omitempty"`
+	SkillTotemID             int                 `json:"skillTotemId,omitempty"`
+	MinionList               []string            `json:"minionList,omitempty"`
+	AddMinionList            []string            `json:"addMinionList,omitempty"`
 }
 
 // StatValue is a {stat, value} pair (qualityStats, constantStats).

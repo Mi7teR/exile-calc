@@ -365,16 +365,21 @@ func incomingHitMultipliers(db *ModDB, category string) {
 	}
 }
 
-// allyLifePools is CalcDefence.lua's allyLifePoolList: the allies that take
-// damage before you, in drain order (life output, mitigation output).
-// Minion, sentinel, spectre, totem, void spawn and golem life are not
-// computed yet, so only Soul Link and Frost Shield can apply.
-var allyLifePools = [][2]string{
-	{"TotalMinionLife", "MinionAllyDamageMitigation"}, {"TotalRadianceSentinelLife", "RadianceSentinelAllyDamageMitigation"},
-	{"TotalSpectreLife", "SpectreAllyDamageMitigation"}, {"TotalTotemLife", "TotemAllyDamageMitigation"},
-	{"TotalVaalRejuvenationTotemLife", "VaalRejuvenationTotemAllyDamageMitigation"}, {"TotalVoidSpawnLife", "VoidSpawnAllyDamageMitigation"},
-	{"TotalStoneGolemLife", "StoneGolemAllyDamageMitigation"}, {"AlliedEnergyShield", "SoulLinkMitigation"},
-	{"FrostShieldLife", "FrostShieldDamageMitigation"},
+// allyLifePoolList is CalcDefence.lua allyLifePoolList: life output,
+// mitigation output, redirect mod and fallback life mod, in drain order.
+var allyLifePoolList = []struct {
+	life, mitigation, redirect, fallback string
+	meleeOnly                            bool
+}{
+	{"TotalMinionLife", "MinionAllyDamageMitigation", "takenFromMinionBeforeYou", "Multiplier:MinionLife", false},
+	{"TotalRadianceSentinelLife", "RadianceSentinelAllyDamageMitigation", "takenFromRadianceSentinelBeforeYou", "", false},
+	{"TotalSpectreLife", "SpectreAllyDamageMitigation", "takenFromSpectresBeforeYou", "", false},
+	{"TotalTotemLife", "TotemAllyDamageMitigation", "takenFromTotemsBeforeYou", "", false},
+	{"TotalVaalRejuvenationTotemLife", "VaalRejuvenationTotemAllyDamageMitigation", "takenFromVaalRejuvenationTotemsBeforeYou", "", false},
+	{"TotalVoidSpawnLife", "VoidSpawnAllyDamageMitigation", "takenFromVoidSpawnBeforeYou", "", false},
+	{"TotalStoneGolemLife", "StoneGolemAllyDamageMitigation", "takenFromStoneGolemBeforeYou", "", true},
+	{"AlliedEnergyShield", "SoulLinkMitigation", "", "", false},
+	{"FrostShieldLife", "FrostShieldDamageMitigation", "", "", false},
 }
 
 // allyPool is buildAllyLifePools' entry.
@@ -382,9 +387,9 @@ type allyPool struct{ remaining, percent float64 }
 
 func buildAllyPools(out map[string]float64) map[string]*allyPool {
 	pools := map[string]*allyPool{}
-	for _, a := range allyLifePools {
-		if life, m := out[a[0]], out[a[1]]; life > 0 && m > 0 {
-			pools[a[0]] = &allyPool{remaining: life, percent: math.Min(m, 100) / 100}
+	for _, a := range allyLifePoolList {
+		if life, m := out[a.life], out[a.mitigation]; life > 0 && m > 0 {
+			pools[a.life] = &allyPool{remaining: life, percent: math.Min(m, 100) / 100}
 		}
 	}
 	return pools
@@ -510,10 +515,43 @@ func pools(db *ModDB) {
 		}
 	}
 
-	// Taken from allies before you: Frost Shield; ally life pools
-	// (minions, totems, golems) are not ported.
+	// Taken from allies before you: Frost Shield, then every ally redirect
+	// (the life comes from allyLifeMods; minion life is not ported).
 	out["FrostShieldLife"] = db.Sum("BASE", "FrostGlobeHealth")
 	out["FrostShieldDamageMitigation"] = db.Sum("BASE", "FrostGlobeDamageMitigation")
+	for _, a := range allyLifePoolList {
+		if a.redirect == "" {
+			continue
+		}
+		m := db.Sum("BASE", a.redirect)
+		if a.meleeOnly {
+			switch env.damageType {
+			case "Melee":
+			case "Average":
+				m /= 4
+			default:
+				m = 0
+			}
+		}
+		out[a.mitigation] = m
+		if m != 0 {
+			life := db.Sum("BASE", a.life)
+			if life == 0 && a.fallback != "" {
+				life = db.Sum("BASE", a.fallback)
+			}
+			if v, ok := db.Override(a.life); ok {
+				life = v
+			}
+			out[a.life] = life
+		}
+	}
+	// Companionship sharing a minion's life with another redirect
+	// (MinionLifeShares...) needs minions, which are not ported.
+	if out["TotemAllyDamageMitigation"] > 0 && out["TotalTotemLife"] == 0 && out["TotalVaalRejuvenationTotemLife"] > 0 {
+		out["VaalRejuvenationTotemAllyDamageMitigation"] += out["TotemAllyDamageMitigation"]
+		out["TotemAllyDamageMitigation"] = 0
+		delete(out, "TotalTotemLife")
+	}
 	out["SoulLinkMitigation"] = db.Sum("BASE", "TakenFromParentESBeforeYou")
 	if out["SoulLinkMitigation"] == 0 {
 		out["SoulLinkMitigation"] = db.Sum("BASE", "TakenFromPartyMemberESBeforeYou")
@@ -684,8 +722,8 @@ func reducePoolsByDamage(db *ModDB, in *poolState, damage map[string]float64) *p
 		if !ok {
 			continue
 		}
-		for _, a := range allyLifePools {
-			if ap := in.allies[a[0]]; ap != nil && ap.remaining > 0 {
+		for _, a := range allyLifePoolList {
+			if ap := in.allies[a.life]; ap != nil && ap.remaining > 0 {
 				d := math.Min(rem*ap.percent, ap.remaining)
 				ap.remaining = math.Floor(ap.remaining - d)
 				rem -= d
@@ -852,8 +890,8 @@ func (est *defenceEstimations) maximumHitTaken(db *ModDB) {
 				out[k] = math.Max(out[k]-protected, 0) + math.Min(out[k], protected)/(1-rate/100)
 			}
 		}
-		for i := len(allyLifePools) - 1; i >= 0; i-- {
-			life, m := out[allyLifePools[i][0]], out[allyLifePools[i][1]]
+		for i := len(allyLifePoolList) - 1; i >= 0; i-- {
+			life, m := out[allyLifePoolList[i].life], out[allyLifePoolList[i].mitigation]
 			if life <= 0 || m <= 0 {
 				continue
 			}

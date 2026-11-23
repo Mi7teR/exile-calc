@@ -16,6 +16,7 @@ func convertMonsterTables(src string) (*gamedata.MonsterTables, error) {
 	for name, dst := range map[string]*[]float64{
 		"monsterEvasionTable": &out.Evasion, "monsterAccuracyTable": &out.Accuracy, "monsterDamageTable": &out.Damage,
 		"monsterArmourTable": &out.Armour, "monsterPhysConversionMultiTable": &out.PhysConversionMulti,
+		"monsterAllyLifeTable": &out.AllyLife,
 	} {
 		m := regexp.MustCompile(`(?m)^data\.` + name + ` = \{([^}]*)\}`).FindStringSubmatch(src)
 		if m == nil {
@@ -31,6 +32,16 @@ func convertMonsterTables(src string) (*gamedata.MonsterTables, error) {
 			}
 			*dst = append(*dst, v)
 		}
+	}
+	m := regexp.MustCompile(`(?m)^data\.totemLifeMult = \{([^}]*)\}`).FindStringSubmatch(src)
+	if m == nil {
+		return nil, fmt.Errorf("Misc.lua: no totemLifeMult")
+	}
+	out.TotemLifeMult = map[int]float64{}
+	for _, e := range regexp.MustCompile(`\[(\d+)\] = ([\d.]+)`).FindAllStringSubmatch(m[1], -1) {
+		k, _ := strconv.Atoi(e[1])
+		v, _ := strconv.ParseFloat(e[2], 64)
+		out.TotemLifeMult[k] = v
 	}
 	return out, nil
 }
