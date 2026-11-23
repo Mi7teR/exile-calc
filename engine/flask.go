@@ -163,8 +163,46 @@ func (c *Calculator) applyFlasks(db *ModDB, res *Result, slots []flaskSlot) (sil
 	return
 }
 
-// scaleMod is ModStoreClass:ScaleAddMod for numeric values without
-// high-precision data: modf(round(value * scale, 2)).
+// highPrecisionMods is Data.lua data.highPrecisionMods: the decimal places
+// a scaled value keeps (ModStoreClass:ScaleAddMod).
+var highPrecisionMods = map[[2]string]int{
+	{"CritChance", "BASE"}: 2, {"SelfCritChance", "BASE"}: 2, {"LifeRegenPercent", "BASE"}: 2,
+	{"ManaRegenPercent", "BASE"}: 2, {"EnergyShieldRegenPercent", "BASE"}: 2, {"LifeDegenPercent", "BASE"}: 2,
+	{"LifeDegenPercentTincture", "BASE"}: 2, {"ManaDegenPercent", "BASE"}: 2,
+	{"ManaDegenPercentTincture", "BASE"}: 2, {"EnergyShieldDegenPercent", "BASE"}: 2,
+	{"DamageLifeLeech", "BASE"}: 2, {"DamageManaLeech", "BASE"}: 2, {"DamageEnergyShieldLeech", "BASE"}: 2,
+	{"PhysicalDamageLifeLeech", "BASE"}: 2, {"PhysicalDamageManaLeech", "BASE"}: 2,
+	{"PhysicalDamageEnergyShieldLeech", "BASE"}: 2, {"ElementalDamageLifeLeech", "BASE"}: 2,
+	{"ElementalDamageManaLeech", "BASE"}: 2, {"ElementalDamageEnergyShieldLeech", "BASE"}: 2,
+	{"FireDamageLifeLeech", "BASE"}: 2, {"FireDamageManaLeech", "BASE"}: 2,
+	{"FireDamageEnergyShieldLeech", "BASE"}: 2, {"ColdDamageLifeLeech", "BASE"}: 2,
+	{"ColdDamageManaLeech", "BASE"}: 2, {"ColdDamageEnergyShieldLeech", "BASE"}: 2,
+	{"LightningDamageLifeLeech", "BASE"}: 2, {"LightningDamageManaLeech", "BASE"}: 2,
+	{"LightningDamageEnergyShieldLeech", "BASE"}: 2, {"ChaosDamageLifeLeech", "BASE"}: 2,
+	{"ChaosDamageManaLeech", "BASE"}: 2, {"ChaosDamageEnergyShieldLeech", "BASE"}: 2,
+	{"LifeRegen", "BASE"}: 1, {"ManaRegen", "BASE"}: 1, {"EnergyShieldRegen", "BASE"}: 1,
+	{"RageRegen", "BASE"}: 1, {"LifeDegen", "BASE"}: 1, {"ManaDegen", "BASE"}: 1,
+	{"EnergyShieldDegen", "BASE"}:     1,
+	{"SupportManaMultiplier", "MORE"}: 4,
+}
+
+const defaultHighPrecision = 1 // Data.lua data.defaultHighPrecision
+
+// scaleValue is the number part of ModStoreClass:ScaleAddMod.
+func scaleValue(name, typ string, v, scale float64) float64 {
+	precision, ok := highPrecisionMods[[2]string{name, typ}]
+	if !ok && math.Floor(v) != v {
+		precision, ok = defaultHighPrecision, true
+	}
+	if ok {
+		p := math.Pow(10, float64(precision))
+		return math.Floor(v*scale*p) / p
+	}
+	return modfInt(round(v*scale, 2))
+}
+
+// scaleMod is ModStoreClass:ScaleAddMod: a copy of m with its value (or
+// its sub-mod's, or the keyOfScaledMod entry) scaled.
 func scaleMod(m Mod, scale float64) Mod {
 	if scale == 1 {
 		return m
@@ -176,18 +214,22 @@ func scaleMod(m Mod, scale float64) Mod {
 	}
 	switch v := m.Value.(type) {
 	case float64:
-		if math.Floor(v) != v {
-			m.Value = math.Floor(v*scale*10) / 10 // data.defaultHighPrecision = 1
-		} else {
-			m.Value = modfInt(round(v*scale, 2))
-		}
+		m.Value = scaleValue(m.Name, m.Type, v, scale)
 	case map[string]any:
 		if sub, ok := v["mod"].(map[string]any); ok {
 			if f, ok := sub["value"].(float64); ok {
 				c := copyMap(v)
 				s := copyMap(sub)
-				s["value"] = modfInt(round(f*scale, 2))
+				name, _ := sub["name"].(string)
+				typ, _ := sub["type"].(string)
+				s["value"] = scaleValue(name, typ, f, scale)
 				c["mod"] = s
+				m.Value = c
+			}
+		} else if key, ok := v["keyOfScaledMod"].(string); ok {
+			if f, ok := num(v[key]); ok {
+				c := copyMap(v)
+				c[key] = round(f*scale, 2)
 				m.Value = c
 			}
 		}

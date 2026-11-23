@@ -420,6 +420,42 @@ func (db *ModDB) eval(m *Mod, cfg *Cfg) (any, bool) {
 					value = math.Min(f, limit)
 				}
 			}
+		case "PercentStat":
+			target, ok := db.target(t)
+			if !ok {
+				target = db
+			}
+			base := 0.0
+			if stats := tagList(t, "statList"); stats != nil {
+				for _, s := range stats {
+					base += target.GetStat(s)
+				}
+			} else {
+				base = target.GetStat(tagStr(t, "stat"))
+			}
+			mult := base
+			if p, ok := tagNum(t, "percent"); ok {
+				mult = base * p / 100
+			} else if pv := tagStr(t, "percentVar"); pv != "" {
+				mult = base * db.getMultiplier(pv, cfg, false) / 100
+			}
+			if tagBool(t, "floor") {
+				mult = math.Floor(mult)
+			}
+			limit, hasLimit := tagNum(t, "limit")
+			if lv := tagStr(t, "limitVar"); !hasLimit && lv != "" {
+				limit, hasLimit = db.getMultiplier(lv, cfg, false), true
+			}
+			if hasLimit && !tagBool(t, "limitTotal") {
+				mult = math.Min(mult, limit)
+			}
+			if f, isNum := num(value); isNum {
+				b, _ := tagNum(t, "base")
+				value = math.Ceil(f*mult + b)
+				if hasLimit && tagBool(t, "limitTotal") {
+					value = math.Min(value.(float64), limit)
+				}
+			}
 		case "StatThreshold":
 			stat := 0.0
 			if stats := tagList(t, "statList"); stats != nil {
@@ -601,7 +637,7 @@ func (db *ModDB) eval(m *Mod, cfg *Cfg) (any, bool) {
 
 // unportedTags are the remaining tag types ModStoreClass:EvalMod handles.
 var unportedTags = map[string]bool{
-	"PercentStat": true, "DistanceRamp": true, "MeleeProximity": true, "MonsterTag": true,
+	"DistanceRamp": true, "MeleeProximity": true, "MonsterTag": true,
 }
 
 // round is PoB's round(v, places) (Modules/Common.lua): floor(v*10^p + 0.5).
