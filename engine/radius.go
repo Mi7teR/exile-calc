@@ -12,8 +12,10 @@ import (
 )
 
 // radiusFunc is a jewelOtherFuncs entry (Modules/ModParser.lua): given a
-// node in the jewel's radius and its own mods, it returns mods to add.
-type radiusFunc func(node *gamedata.Node, own []Mod) []Mod
+// node in the jewel's radius, its own mods (node.modList) and the mods
+// gathered so far for it (out, with what earlier jewels added), it returns
+// mods to add.
+type radiusFunc func(node *gamedata.Node, own, out []Mod) []Mod
 
 // nodeType is PassiveTree.lua's node.type.
 func nodeType(n *gamedata.Node) string {
@@ -49,7 +51,7 @@ func numCap(caps []string, i int) float64 {
 func grant(source string, mods func(caps []string) []Mod) func(caps []string, source string) radiusFunc {
 	return func(caps []string, src string) radiusFunc {
 		out := mods(caps)
-		return func(n *gamedata.Node, _ []Mod) []Mod {
+		return func(n *gamedata.Node, _, _ []Mod) []Mod {
 			switch nodeType(n) {
 			case "Keystone", "Socket", "ClassStart":
 				return nil
@@ -72,7 +74,7 @@ func mod(name, typ string, v float64) Mod { return Mod{Name: name, Type: typ, Va
 // when a factor is given. Attributes from tattoos are not converted.
 func simpleConv(src []string, dst, typ string, remove bool, factor float64, srcType string) func(caps []string, source string) radiusFunc {
 	return func(_ []string, _ string) radiusFunc {
-		return func(n *gamedata.Node, own []Mod) []Mod {
+		return func(n *gamedata.Node, own, _ []Mod) []Mod {
 			var out []Mod
 			for _, s := range src {
 				for _, m := range own {
@@ -133,7 +135,7 @@ var radiusPatterns = func() []radiusPattern {
 		{`^passives granting fire resistance or all elemental resistances in radius also grant increased maximum life at (\d+)% of its value$`, pctConv([]string{"FireResist", "ElementalResist"}, "Life", "INC", false, "BASE")},
 		{`^(\d+)% increased effect of non-keystone passive skills in radius$`, func(caps []string, src string) radiusFunc {
 			v := numCap(caps, 1)
-			return func(n *gamedata.Node, _ []Mod) []Mod {
+			return func(n *gamedata.Node, _, _ []Mod) []Mod {
 				if t := nodeType(n); t == "Keystone" || t == "ClassStart" {
 					return nil
 				}
@@ -169,7 +171,7 @@ var radiusPatterns = func() []radiusPattern {
 
 func flagFor(name, onType string) func(caps []string, source string) radiusFunc {
 	return func(_ []string, src string) radiusFunc {
-		return func(n *gamedata.Node, _ []Mod) []Mod {
+		return func(n *gamedata.Node, _, _ []Mod) []Mod {
 			if nodeType(n) != onType {
 				return nil
 			}
@@ -211,9 +213,9 @@ type radiusJewels struct {
 // ljOk40ieEDlA), so allocated nodes are skipped here.
 func collectUnallocated(onType string, alloc map[int]bool) (radiusFunc, func() []Mod) {
 	var kept []Mod
-	f := func(n *gamedata.Node, own []Mod) []Mod {
+	f := func(n *gamedata.Node, _, out []Mod) []Mod {
 		if nodeType(n) == onType && !alloc[n.ID] {
-			for _, m := range own {
+			for _, m := range out {
 				if !strings.HasPrefix(m.Name, "Condition:ConnectedTo") {
 					kept = append(kept, m)
 				}

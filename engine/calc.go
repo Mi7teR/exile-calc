@@ -529,11 +529,13 @@ func (c *Calculator) nodeMods(res *Result, stats []string, incEffect float64, so
 	if incEffect != 0 {
 		mods = append(mods, Mod{Name: "PassiveSkillEffect", Type: "INC", Value: incEffect, Source: source})
 	}
-	// First pass radius jewels ("Other" functions) see the node's own mods.
-	if tn != nil {
+	// First pass radius jewels ("Other" functions): conversions read the
+	// node's own mods, collectors the list built so far.
+	// Mastery nodes are skipped (radNode.type ~= "Mastery").
+	if tn != nil && nodeType(tn) != "Mastery" {
 		own := append([]Mod(nil), mods...)
 		for _, f := range funcs {
-			mods = append(mods, f(tn, own)...)
+			mods = append(mods, f(tn, own, mods)...)
 		}
 	}
 	return mods
