@@ -102,6 +102,7 @@ func (c *Calculator) Calc(b *pobcode.Build) (*Result, error) {
 	for _, r := range resistTypes {
 		db.NewMod(r+"ResistMax", "BASE", baseMaxResist, "Base")
 	}
+	chargeBaseMods(db)
 	db.NewMod("BlockChanceMax", "BASE", 75, "Base")      // characterConstants maximum_block_%
 	db.NewMod("SpellBlockChanceMax", "BASE", 75, "Base") // base_maximum_spell_block_%
 	// inherent_block_while_dual_wielding_% = 20
@@ -377,8 +378,11 @@ func (c *Calculator) Calc(b *pobcode.Build) (*Result, error) {
 	c.attributes(db)
 	shrineBuffs(db)
 	c.lifeMana(db)
+	charges(db) // early, for stats that depend on charges
 	c.applyBuffs(db, skills, res)
 	c.mergeKeystones(db, keystones, res)
+	charges(db)
+	rage(db, mainCfg(skills))
 	res.Skills = skillInfo(skills)
 	c.resistances(db)
 	c.defence(db, gearMods, keystones)

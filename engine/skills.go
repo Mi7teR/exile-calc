@@ -225,6 +225,7 @@ type activeSkill struct {
 	data        map[string]any
 	buffs       []*skillBuff
 	disabled    bool
+	main        bool // env.player.mainSkill
 	// weaponSupports is set when a linked support has weaponTypes, which
 	// canSupport does not match yet.
 	weaponSupports bool
@@ -586,7 +587,28 @@ func (c *Calculator) setupSkills(db *ModDB, b *pobcode.Build, useSwap bool, res 
 			}
 		}
 	}
+	// The main skill: the group's mainActiveSkill among its active skills.
+	var inMain []*activeSkill
+	for _, s := range out {
+		if s.group == &set.Groups[mainGroup-1] {
+			inMain = append(inMain, s)
+		}
+	}
+	if len(inMain) > 0 {
+		inMain[min(len(inMain), max(set.Groups[mainGroup-1].MainActiveSkill, 1))-1].main = true
+	}
 	return out
+}
+
+// mainCfg is env.player.mainSkill.skillCfg, nil when there is none (PoB
+// then uses a default Melee skill, which is not built).
+func mainCfg(skills []*activeSkill) *Cfg {
+	for _, s := range skills {
+		if s.main {
+			return s.cfg
+		}
+	}
+	return nil
 }
 
 func firstNonEmpty(s ...string) string {
