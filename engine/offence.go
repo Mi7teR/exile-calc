@@ -100,11 +100,14 @@ type hitSource struct {
 }
 
 type hitPass struct {
-	src  hitSource
-	cfg  *Cfg
-	conv map[string]*convEntry
-	out  map[string]float64
-	base map[string][2]float64 // <Type>MinBase, <Type>MaxBase
+	// repeats, cooldown: the skill's Repeats and cooldown (if any).
+	repeats, cooldown float64
+	hasCooldown       bool
+	src               hitSource
+	cfg               *Cfg
+	conv              map[string]*convEntry
+	out               map[string]float64
+	base              map[string][2]float64 // <Type>MinBase, <Type>MaxBase
 }
 
 // calcDamage is CalcOffence.lua calcDamage.
@@ -308,16 +311,27 @@ func (c *Calculator) offence(actor *ModDB, s *activeSkill, w1 hitSource, w2 *hit
 	}
 	for _, p := range passes {
 		p.conv = conversionTable(list, p.cfg)
+		p.repeats, p.cooldown, p.hasCooldown = out["Repeats"], cooldown, hasCooldown && cooldown > 0
 		c.hitAndSpeed(actor, s, p)
-		if hasCooldown && cooldown > 0 && p.out["Speed"] != 0 {
-			p.out["Speed"] = math.Min(p.out["Speed"], 1/cooldown) // * Repeats (1)
-		}
 	}
 	combine("AccuracyHitChance", "AVERAGE")
 	combine("HitChance", "AVERAGE")
 	combine("Speed", "HARMONICMEAN")
+	if isAttack {
+		for _, st := range []string{"HitSpeed", "HitTime", "Cooldown"} {
+			for _, p := range passes {
+				if v, ok := p.out[st]; ok {
+					out[st] = v
+					break
+				}
+			}
+		}
+	}
 	if out["Speed"] != 0 {
 		out["Time"] = 1 / out["Speed"]
+	}
+	if both {
+		hitTime(s, out, true)
 	}
 	dpsMult := 1.0
 	if v, ok := num(data["dpsMultiplier"]); ok {
@@ -328,7 +342,11 @@ func (c *Calculator) offence(actor *ModDB, s *activeSkill, w1 hitSource, w2 *hit
 	pacts(actor, s, out)
 	for _, p := range passes {
 		c.hitDamage(actor, s, p)
-		p.out["TotalDPS"] = p.out["AverageDamage"] * out["Speed"] * dpsMult * quantity
+		speed := out["Speed"]
+		if hs, ok := out["HitSpeed"]; ok {
+			speed = hs
+		}
+		p.out["TotalDPS"] = p.out["AverageDamage"] * speed * dpsMult * quantity
 	}
 	combine("CritChance", "AVERAGE")
 	combine("CritMultiplier", "AVERAGE")
@@ -387,8 +405,33 @@ func (c *Calculator) hitAndSpeed(actor *ModDB, s *activeSkill, p *hitPass) {
 	out["HitChance"] = out["AccuracyHitChance"] * (1 - block/100)
 
 	ge := s.active.ge
-	if ge.CastTime == 0 && data["castTimeOverride"] == nil && !truthy(data["triggered"]) {
-		out["Speed"] = 0
+	repeats := math.Max(1, p.repeats)
+	triggered := truthy(data["triggered"])
+	switch {
+	case ge.CastTime == 0 && data["castTimeOverride"] == nil && !triggered:
+		out["Time"], out["Speed"] = 0, 0
+		return
+	case data["timeOverride"] != nil:
+		t, _ := num(data["timeOverride"])
+		if p.hasCooldown {
+			t = math.Max(t, p.cooldown)
+		}
+		out["Time"], out["Speed"] = t, 1/t
+		return
+	case truthy(data["fixedCastTime"]):
+		out["Time"], out["Speed"] = ge.CastTime, 1/ge.CastTime
+		return
+	case data["triggerTime"] != nil && triggered:
+		t, _ := num(data["triggerTime"])
+		t /= 1 + list.SumCfg(p.cfg, "INC", "CooldownRecovery")/100
+		if n := list.SumCfg(p.cfg, "BASE", "ActiveSkillsLinkedToTrigger"); n > 0 {
+			t *= n
+		}
+		out["Time"], out["TriggerTime"], out["Speed"] = t, t, 1/t
+		return
+	case data["triggerRate"] != nil && triggered:
+		r, _ := num(data["triggerRate"])
+		out["Time"], out["TriggerTime"], out["Speed"] = 1/r, 1/r, r
 		return
 	}
 	var baseTime float64
@@ -400,24 +443,79 @@ func (c *Calculator) hitAndSpeed(actor *ModDB, s *activeSkill, p *hitPass) {
 		if rate == 0 {
 			rate = 1
 		}
-		baseTime = 1/rate + list.SumCfg(p.cfg, "BASE", "Speed")
-		if m := calcMod(list, cfg, "SkillAttackTime"); m > 0 {
-			baseTime *= m
+		switch {
+		case truthy(data["castTimeOverridesAttackTime"]):
+			baseTime = ge.CastTime
+		case calcMod(list, cfg, "SkillAttackTime") > 0:
+			baseTime = (1/rate + list.SumCfg(p.cfg, "BASE", "Speed")) * calcMod(list, cfg, "SkillAttackTime")
+		default:
+			baseTime = 1/rate + list.SumCfg(p.cfg, "BASE", "Speed")
 		}
 	} else {
 		baseTime = ge.CastTime
 		if v, ok := num(data["castTimeOverride"]); ok {
 			baseTime = v
 		}
+		if baseTime == 0 {
+			baseTime = 1
+		}
 	}
+	// Trauma (HasTrauma) is not ported.
 	inc := list.SumCfg(p.cfg, "INC", "Speed")
 	more := list.MoreCfg(p.cfg, "Speed")
-	out["Speed"] = 1 / (baseTime/round((1+inc/100)*more, 2) + list.SumCfg(p.cfg, "BASE", "TotalAttackTime") + list.SumCfg(p.cfg, "BASE", "TotalCastTime"))
+	if s.flags["warcry"] {
+		out["Speed"] = 1 / actor.output["WarcryCastTime"]
+	} else {
+		out["Speed"] = 1 / (baseTime/round((1+inc/100)*more, 2) + list.SumCfg(p.cfg, "BASE", "TotalAttackTime") + list.SumCfg(p.cfg, "BASE", "TotalCastTime"))
+	}
 	if s.flags["selfCast"] {
 		out["Speed"] *= actor.output["ActionSpeedMod"]
 	}
+	if s.flags["totem"] {
+		out["TotemActionSpeed"] = 1 + actor.Sum("INC", "TotemActionSpeed")/100
+		out["Speed"] *= out["TotemActionSpeed"]
+	}
+	if p.hasCooldown {
+		out["Cooldown"] = p.cooldown
+		out["Speed"] = math.Min(out["Speed"], 1/p.cooldown*repeats)
+	}
 	if !s.types[stChannel] {
-		out["Speed"] = math.Min(out["Speed"], serverTickRate)
+		out["Speed"] = math.Min(out["Speed"], serverTickRate*repeats)
+	}
+	if out["Speed"] == 0 {
+		out["Time"] = 0
+	} else {
+		out["Time"] = 1 / out["Speed"]
+	}
+	hitTime(s, out, false)
+}
+
+// hitTime is the HitTime and HitSpeed part of the speed calculation:
+// skills that hit on their own timer (hitTimeOverride, hitTimeMultiplier).
+func hitTime(s *activeSkill, out map[string]float64, tickCap bool) {
+	data := s.data
+	if truthy(data["triggeredOnDeath"]) {
+		return
+	}
+	if v, ok := num(data["hitTimeOverride"]); ok && v != 0 {
+		out["HitTime"], out["HitSpeed"] = v, 1/v
+		return
+	}
+	m, ok := num(data["hitTimeMultiplier"])
+	if !ok || out["Time"] == 0 {
+		return
+	}
+	out["HitTime"] = out["Time"] * m
+	cd, hasCD := out["Cooldown"]
+	switch {
+	case hasCD && truthy(data["triggered"]):
+		out["HitSpeed"] = 1 / math.Max(out["HitTime"], cd)
+	case hasCD:
+		out["HitSpeed"] = 1 / (out["HitTime"] + cd)
+	case tickCap:
+		out["HitSpeed"] = math.Min(1/out["HitTime"], serverTickRate)
+	default:
+		out["HitSpeed"] = 1 / out["HitTime"]
 	}
 }
 
