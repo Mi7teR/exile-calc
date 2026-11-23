@@ -34,6 +34,7 @@ type ModDB struct {
 	enemy       *ModDB
 	items       map[string]*itemtext.Item // the actor's itemList, by slot name
 	tags        itemTags
+	classConds  map[string]string // conditions[item title] = item.classRestriction
 
 	// UnsupportedTags counts tag types EvalMod does not port yet; mods
 	// carrying them are left out of every sum.
@@ -47,6 +48,7 @@ func NewModDB() *ModDB {
 		multipliers:     map[string]float64{},
 		output:          map[string]float64{},
 		items:           map[string]*itemtext.Item{},
+		classConds:      map[string]string{},
 		UnsupportedTags: map[string]int{},
 	}
 }

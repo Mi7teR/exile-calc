@@ -88,11 +88,24 @@ type Item struct {
 	Variants []string // "Variant:" lines of a unique
 	Variant  int      // selected variant, 1-based; the last one by default
 
+	classRestriction string    // "Requires Class" spec line
+	classLines       []ModLine // "{variant:n}Requires Class X" lines
+
 	Enchants  []ModLine
 	Scourge   []ModLine
 	Implicits []ModLine
 	Explicits []ModLine
 	Crucible  []ModLine
+}
+
+// ClassRestriction is item.classRestriction: the class a "Requires Class"
+// line names, a variant line of the selected variant taking precedence
+// (Item.lua BuildModList).
+func (it *Item) ClassRestriction() string {
+	for _, l := range it.active(it.classLines) {
+		return l.Text
+	}
+	return it.classRestriction
 }
 
 // ActiveImplicits returns the implicits shown for the selected variant.
@@ -411,6 +424,8 @@ func (p *Parser) Parse(text string) (*Item, error) {
 				it.Variant = specNumber(specVal)
 			case "Has Variants", "Selected Variants":
 				l++ // Item.lua skips the next line (old Watcher's Eye format)
+			case "Requires Class":
+				it.classRestriction = specVal
 			case "League":
 				it.League = specVal
 			case "Source":
@@ -524,6 +539,9 @@ func (p *Parser) Parse(text string) (*Item, error) {
 			target = &it.Scourge
 		case strings.Contains(line, "Requires Class"):
 			target = nil
+			if _, c, ok := strings.Cut(line, "Requires Class "); ok && len(mod.Variants) > 0 {
+				it.classLines = append(it.classLines, ModLine{Text: c, Variants: mod.Variants})
+			}
 		case mod.Implicit || (!mod.Crafted && len(it.Enchants)+len(it.Scourge)+len(it.Implicits) < implicitLines):
 			target = &it.Implicits
 		case mod.Crucible:

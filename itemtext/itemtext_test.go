@@ -351,3 +351,24 @@ func TestSanitiseAndMarkup(t *testing.T) {
 		t.Errorf("explicits: %v", texts(it.Explicits))
 	}
 }
+
+func TestClassRestriction(t *testing.T) {
+	p := parser(t)
+	it, err := p.Parse("Rarity: UNIQUE\nForbidden Flesh\nCobalt Jewel\nRequires Class Scion\nImplicits: 0\nAllocates Pathfinder if you have the matching modifier on Forbidden Flame\nCorrupted")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := it.ClassRestriction(); got != "Scion" {
+		t.Errorf("spec line: got %q", got)
+	}
+	it, err = p.Parse("Rarity: UNIQUE\nForbidden Flame\nCrimson Jewel\nVariant: (Witch) A\nVariant: (Shadow) B\nSelected Variant: 2\nImplicits: 0\n{variant:1}Requires Class Witch\n{variant:2}Requires Class Shadow\n{variant:1}Allocates A if you have the matching modifier on Forbidden Flesh\n{variant:2}Allocates B if you have the matching modifier on Forbidden Flesh")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := it.ClassRestriction(); got != "Shadow" {
+		t.Errorf("variant line: got %q", got)
+	}
+	if len(it.ActiveExplicits()) != 1 {
+		t.Errorf("Requires Class lines must not be mods: %+v", it.Explicits)
+	}
+}

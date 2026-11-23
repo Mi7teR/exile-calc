@@ -111,14 +111,14 @@ func (c *Calculator) Calc(b *pobcode.Build) (*Result, error) {
 	treeCounts(db, tree, spec.Nodes, cluster)
 	conquered := c.conquests(spec, b, allocated, res)
 	radiusFuncs := c.radiusFuncs(spec, b, allocated, res)
-	for _, id := range spec.Nodes {
+	addTreeNode := func(id int) {
 		if g, ok := cluster[id]; ok {
 			c.addNode(db, res, g.stats, g.incEffect, fmt.Sprintf("Tree:%d", id), nil, nil)
-			continue
+			return
 		}
 		node := tree.Nodes[id]
 		if node == nil {
-			continue
+			return
 		}
 		stats := node.Stats
 		source := fmt.Sprintf("Tree:%d", id)
@@ -139,6 +139,9 @@ func (c *Calculator) Calc(b *pobcode.Build) (*Result, error) {
 			funcs = radiusFuncs[id]
 		}
 		c.addNode(db, res, stats, 0, source, node, funcs)
+	}
+	for _, id := range spec.Nodes {
+		addTreeNode(id)
 	}
 
 	// Items in the active set; jewels in allocated tree sockets.
@@ -211,6 +214,9 @@ func (c *Calculator) Calc(b *pobcode.Build) (*Result, error) {
 		}
 	}
 
+	for _, id := range grantedNodes(db, tree, class.Name, allocated) {
+		addTreeNode(id)
+	}
 	itemConditions(db, gear)
 	buffMode(db)
 	c.customMods(db, res, config)
@@ -487,6 +493,10 @@ func (c *Calculator) addItem(db *ModDB, res *Result, item *pobcode.Item, scale f
 		return nil, nil
 	}
 	source := itemSource(item, it)
+	// CalcSetup.lua: set conditions on restricted items.
+	if cr := it.ClassRestriction(); cr != "" {
+		db.classConds[strings.ReplaceAll(it.Name, " ", "")] = cr
+	}
 	isArmour := it.Base != nil && it.Base.Armour != nil
 	isWeapon := it.Base != nil && it.Base.Weapon != nil
 	for _, m := range mods {
