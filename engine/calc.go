@@ -968,6 +968,12 @@ func (c *Calculator) addItem(db *ModDB, res *Result, item *pobcode.Item, scale f
 			db.Add(scaleMod(sm, scale))
 		}
 	}
+	// Item.lua: each Grand Spectrum counts for itself and for minions.
+	if it.Base != nil && it.Base.Type == "Jewel" && strings.Contains(it.Name, "Grand Spectrum") {
+		spectrum := Mod{Name: "Multiplier:GrandSpectrum", Type: "BASE", Value: 1.0, Source: it.Name}
+		db.Add(scaleMod(spectrum, scale))
+		db.Add(Mod{Name: "MinionModifier", Type: "LIST", Value: map[string]any{"mod": modToMap(spectrum)}, Source: it.Name})
+	}
 	if isArmour && it.Base.Armour.MovementPenalty != 0 {
 		db.Add(Mod{Name: "MovementSpeed", Type: "INC", Value: -it.Base.Armour.MovementPenalty, Source: source,
 			Tags: []map[string]any{{"type": "Condition", "var": "IgnoreMovementPenalties", "neg": true}}})

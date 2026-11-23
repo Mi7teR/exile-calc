@@ -108,6 +108,29 @@ var hooks = map[string]Hook{
 			newMod(name+"Limit", "MAX", limit, 0, 0),
 		}
 	},
+	// ["herald skills have (%d+)%% more buff effect for every (%d+)%% of maximum mana they reserve"] = function(_, num1, num2) return {
+	//   mod("BuffEffect", "MORE", tonumber(num1), { type = "PerStat", stat = "ManaReservedPercent", div = tonumber(num2) }, { type = "SkillType", skillType = SkillType.Herald }) } end
+	"specialModList[^herald skills have (%d+)%% more buff effect for every (%d+)%% of maximum mana they reserve$]": func(p *Parser, a []any) any {
+		n1, _ := toNumber(argS(a, 1)).(float64)
+		n2, _ := toNumber(argS(a, 2)).(float64)
+		return []any{withTags(newMod("BuffEffect", "MORE", n1, 0, 0),
+			map[string]any{"type": "PerStat", "stat": "ManaReservedPercent", "div": n2},
+			map[string]any{"type": "SkillType", "skillType": 52.0})} // SkillType.Herald
+	},
+	// ["herald skills and minions from herald skills deal (%d+)%% more damage for every (%d+)%% of maximum life those skills reserve"] = function(_, num1, num2) return {
+	//   mod("MinionModifier", "LIST", { mod = mod("Damage", "MORE", tonumber(num1), { type = "PerStat", stat = "LifeReservedPercent", div = tonumber(num2), actor = "parent" })}, { type = "SkillType", skillType = SkillType.Herald }),
+	//   mod("Damage", "MORE", tonumber(num1), { type = "PerStat", stat = "LifeReservedPercent", div = tonumber(num2) }, { type = "SkillType", skillType = SkillType.Herald }),
+	// } end
+	"specialModList[^herald skills and minions from herald skills deal (%d+)%% more damage for every (%d+)%% of maximum life those skills reserve$]": func(p *Parser, a []any) any {
+		n1, _ := toNumber(argS(a, 1)).(float64)
+		n2, _ := toNumber(argS(a, 2)).(float64)
+		herald := map[string]any{"type": "SkillType", "skillType": 52.0} // SkillType.Herald
+		inner := withTags(newMod("Damage", "MORE", n1, 0, 0), map[string]any{"type": "PerStat", "stat": "LifeReservedPercent", "div": n2, "actor": "parent"})
+		return []any{
+			withTags(newMod("MinionModifier", "LIST", map[string]any{"mod": inner}, 0, 0), herald),
+			withTags(newMod("Damage", "MORE", n1, 0, 0), map[string]any{"type": "PerStat", "stat": "LifeReservedPercent", "div": n2}, herald),
+		}
+	},
 	// ["inflict (%w+) exposure on hit, applying %-(%d+)%% to (%w+) resistance"] = function(_, element1,  num, element2) return {
 	//   mod( firstToUpper(element1).."ExposureChance", "BASE", 100, { type = "Condition", var = "Effective" }),
 	//   mod("EnemyModifier", "LIST", { mod = mod(firstToUpper(element2).."Exposure", "BASE", -num) }, { type = "Condition", var = "Effective" }),
