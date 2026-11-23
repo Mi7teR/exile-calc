@@ -69,6 +69,11 @@ var hooks = map[string]Hook{
 		return []any{withTags(newMod("Life", "MORE", arg(a, 0), 0, 0),
 			map[string]any{"type": "MultiplierThreshold", "var": "AllocatedLifeMastery", "threshold": toNumber(argS(a, 2))})}
 	},
+	// ["(%d+)%% increased effect of jewel socket passive skills containing corrupted (m?r?ag?r?i?e?c?) jewels, if not from cluster jewels"] =
+	//   function(num, _, rarity) return { mod("JewelData", "LIST", { key = "corrupted" .. firstToUpper(rarity) .. "JewelIncEffect", value = num }) } end
+	"specialModList[^(%d+)%% increased effect of jewel socket passive skills containing corrupted (m?r?ag?r?i?e?c?) jewels, if not from cluster jewels$]": corruptedJewelEffect,
+	// ["(%d+)%% increased effect of jewel socket passive skills containing corrupted (m?r?ag?r?i?e?c?) jewels"] = (same function)
+	"specialModList[^(%d+)%% increased effect of jewel socket passive skills containing corrupted (m?r?ag?r?i?e?c?) jewels$]": corruptedJewelEffect,
 	// ["while holding a (%w+)"] = function (_, gear) return {
 	//   tag = { type = "Condition", varList = { "Using"..firstToUpper(gear) } } } end
 	"modTagList[while holding a (%w+)]": func(p *Parser, a []any) any {
@@ -79,6 +84,10 @@ var hooks = map[string]Hook{
 	"modTagList[if (%d+) (%a+) items are equipped]": func(p *Parser, a []any) any {
 		return map[string]any{"tag": map[string]any{"type": "MultiplierThreshold", "var": firstToUpper(argS(a, 2)) + "Item", "threshold": arg(a, 0)}}
 	},
+}
+
+func corruptedJewelEffect(p *Parser, a []any) any {
+	return []any{newMod("JewelData", "LIST", map[string]any{"key": "corrupted" + firstToUpper(argS(a, 2)) + "JewelIncEffect", "value": arg(a, 0)}, 0, 0)}
 }
 
 func arg(a []any, i int) any {

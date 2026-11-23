@@ -197,9 +197,15 @@ func (c *Calculator) Calc(b *pobcode.Build) (*Result, error) {
 			}
 		}
 	}
+	corruptedEffect := c.adornedEffect(spec, b, allocated, res)
 	for _, s := range spec.Sockets {
 		if s.ItemID != 0 && allocated[s.NodeID] {
-			if it, _ := c.addItem(db, res, b.Item(s.ItemID), 1); it != nil {
+			scale := 1.0
+			if it := c.peekItem(b.Item(s.ItemID)); it != nil && it.Corrupted && it.Base != nil &&
+				it.Base.Type == "Jewel" && it.Base.SubType != "Charm" {
+				scale += corruptedEffect[it.Rarity]
+			}
+			if it, _ := c.addItem(db, res, b.Item(s.ItemID), scale); it != nil {
 				db.items["Jewel "+strconv.Itoa(s.NodeID)] = it
 			}
 		}
@@ -641,4 +647,51 @@ func (c *Calculator) customMods(db *ModDB, res *Result, config *pobcode.ConfigSe
 			}
 		}
 	}
+}
+
+// adornedEffect ports CalcSetup.lua's The Adorned handling: an allocated
+// The Adorned sets Multiplier:Corrupted<Rarity>JewelEffect, and corrupted
+// jewels of that rarity in tree sockets get it added to their scale.
+// (PoB also checks node.containJewelSocket, which nothing sets.)
+func (c *Calculator) adornedEffect(spec *pobcode.Spec, b *pobcode.Build, allocated map[int]bool, res *Result) map[itemtext.Rarity]float64 {
+	out := map[itemtext.Rarity]float64{}
+	for _, s := range spec.Sockets {
+		if s.ItemID == 0 || !allocated[s.NodeID] {
+			continue
+		}
+		if it := c.peekItem(b.Item(s.ItemID)); it == nil || it.Name != "The Adorned" || it.BaseName != "Crimson Jewel" {
+			continue
+		}
+		_, mods := c.itemMods(b.Item(s.ItemID), res)
+		for _, m := range mods {
+			v, _ := m.Value.(map[string]any)
+			if m.Name != "JewelData" || v == nil {
+				continue
+			}
+			f, ok := num(v["value"])
+			switch v["key"] {
+			case "corruptedMagicJewelIncEffect":
+				if ok {
+					out[itemtext.Magic] = f / 100
+				}
+			case "corruptedRareJewelIncEffect":
+				if ok {
+					out[itemtext.Rare] = f / 100
+				}
+			}
+		}
+	}
+	return out
+}
+
+// peekItem parses an item's text without recording parse problems.
+func (c *Calculator) peekItem(item *pobcode.Item) *itemtext.Item {
+	if item == nil {
+		return nil
+	}
+	it, err := c.items.Parse(item.Raw)
+	if err != nil {
+		return nil
+	}
+	return it
 }
