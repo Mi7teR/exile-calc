@@ -35,6 +35,7 @@ func New() (*Calculator, error) {
 // is not ported. Both make the result incomplete, never silently wrong.
 type Result struct {
 	Stats           map[string]float64
+	DB              *ModDB
 	Unparsed        []string
 	UnsupportedTags map[string]int
 }
@@ -64,7 +65,7 @@ func (c *Calculator) Calc(b *pobcode.Build) (*Result, error) {
 	class := tree.Classes[spec.ClassID]
 	db := NewModDB()
 	db.enemy = NewModDB()
-	res := &Result{Stats: db.output}
+	res := &Result{Stats: db.output, DB: db}
 	config := b.ActiveConfig()
 
 	// CalcSetup.lua: base values.
@@ -117,25 +118,36 @@ func (c *Calculator) Calc(b *pobcode.Build) (*Result, error) {
 			}
 		}
 		for _, line := range stats {
-			c.addLine(db, res, line, "Tree:"+node.Name)
+			c.addLine(db, res, line, fmt.Sprintf("Tree:%d", id))
 		}
 	}
 
 	// Items in the active set; jewels in allocated tree sockets.
+	var flasks []*pobcode.Item
 	if set := b.ActiveItems(); set != nil {
 		for _, slot := range set.Slots {
-			if slot.ItemID == 0 || skipSlot(slot.Name, set.UseSecondWeaponSet) {
+			if slot.ItemID == 0 {
 				continue
 			}
-			c.addItem(db, res, b.Item(slot.ItemID), "Item:"+slot.Name)
+			if strings.HasPrefix(slot.Name, "Flask") {
+				if slot.Active {
+					flasks = append(flasks, b.Item(slot.ItemID))
+				}
+				continue
+			}
+			if skipSlot(slot.Name, set.UseSecondWeaponSet) {
+				continue
+			}
+			c.addItem(db, res, b.Item(slot.ItemID), "")
 		}
 	}
 	for _, s := range spec.Sockets {
 		if s.ItemID != 0 && allocated[s.NodeID] {
-			c.addItem(db, res, b.Item(s.ItemID), fmt.Sprintf("Jewel:%d", s.NodeID))
+			c.addItem(db, res, b.Item(s.ItemID), "")
 		}
 	}
 
+	c.applyFlasks(db, res, flasks)
 	c.attributes(db)
 	c.lifeMana(db)
 	c.resistances(db)
@@ -203,14 +215,44 @@ func hasGlobalTag(m modparser.Mod) bool {
 	return false
 }
 
-func (c *Calculator) addItem(db *ModDB, res *Result, item *pobcode.Item, source string) {
-	if item == nil {
-		return
+// Item.lua catalystList and catalystTags: a catalyst scales the lines that
+// carry one of its tags by (100 + quality) / 100.
+var catalystTags = map[string][]string{
+	"Abrasive": {"attack"}, "Accelerating": {"speed"}, "Dextral": {"suffix"},
+	"Fertile": {"life", "mana", "resource"}, "Imbued": {"caster"},
+	"Intrinsic": {"jewellery_attribute", "attribute"}, "Noxious": {"physical_damage", "chaos_damage"},
+	"Prismatic": {"jewellery_resistance", "resistance"}, "Sinistral": {"prefix"},
+	"Tempering": {"jewellery_defense", "defences", "armour", "evasion", "energyshield"},
+	"Turbulent": {"jewellery_elemental", "elemental_damage"}, "Unstable": {"critical"},
+}
+
+// catalystScalar ports getCatalystScalar (Classes/Item.lua).
+func catalystScalar(it *itemtext.Item, l itemtext.ModLine) float64 {
+	tags := catalystTags[it.Catalyst]
+	if tags == nil || l.Unscalable || len(l.Tags) == 0 {
+		return 1
 	}
+	q := it.CatalystQuality
+	if q == 0 {
+		q = 20
+	}
+	for _, want := range tags {
+		for _, have := range l.Tags {
+			if have == want {
+				return float64(100+q) / 100
+			}
+		}
+	}
+	return 1
+}
+
+// itemMods parses an item's active mod lines with their rolls and catalyst
+// scaling. ModRange ids count lines in ItemsTab.lua's save order.
+func (c *Calculator) itemMods(item *pobcode.Item, res *Result) (*itemtext.Item, []modparser.Mod) {
 	it, err := c.items.Parse(item.Raw)
 	if err != nil {
 		res.Unparsed = append(res.Unparsed, "item: "+err.Error())
-		return
+		return nil, nil
 	}
 	if item.Variant > 0 {
 		it.Variant = item.Variant
@@ -219,9 +261,7 @@ func (c *Calculator) addItem(db *ModDB, res *Result, item *pobcode.Item, source 
 	for _, mr := range item.ModRanges {
 		ranges[mr.ID] = mr.Range
 	}
-	isArmour := it.Base != nil && it.Base.Armour != nil
-	isWeapon := it.Base != nil && it.Base.Weapon != nil
-	// ModRange ids count lines in this order (ItemsTab.lua Save).
+	var mods []modparser.Mod
 	id := 0
 	for _, group := range [][]itemtext.ModLine{it.Enchants, it.Scourge, it.Implicits, it.Explicits, it.Crucible} {
 		for _, l := range group {
@@ -236,21 +276,46 @@ func (c *Calculator) addItem(db *ModDB, res *Result, item *pobcode.Item, source 
 			if v, ok := ranges[id]; ok {
 				r = v
 			}
-			parsed := c.parser.Parse(applyRange(l.Text, r))
+			parsed := c.parser.Parse(applyRange(l.Text, r, catalystScalar(it, l)))
 			if !parsed.Parsed() {
 				res.Unparsed = append(res.Unparsed, l.Text)
 				continue
 			}
-			for _, m := range parsed.Mods {
-				if isArmour && localDefence[m.Name] && !hasGlobalTag(m) {
-					continue // local to the item: part of its own defence values
-				}
-				if isWeapon && m.Flags != 0 {
-					continue // local weapon stats: part of the weapon's own data
-				}
-				db.Add(fromParsed(m, source))
-			}
+			mods = append(mods, parsed.Mods...)
 		}
+	}
+	return it, mods
+}
+
+// itemSource is PoB's modSource: "Item:<id>:<name>", where the name of a
+// rare or unique is "<title>, <base>" and a normal or magic name includes
+// the base already.
+func itemSource(item *pobcode.Item, it *itemtext.Item) string {
+	if it.Rarity == itemtext.Normal || it.Rarity == itemtext.Magic {
+		return fmt.Sprintf("Item:%d:%s", item.ID, it.Name)
+	}
+	return fmt.Sprintf("Item:%d:%s, %s", item.ID, it.Name, it.BaseName)
+}
+
+func (c *Calculator) addItem(db *ModDB, res *Result, item *pobcode.Item, _ string) {
+	if item == nil {
+		return
+	}
+	it, mods := c.itemMods(item, res)
+	if it == nil {
+		return
+	}
+	source := itemSource(item, it)
+	isArmour := it.Base != nil && it.Base.Armour != nil
+	isWeapon := it.Base != nil && it.Base.Weapon != nil
+	for _, m := range mods {
+		if isArmour && localDefence[m.Name] && !hasGlobalTag(m) {
+			continue // local to the item: part of its own defence values
+		}
+		if isWeapon && m.Flags != 0 {
+			continue // local weapon stats: part of the weapon's own data
+		}
+		db.Add(fromParsed(m, source))
 	}
 }
 

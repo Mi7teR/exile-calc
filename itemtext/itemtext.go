@@ -77,6 +77,11 @@ type Item struct {
 
 	UniqueID, League, Source, Note string
 
+	// Catalyst is the catalyst name ("Prismatic", ...) and CatalystQuality
+	// its quality; 0 when the text does not say (PoB then assumes 20).
+	Catalyst        string
+	CatalystQuality int
+
 	Variants []string // "Variant:" lines of a unique
 	Variant  int      // selected variant, 1-based; the last one by default
 
@@ -163,7 +168,7 @@ var (
 	rarityRe      = regexp.MustCompile(`^Rarity: ([A-Za-z]+)`)
 	specRe        = regexp.MustCompile(`^([A-Za-z ()]+:?): (.+)$`)
 	requiresRe    = regexp.MustCompile(`^(Requires [A-Za-z]+) (.+)$`)
-	catalystQRe   = regexp.MustCompile(`Quality \([A-Za-z\s]+ Modifiers\)`)
+	catalystQRe   = regexp.MustCompile(`Quality \(([A-Za-z\s]+) Modifiers\)`)
 	reminderRe    = regexp.MustCompile(`^\([A-Za-z]+|^\(\d+%? of `)
 	flaskStateRe  = regexp.MustCompile(`^Lasts .+ Seconds$|^Consumes \d+ of \d+ Charges on use$|^Currently has \d+ Charges$`)
 	headerRe      = []*regexp.Regexp{regexp.MustCompile(`^\{ (.*?) - (.*?)  - (\d*).*\}$`), regexp.MustCompile(`^\{ (.*?) - (.*?) \}$`), regexp.MustCompile(`^\{ (.*?) \}$`)}
@@ -178,6 +183,14 @@ var (
 	enumRangeRe   = regexp.MustCompile(`\s*\([^()\d]*-[^()\d]*\)`)
 	parenSuffixRe = regexp.MustCompile(` \(.+\)`)
 )
+
+// Item.lua catalystList / catalystDescriptorList: the game text names the
+// catalyst by what it improves.
+var catalystByDescriptor = map[string]string{
+	"Attack": "Abrasive", "Speed": "Accelerating", "Suffix": "Dextral", "Life and Mana": "Fertile",
+	"Caster": "Imbued", "Attribute": "Intrinsic", "Physical and Chaos": "Noxious", "Resistance": "Prismatic",
+	"Prefix": "Sinistral", "Defence": "Tempering", "Elemental": "Turbulent", "Critical": "Unstable",
+}
 
 // specNumber returns the first number in a spec value ("+20% (augmented)" -> 20).
 func specNumber(s string) int {
@@ -400,6 +413,10 @@ func (p *Parser) Parse(text string) (*Item, error) {
 				it.Source = specVal
 			case "Note":
 				it.Note = specVal
+			case "Catalyst":
+				it.Catalyst = specVal
+			case "CatalystQuality":
+				it.CatalystQuality = specNumber(specVal)
 			case "Implicits":
 				implicitLines = specNumber(specVal)
 				st = explicitStage
@@ -410,7 +427,11 @@ func (p *Parser) Parse(text string) (*Item, error) {
 			case "Int", "Intelligence":
 				it.Req.Int = specNumber(specVal)
 			default:
-				if !knownSpecs[specName] && !catalystQRe.MatchString(specName) && !strings.Contains(specName, "BasePercentile") &&
+				if m := catalystQRe.FindStringSubmatch(specName); m != nil {
+					// Game text: "Quality (Resistance Modifiers): +20%".
+					it.CatalystQuality = specNumber(specVal)
+					it.Catalyst = catalystByDescriptor[m[1]]
+				} else if !knownSpecs[specName] && !strings.Contains(specName, "BasePercentile") &&
 					!(strings.Contains(it.Name, specName) && strings.Contains(it.Name, specVal)) {
 					foundExplicit, st = true, explicitStage
 				}

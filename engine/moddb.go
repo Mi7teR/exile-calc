@@ -375,3 +375,31 @@ func modfInt(v float64) float64 {
 	i, _ := math.Modf(v)
 	return i
 }
+
+// Row is one entry of Tabulate.
+type Row struct {
+	Type   string
+	Value  any
+	Source string
+}
+
+// Tabulate is ModStore:Tabulate(nil, nil, name): the mods that apply, with
+// their evaluated values. Used to compare against PoB when debugging.
+func (db *ModDB) Tabulate(name string) []Row {
+	var rows []Row
+	for i := range db.mods[name] {
+		m := &db.mods[name][i]
+		if m.Flags != 0 || m.KeywordFlags != 0 {
+			continue
+		}
+		v, ok := db.eval(m)
+		if !ok {
+			continue
+		}
+		if f, isNum := num(v); isNum && f == 0 && m.Type != "OVERRIDE" {
+			continue
+		}
+		rows = append(rows, Row{Type: m.Type, Value: v, Source: m.Source})
+	}
+	return rows
+}
