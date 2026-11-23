@@ -2,6 +2,7 @@ package engine
 
 import (
 	"math"
+	"strings"
 
 	"github.com/Mi7teR/poe-lib/itemtext"
 	"github.com/Mi7teR/poe-lib/modparser"
@@ -141,5 +142,28 @@ func itemWeapon(it *itemtext.Item, mods []modparser.Mod) (hitSource, string, boo
 	}
 	out.critChance = round((w.CritChanceBase+local("CritChance", "BASE"))*
 		(1+(local("CritChance", "INC")+math.Floor(quality/4*local("AlternateQualityLocalCritChancePer4Quality", "INC")))/100), 2)
+	// Item.lua: WeaponData mods set weaponData fields ("This Weapon's
+	// Critical Strike Chance is 100%").
+	for _, m := range mods {
+		if m.Name != "WeaponData" || m.Type != "LIST" || len(m.Tags) != 0 {
+			continue
+		}
+		v, _ := m.Value.(map[string]any)
+		key, _ := v["key"].(string)
+		f, ok := num(v["value"])
+		if !ok {
+			continue
+		}
+		switch {
+		case key == "CritChance":
+			out.critChance = f
+		case key == "AttackRate":
+			out.attackRate = f
+		case strings.HasSuffix(key, "Min") && contains(dmgTypeList, strings.TrimSuffix(key, "Min")):
+			out.min[strings.TrimSuffix(key, "Min")] = f
+		case strings.HasSuffix(key, "Max") && contains(dmgTypeList, strings.TrimSuffix(key, "Max")):
+			out.max[strings.TrimSuffix(key, "Max")] = f
+		}
+	}
 	return out, it.Base.Type, true
 }

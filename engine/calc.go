@@ -253,6 +253,10 @@ func (c *Calculator) Calc(b *pobcode.Build) (*Result, error) {
 			if skipSlot(slot.Name, set.UseSecondWeaponSet) {
 				continue
 			}
+			// CalcSetup.lua: the active swap set's slots lose " Swap".
+			if set.UseSecondWeaponSet {
+				slot.Name = strings.Replace(slot.Name, " Swap", "", 1)
+			}
 			if i := strings.Index(slot.Name, " Abyssal Socket "); i >= 0 {
 				n, _ := strconv.Atoi(slot.Name[i+len(" Abyssal Socket "):])
 				abyssal = append(abyssal, abyss{slot.Name, slot.Name[:i], n, b.Item(slot.ItemID)})
@@ -472,6 +476,7 @@ func (c *Calculator) Calc(b *pobcode.Build) (*Result, error) {
 	res.Minion = c.mainMinion(db, skills, buffs, b.Level, res)
 	if s := mainSkill(skills); s != nil {
 		w1, w2 := playerWeapons(db, gearMods, spec.ClassID)
+		c.triggers(db, s, w1, w2)
 		if truthy(s.data["triggeredByGeneralsCry"]) && !s.disabled {
 			c.generalsCry(db, s, w1, w2)
 		}
