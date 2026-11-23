@@ -48,7 +48,7 @@ func grantedNodes(db *ModDB, tree *gamedata.Tree, className string, allocated ma
 		out = append(out, n.ID)
 	}
 	for _, m := range db.mods["GrantedPassive"] {
-		if v, ok := db.eval(&m); ok {
+		if v, ok := db.eval(&m, nil); ok {
 			if name, ok := v.(string); ok {
 				if n := notable[name]; n != nil {
 					grant(n)
@@ -64,7 +64,7 @@ func grantedNodes(db *ModDB, tree *gamedata.Tree, className string, allocated ma
 	}
 	matched := map[string]*side{}
 	for _, m := range db.mods["GrantedAscendancyNode"] {
-		v, ok := db.eval(&m)
+		v, ok := db.eval(&m, nil)
 		t, _ := v.(map[string]any)
 		if !ok || t == nil {
 			continue

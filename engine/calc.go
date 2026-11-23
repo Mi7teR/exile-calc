@@ -20,6 +20,7 @@ type Calculator struct {
 	items  *itemtext.Parser
 	luts   *timelessLUTs
 	config configApplies
+	gemIdx *gemIndex
 }
 
 func New() (*Calculator, error) {
@@ -31,7 +32,7 @@ func New() (*Calculator, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Calculator{data: d, parser: p, items: itemtext.New(d), luts: &timelessLUTs{dir: defaultTimelessDir()}}, nil
+	return &Calculator{data: d, parser: p, items: itemtext.New(d), luts: &timelessLUTs{dir: defaultTimelessDir()}, gemIdx: newGemIndex(d)}, nil
 }
 
 // Result is the computed output. Unparsed lists mod lines the parser did
@@ -43,6 +44,20 @@ type Result struct {
 	Unparsed        []string
 	Incomplete      []string // parts of the build not computed (timeless data missing, ...)
 	UnsupportedTags map[string]int
+	Skills          []SkillInfo // the player's active skills, in PoB's order
+}
+
+// SkillInfo describes one active skill: its effective gem level and
+// quality, its buffs ("Aura:Purity of Elements") and the aura effect its
+// buffs get on the player (sums over AuraEffect, BuffEffect and the other
+// names of CalcPerform.lua's Aura branch).
+type SkillInfo struct {
+	Name           string
+	Level, Quality int
+	Disabled       bool
+	Buffs          []string
+	AuraEffectInc  float64
+	AuraEffectMore float64
 }
 
 // Data/Misc.lua characterConstants and Modules/Data.lua data.misc.
@@ -71,6 +86,7 @@ func (c *Calculator) Calc(b *pobcode.Build) (*Result, error) {
 	db := NewModDB()
 	db.tags = itemTags{special: c.parser.Table("itemTagSpecial"), exclusion: c.parser.Table("itemTagSpecialExclusionPattern")}
 	db.enemy = NewModDB()
+	db.gameIDs = c.gemIdx.gameID
 	res := &Result{Stats: db.output, DB: db}
 	config := b.ActiveConfig()
 
@@ -158,7 +174,9 @@ func (c *Calculator) Calc(b *pobcode.Build) (*Result, error) {
 	// Items in the active set; jewels in allocated tree sockets.
 	var flasks []*pobcode.Item
 	var gear []equipped
+	useSwap := false
 	if set := b.ActiveItems(); set != nil {
+		useSwap = set.UseSecondWeaponSet
 		type abyss struct {
 			slot, parent string
 			num          int
@@ -185,7 +203,7 @@ func (c *Calculator) Calc(b *pobcode.Build) (*Result, error) {
 				abyssal = append(abyssal, abyss{slot.Name, slot.Name[:i], n, b.Item(slot.ItemID)})
 				continue
 			}
-			it, mods := c.addItem(db, res, b.Item(slot.ItemID), 1)
+			it, mods := c.addItem(db, res, b.Item(slot.ItemID), 1, slot.Name)
 			if it != nil {
 				gear = append(gear, equipped{slot.Name, it})
 				db.items[slot.Name] = it
@@ -206,7 +224,7 @@ func (c *Calculator) Calc(b *pobcode.Build) (*Result, error) {
 			if parent == nil || abyssalSockets(parent) < a.num {
 				continue
 			}
-			if it, _ := c.addItem(db, res, a.item, 1+jewelEffect[a.parent]/100); it != nil {
+			if it, _ := c.addItem(db, res, a.item, 1+jewelEffect[a.parent]/100, ""); it != nil {
 				db.items[a.slot] = it
 			}
 		}
@@ -219,7 +237,7 @@ func (c *Calculator) Calc(b *pobcode.Build) (*Result, error) {
 				it.Base.Type == "Jewel" && it.Base.SubType != "Charm" {
 				scale += corruptedEffect[it.Rarity]
 			}
-			if it, _ := c.addItem(db, res, b.Item(s.ItemID), scale); it != nil {
+			if it, _ := c.addItem(db, res, b.Item(s.ItemID), scale, ""); it != nil {
 				db.items["Jewel "+strconv.Itoa(s.NodeID)] = it
 			}
 		}
@@ -255,10 +273,16 @@ func (c *Calculator) Calc(b *pobcode.Build) (*Result, error) {
 	c.applyConfig(db, res, config)
 	c.customMods(db, res, config)
 	shrineBaseMods(db)
+	skills := c.setupSkills(db, b, useSwap, res)
+	for _, s := range skills {
+		c.buildSkillMods(db, s, res)
+	}
 	c.applyFlasks(db, res, flasks)
 	c.attributes(db)
 	shrineBuffs(db)
 	c.lifeMana(db)
+	c.applyBuffs(db, skills, res)
+	res.Skills = skillInfo(skills)
 	c.resistances(db)
 	for k, v := range db.UnsupportedTags {
 		if res.UnsupportedTags == nil {
@@ -526,7 +550,7 @@ func itemSource(item *pobcode.Item, it *itemtext.Item) string {
 
 // addItem adds an item's global mods, scaled (abyss jewels), and returns
 // the parsed item and all its mods.
-func (c *Calculator) addItem(db *ModDB, res *Result, item *pobcode.Item, scale float64) (*itemtext.Item, []modparser.Mod) {
+func (c *Calculator) addItem(db *ModDB, res *Result, item *pobcode.Item, scale float64, slot string) (*itemtext.Item, []modparser.Mod) {
 	if item == nil {
 		return nil, nil
 	}
@@ -548,9 +572,45 @@ func (c *Calculator) addItem(db *ModDB, res *Result, item *pobcode.Item, scale f
 		if isWeapon && m.Flags != 0 {
 			continue // local weapon stats: part of the weapon's own data
 		}
-		db.Add(scaleMod(fromParsed(m, source), scale))
+		db.Add(scaleMod(slotTags(fromParsed(m, source), slot), scale))
 	}
 	return it, mods
+}
+
+// slotTags is the tag substitution of ItemClass:BuildModListForSlotNum:
+// {SlotName}, {Hand} and {OtherSlotNum} for the slot the item is in.
+func slotTags(m Mod, slot string) Mod {
+	if slot == "" {
+		return m
+	}
+	slot = strings.Replace(slot, " Swap", "", 1)
+	hand, other := "MainHand", "2"
+	if strings.HasSuffix(slot, " 2") {
+		hand, other = "OffHand", "1"
+	}
+	r := strings.NewReplacer("{SlotName}", slot, "{Hand}", hand, "{OtherSlotNum}", other)
+	var tags []map[string]any
+	for i, t := range m.Tags {
+		var nt map[string]any
+		for k, v := range t {
+			if sv, ok := v.(string); ok && strings.Contains(sv, "{") {
+				if nt == nil {
+					nt = copyMap(t)
+				}
+				nt[k] = r.Replace(sv)
+			}
+		}
+		if nt != nil {
+			if tags == nil {
+				tags = append([]map[string]any(nil), m.Tags...)
+			}
+			tags[i] = nt
+		}
+	}
+	if tags != nil {
+		m.Tags = tags
+	}
+	return m
 }
 
 func abyssalSockets(it *itemtext.Item) int {

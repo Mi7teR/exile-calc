@@ -28,9 +28,11 @@ func main() {
 	oracle := flag.String("oracle", "../poe-pob-oracle/run.sh", "oracle run.sh")
 	source := flag.String("source", "", "only sources with this prefix (e.g. Item:)")
 	conds := flag.Bool("conditions", false, "compare conditions and multipliers instead of mods")
+	skills := flag.Bool("skills", false, "compare active skills (level, quality, buffs, aura effect) instead of mods")
 	flag.Parse()
 	sourcePrefix = *source
 	compareConditions = *conds
+	compareSkills = *skills
 	if err := run(*builds, strings.Split(*stats, ","), *oracle); err != nil {
 		fmt.Fprintln(os.Stderr, "enginediff:", err)
 		os.Exit(1)
@@ -42,7 +44,27 @@ type key struct{ typ, source string }
 var (
 	sourcePrefix      string
 	compareConditions bool
+	compareSkills     bool
 )
+
+type skillRow struct {
+	Name     string   `json:"name"`
+	Level    int      `json:"level"`
+	Quality  int      `json:"quality"`
+	Disabled bool     `json:"disabled"`
+	Buffs    []string `json:"buffs"`
+	AuraInc  float64  `json:"auraInc"`
+	AuraMore float64  `json:"auraMore"`
+	Rows     []struct {
+		Name   string `json:"name"`
+		Value  any    `json:"value"`
+		Source string `json:"source"`
+	} `json:"rows"`
+}
+
+func (r skillRow) String() string {
+	return fmt.Sprintf("%-28s lvl %-2d q %-2d dis %-5v inc %-5g more %-5g %v", r.Name, r.Level, r.Quality, r.Disabled, r.AuraInc, r.AuraMore, r.Buffs)
+}
 
 func run(ids string, stats []string, oracle string) error {
 	codes, _ := filepath.Glob("testdata/golden/builds/*.code")
@@ -59,6 +81,7 @@ func run(ids string, stats []string, oracle string) error {
 	var input bytes.Buffer
 	ours := map[string]map[string]map[key]float64{}
 	oursCond := map[string]map[string]float64{}
+	oursSkills := map[string][]skillRow{}
 	enc := json.NewEncoder(&input)
 	for _, c := range codes {
 		name := strings.TrimSuffix(filepath.Base(c), ".code")
@@ -79,6 +102,10 @@ func run(ids string, stats []string, oracle string) error {
 			return err
 		}
 		oursCond[name] = res.DB.Conditions()
+		for _, sk := range res.Skills {
+			oursSkills[name] = append(oursSkills[name], skillRow{Name: sk.Name, Level: sk.Level, Quality: sk.Quality,
+				Disabled: sk.Disabled, Buffs: sk.Buffs, AuraInc: sk.AuraEffectInc, AuraMore: sk.AuraEffectMore})
+		}
 		ours[name] = map[string]map[key]float64{}
 		for _, s := range stats {
 			ours[name][s] = map[key]float64{}
@@ -88,7 +115,7 @@ func run(ids string, stats []string, oracle string) error {
 				}
 			}
 		}
-		if err := enc.Encode(map[string]any{"name": name, "xml": string(x), "tabulate": stats, "conditions": compareConditions}); err != nil {
+		if err := enc.Encode(map[string]any{"name": name, "xml": string(x), "tabulate": stats, "conditions": compareConditions, "skills": compareSkills}); err != nil {
 			return err
 		}
 	}
@@ -107,6 +134,7 @@ func run(ids string, stats []string, oracle string) error {
 			Error       string             `json:"error"`
 			Conditions  []string           `json:"conditions"`
 			Multipliers map[string]float64 `json:"multipliers"`
+			Skills      []skillRow         `json:"skills"`
 			Tabulate    map[string][]struct {
 				Type   string `json:"type"`
 				Value  any    `json:"value"`
@@ -121,6 +149,25 @@ func run(ids string, stats []string, oracle string) error {
 			continue
 		}
 		fmt.Printf("== %s\n", r.Name)
+		if compareSkills {
+			for i, p := range r.Skills {
+				var o skillRow
+				if i < len(oursSkills[r.Name]) {
+					o = oursSkills[r.Name][i]
+				}
+				mark := " "
+				if o.String() != p.String() {
+					mark = "!"
+				}
+				fmt.Printf("%s pob  %s\n  ours %s\n", mark, p, o)
+				if mark == "!" {
+					for _, row := range p.Rows {
+						fmt.Printf("      pob row %-22s %-6v %s\n", row.Name, row.Value, row.Source)
+					}
+				}
+			}
+			continue
+		}
 		if compareConditions {
 			pob := map[string]float64{}
 			for _, c := range r.Conditions {

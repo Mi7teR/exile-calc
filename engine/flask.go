@@ -111,6 +111,11 @@ func scaleMod(m Mod, scale float64) Mod {
 	if scale == 1 {
 		return m
 	}
+	for _, t := range m.Tags {
+		if tagBool(t, "unscalable") {
+			return m
+		}
+	}
 	switch v := m.Value.(type) {
 	case float64:
 		if math.Floor(v) != v {

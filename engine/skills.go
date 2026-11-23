@@ -1,0 +1,1301 @@
+package engine
+
+import (
+	"fmt"
+	"math"
+	"sort"
+	"strings"
+
+	"github.com/Mi7teR/poe-lib/gamedata"
+	"github.com/Mi7teR/poe-lib/itemtext"
+	"github.com/Mi7teR/poe-lib/pobcode"
+)
+
+// This file ports the player's skills as far as they give buffs:
+// CalcSetup.lua (socket groups to active skills, gem levels and supports),
+// CalcActiveSkill.lua (createActiveSkill, buildActiveSkillModList),
+// CalcTools.lua (buildSkillInstanceStats and helpers) and the Buff and Aura
+// branches of CalcPerform.lua. Skill parts, minions, triggers, weapon flags
+// of attacks and party buffs are not ported.
+
+// Data/Global.lua SkillType ids used here.
+const (
+	stAttack        = 1
+	stSpell         = 2
+	stProjectile    = 3
+	stDamage        = 7
+	stRequireShield = 10
+	stPhysical      = 28
+	stFire          = 29
+	stCold          = 30
+	stLightning     = 31
+	stTriggered     = 37
+	stVaal          = 38
+	stAura          = 39
+	stChaos         = 42
+	stWarcry        = 63
+	stAppliesCurse  = 69
+	stOR            = 73
+	stAND           = 74
+	stNOT           = 75
+	stMovement      = 34
+	stRequireStaff  = 134
+)
+
+// Data/Global.lua ModFlag and KeywordFlag bits used here.
+const (
+	mfAttack     = 0x1
+	mfSpell      = 0x2
+	mfHit        = 0x4
+	mfCast       = 0x10
+	mfMelee      = 0x100
+	mfArea       = 0x200
+	mfProjectile = 0x400
+
+	kfAura      = 0x1
+	kfCurse     = 0x2
+	kfWarcry    = 0x4
+	kfMovement  = 0x8
+	kfPhysical  = 0x10
+	kfFire      = 0x20
+	kfCold      = 0x40
+	kfLightning = 0x80
+	kfChaos     = 0x100
+	kfVaal      = 0x200
+	kfArrow     = 0x800
+	kfTrap      = 0x1000
+	kfMine      = 0x2000
+	kfTotem     = 0x4000
+	kfAttack    = 0x10000
+	kfSpell     = 0x20000
+	kfHit       = 0x40000
+	kfBrand     = 0x100000
+)
+
+const matchingSocketQualityBonus = 10 // Data.lua data.misc.MatchingSocketQualityBonus
+
+// gemIndex holds Data.lua's gem lookup tables.
+type gemIndex struct {
+	gems        map[string]*gamedata.Gem
+	byGameID    map[string]map[string]*gamedata.Gem // gemsByGameId[gameId][variantId]
+	forSkill    map[string]string                   // gemForSkill: granted effect id -> gem id
+	forBaseName map[string]string                   // gemForBaseName: lower-case name -> gem id
+	vaalBase    map[string]string                   // gemVaalGemIdForBaseGemId
+}
+
+func newGemIndex(d *gamedata.Data) *gemIndex {
+	x := &gemIndex{gems: d.Gems, byGameID: map[string]map[string]*gamedata.Gem{}, forSkill: map[string]string{},
+		forBaseName: map[string]string{}, vaalBase: map[string]string{}}
+	ids := make([]string, 0, len(d.Gems))
+	for id := range d.Gems {
+		ids = append(ids, id)
+	}
+	sort.Strings(ids)
+	for _, id := range ids {
+		g := d.Gems[id]
+		x.forSkill[g.GrantedEffectID] = id
+		if x.byGameID[g.GameID] == nil {
+			x.byGameID[g.GameID] = map[string]*gamedata.Gem{}
+		}
+		x.byGameID[g.GameID][g.VariantID] = g
+		base := g.Name
+		if ge := d.Skills.Effects[g.GrantedEffectID]; ge != nil && ge.Support && g.GrantedEffectID != "SupportBarrage" {
+			base += " Support"
+		}
+		x.forBaseName[strings.ToLower(base)] = id
+		if g.BaseTypeName != "" && g.BaseTypeName != base {
+			x.forBaseName[strings.ToLower(g.BaseTypeName)] = id
+		}
+	}
+	for _, id := range ids {
+		g := d.Gems[id]
+		if !g.VaalGem {
+			continue
+		}
+		for _, oid := range ids {
+			if d.Gems[oid].GrantedEffectID == g.SecondaryGrantedEffectID {
+				x.vaalBase[id] = oid
+				break
+			}
+		}
+	}
+	return x
+}
+
+// gameID is calcLib.getGameIdFromGemName(name, true).
+func (x *gemIndex) gameID(name string) string {
+	id, ok := x.forBaseName[strings.ToLower(name)]
+	if !ok {
+		return ""
+	}
+	g := x.gems[id]
+	if g.VaalGem {
+		if b := x.gems[x.vaalBase[id]]; b != nil {
+			return b.GameID
+		}
+		return ""
+	}
+	return g.GameID
+}
+
+func hasTag(g *gamedata.Gem, tag string) bool {
+	for _, t := range g.Tags {
+		if t == tag {
+			return true
+		}
+	}
+	return false
+}
+
+// gemIsType is calcLib.gemIsType; idx is set for includeTransfigured.
+func gemIsType(g *gamedata.Gem, typ string, idx *gemIndex) bool {
+	name := strings.ToLower(g.Name)
+	active := typ == "active skill" || typ == "grants_active_skill" || typ == "skill"
+	switch {
+	case typ == "all":
+		return true
+	case typ == "elemental" && (hasTag(g, "fire") || hasTag(g, "cold") || hasTag(g, "lightning")):
+		return true
+	case typ == "aoe" && hasTag(g, "area"):
+		return true
+	case typ == "trap or mine" && (hasTag(g, "trap") || hasTag(g, "mine")):
+		return true
+	case active && hasTag(g, "grants_active_skill") && !hasTag(g, "support"):
+		return true
+	case typ == "non-vaal" && !hasTag(g, "vaal"):
+		return true
+	case typ == "non-exceptional" && !hasTag(g, "exceptional"):
+		return true
+	case typ == name || typ == strings.TrimPrefix(name, "vaal "):
+		return true
+	case idx != nil && sameGameID(idx, g.Name, typ):
+		return true
+	}
+	return !active && hasTag(g, typ)
+}
+
+// sameGameID is calcLib.isGemIdSame(a, b, true).
+func sameGameID(idx *gemIndex, a, b string) bool {
+	x, y := idx.gameID(a), idx.gameID(b)
+	return x != "" && y != "" && x == y
+}
+
+// gemProperty is one entry of effect.gemPropertyInfo.
+type gemProperty struct {
+	key        string
+	value      float64
+	sourceType string // "Global" or "Item"
+	mod        *Mod
+}
+
+// skillEffect is an activeEffect or supportEffect of CalcSetup.lua.
+type skillEffect struct {
+	id               string
+	ge               *gamedata.Skill
+	gem              *gamedata.Gem // gemData; nil for skills granted by items
+	level, quality   int
+	srcLevel         int // srcInstance.level and quality: the gem's own values
+	srcQuality       int
+	hasSrc           bool
+	cfg              *Cfg // gemCfg
+	props            []gemProperty
+	fromItem         bool // set on supports granted by items (ExtraSupport)
+	appliesToGranted bool
+}
+
+// skillBuff is an entry of activeSkill.buffList.
+type skillBuff struct {
+	typ, name       string
+	cond, enemyCond string
+	activeSkillBuff bool
+	applyNotPlayer  bool
+	allowTotemBuff  bool
+	mods            []Mod
+}
+
+type activeSkill struct {
+	active      *skillEffect
+	effects     []*skillEffect // the active effect, then compatible supports
+	types       map[int]bool
+	minionTypes map[int]bool
+	flags       map[string]bool
+	group       *pobcode.SocketGroup
+	cfg         *Cfg
+	mods        *ModDB // skillModList
+	data        map[string]any
+	buffs       []*skillBuff
+	disabled    bool
+	// weaponSupports is set when a linked support has weaponTypes, which
+	// canSupport does not match yet.
+	weaponSupports bool
+}
+
+// resolveGem ports SkillsTabClass:LoadSkill and ProcessSocketGroup: the
+// gem data (or the granted effect alone, for skills from items).
+func (c *Calculator) resolveGem(g *pobcode.Gem) (*gamedata.Gem, string, bool) {
+	idx, skills := c.gemIdx, c.data.Skills.Effects
+	var gem *gamedata.Gem
+	switch {
+	case g.GemID != "":
+		variants := idx.byGameID[g.GemID]
+		if g.VariantID != "" {
+			gem = variants[g.VariantID]
+		} else if g.SkillID != "" {
+			ids := make([]string, 0, len(variants))
+			for v := range variants {
+				ids = append(ids, v)
+			}
+			sort.Strings(ids)
+			for _, v := range ids {
+				if variants[v].GrantedEffectID == g.SkillID {
+					gem = variants[v]
+					break
+				}
+			}
+		}
+		if gem == nil {
+			return nil, "", false
+		}
+	case g.SkillID != "":
+		if id, ok := idx.forSkill[g.SkillID]; ok {
+			gem = idx.gems[id]
+		} else if skills[g.SkillID] != nil {
+			return nil, g.SkillID, true
+		} else {
+			return nil, "", false
+		}
+	default:
+		return nil, "", false
+	}
+	if ge := skills[gem.GrantedEffectID]; ge == nil || ge.Unsupported {
+		return nil, "", false
+	}
+	return gem, gem.GrantedEffectID, true
+}
+
+// validateLevel is calcLib.validateGemLevel.
+func validateLevel(level int, ge *gamedata.Skill, gem *gamedata.Gem) int {
+	if ge.Levels[level] != nil {
+		return level
+	}
+	level = max(1, level)
+	if n := len(ge.Levels); n > 0 {
+		level = min(n, level)
+	}
+	if ge.Levels[level] == nil && gem != nil && gem.NaturalMaxLevel != 0 {
+		level = gem.NaturalMaxLevel
+	}
+	if ge.Levels[level] == nil {
+		keys := make([]int, 0, len(ge.Levels))
+		for k := range ge.Levels {
+			keys = append(keys, k)
+		}
+		sort.Ints(keys)
+		if len(keys) > 0 {
+			level = keys[0] // next(levels): an arbitrary level in PoB
+		}
+	}
+	return level
+}
+
+// applyGemMods is CalcSetup.lua applyGemMods.
+func (c *Calculator) applyGemMods(e *skillEffect, props []ListEntry) {
+	for _, p := range props {
+		v, _ := p.Value.(map[string]any)
+		if v == nil || e.gem == nil {
+			continue
+		}
+		match := true
+		if kws, ok := v["keywordList"].([]any); ok {
+			for _, k := range kws {
+				ks, _ := k.(string)
+				if !gemIsType(e.gem, ks, c.gemIdx) {
+					match = false
+					break
+				}
+			}
+		} else {
+			kw, _ := v["keyword"].(string)
+			match = gemIsType(e.gem, kw, c.gemIdx)
+		}
+		if !match {
+			continue
+		}
+		src := "Global"
+		for _, t := range p.Mod.Tags {
+			if tagStr(t, "type") == "SocketedIn" {
+				src = "Item"
+				break
+			}
+		}
+		key, _ := v["key"].(string)
+		val, _ := num(v["value"])
+		switch key {
+		case "level":
+			e.level += int(val)
+		case "quality":
+			e.quality += int(val)
+		}
+		e.props = append(e.props, gemProperty{key: key, value: val, sourceType: src, mod: p.Mod})
+	}
+}
+
+// socketQuality is CalcSetup.lua getMatchingSocketQuality.
+func socketQuality(item *itemtext.Item, ge *gamedata.Skill, socketIndex int) int {
+	if item == nil || len(item.Sockets) == 0 {
+		return 0
+	}
+	colours := map[int]byte{1: 'R', 2: 'G', 3: 'B'}
+	colour, ok := colours[ge.Color]
+	if !ok || socketIndex < 1 || socketIndex > len(item.Sockets) {
+		return 0
+	}
+	if item.Sockets[socketIndex-1].Color == colour {
+		return matchingSocketQualityBonus
+	}
+	return 0
+}
+
+// addBestSupport is CalcSetup.lua addBestSupport.
+func addBestSupport(e *skillEffect, list []*skillEffect) []*skillEffect {
+	for i, o := range list {
+		switch {
+		case e.id == o.id:
+			if e.level > o.level || (e.level == o.level && e.quality > o.quality) {
+				list[i] = e
+			}
+			return list
+		case e.ge.PlusVersionOf == o.id:
+			list[i] = e
+			return list
+		case o.ge.PlusVersionOf == e.id:
+			return list
+		}
+	}
+	return append(list, e)
+}
+
+type groupCfg struct {
+	cfg   *Cfg
+	props []ListEntry
+}
+
+// setupSkills ports the skill part of calcs.initEnv: it returns the
+// player's active skills with their supports.
+func (c *Calculator) setupSkills(db *ModDB, b *pobcode.Build, useSwap bool, res *Result) []*activeSkill {
+	set := b.ActiveSkills()
+	if set == nil || len(set.Groups) == 0 {
+		return nil
+	}
+	skills := c.data.Skills.Effects
+	mainGroup := min(max(len(set.Groups), 1), max(b.MainSocketGroup, 1))
+	if len(db.List(nil, "LinkedSupport")) > 0 {
+		res.Incomplete = append(res.Incomplete, "linked supports (LinkedSupport) not applied")
+	}
+
+	slotOf := func(g *pobcode.SocketGroup) string {
+		if g.Slot != "" {
+			return strings.Replace(g.Slot, " Swap", "", 1)
+		}
+		if g.Source != "" && strings.Contains(strings.ToLower(g.Source), "tree") {
+			return "Passive Tree"
+		}
+		return ""
+	}
+	enabled := make([]bool, len(set.Groups))
+	cfgs := make([]*groupCfg, len(set.Groups))
+	for i := range set.Groups {
+		g := &set.Groups[i]
+		// group.slotEnabled: weapon swap slots count only with the second weapon set.
+		slotEnabled := true
+		if strings.HasPrefix(g.Slot, "Weapon") {
+			slotEnabled = strings.HasSuffix(g.Slot, " Swap") == useSwap
+		}
+		enabled[i] = i+1 == mainGroup || (g.Enabled && slotEnabled)
+		cfg := &Cfg{SlotName: slotOf(g), GemCounts: map[string]int{}}
+		cfgs[i] = &groupCfg{cfg: cfg, props: db.List(&Cfg{SlotName: cfg.SlotName}, "GemProperty")}
+	}
+
+	// gemCfg copies the group cfg with the gem's socket.
+	gemCfg := func(gc *groupCfg, gemIndex int) (*Cfg, bool) {
+		cfg := *gc.cfg
+		cfg.SocketNum = gemIndex
+		item := db.items[gc.cfg.SlotName]
+		if item != nil && gemIndex <= len(item.Sockets) {
+			cfg.SocketColor = string(item.Sockets[gemIndex-1].Color)
+			return &cfg, true
+		}
+		return &cfg, false
+	}
+	// socketIndexByGem: gems of all groups in a slot fill its sockets in order.
+	socketIndex := map[*pobcode.Gem]int{}
+	slotCounts := map[string]int{}
+	for i := range set.Groups {
+		g := &set.Groups[i]
+		if g.Slot == "" {
+			continue
+		}
+		for gi := range g.Gems {
+			socketIndex[&g.Gems[gi]] = slotCounts[g.Slot] + gi + 1
+		}
+		slotCounts[g.Slot] += len(g.Gems)
+	}
+	counted := map[*pobcode.Gem]bool{}
+	countGem := func(gc *groupCfg, g *pobcode.Gem, gem *gamedata.Gem) {
+		if counted[g] {
+			return
+		}
+		counted[g] = true
+		for _, a := range []string{"intelligence", "dexterity", "strength"} {
+			if hasTag(gem, a) {
+				gc.cfg.GemCounts[a+"Gems"]++
+			}
+		}
+	}
+
+	// Support gems, per group.
+	supports := make([][]*skillEffect, len(set.Groups))
+	for i := range set.Groups {
+		g := &set.Groups[i]
+		if !enabled[i] {
+			continue
+		}
+		gc := cfgs[i]
+		for _, e := range db.List(gc.cfg, "ExtraSupport") {
+			v, _ := e.Value.(map[string]any)
+			applies, _ := v["appliesToGrantedSkills"].(bool)
+			if g.Source != "" && !applies {
+				continue
+			}
+			id, _ := v["skillId"].(string)
+			ge := skills[id]
+			if ge != nil && !ge.Support {
+				id = "Support" + id
+				ge = skills[id]
+			}
+			if ge == nil {
+				continue
+			}
+			lvl, _ := num(v["level"])
+			gemID := c.gemIdx.forBaseName[strings.ToLower(ge.Name)]
+			if gemID == "" {
+				gemID = c.gemIdx.forBaseName[strings.ToLower(ge.Name+" Support")]
+			}
+			eff := &skillEffect{id: id, ge: ge, gem: c.gemIdx.gems[gemID], level: int(lvl), fromItem: true, appliesToGranted: applies}
+			supports[i] = addBestSupport(eff, supports[i])
+		}
+		disabled := db.FlagCfg(gc.cfg, "SocketedSupportGemsHaveNoEffect")
+		for gi := range g.Gems {
+			gm := &g.Gems[gi]
+			if !gm.Enabled {
+				continue
+			}
+			gem, id, ok := c.resolveGem(gm)
+			if !ok {
+				continue
+			}
+			ids := []string{id}
+			if gem != nil && gem.SecondaryGrantedEffectID != "" {
+				ids = append(ids, gem.SecondaryGrantedEffectID)
+			}
+			for _, eid := range ids {
+				ge := skills[eid]
+				if ge == nil || !ge.Support {
+					continue
+				}
+				sq := socketQuality(db.items[gc.cfg.SlotName], ge, socketIndex[gm])
+				eff := &skillEffect{id: eid, ge: ge, gem: gem, level: gm.Level, quality: gm.Quality + sq,
+					srcLevel: gm.Level, srcQuality: gm.Quality, hasSrc: true}
+				if gem != nil {
+					cfg, socketed := gemCfg(gc, gi+1)
+					eff.cfg = cfg
+					props := gc.props
+					if socketed {
+						props = db.List(cfg, "GemProperty")
+					}
+					c.applyGemMods(eff, props)
+					countGem(gc, gm, gem)
+				}
+				eff.level = validateLevel(eff.level, ge, gem)
+				if !disabled {
+					supports[i] = addBestSupport(eff, supports[i])
+				}
+			}
+		}
+	}
+
+	// Active skills with their supports.
+	var out []*activeSkill
+	for i := range set.Groups {
+		g := &set.Groups[i]
+		if !enabled[i] {
+			continue
+		}
+		gc := cfgs[i]
+		for gi := range g.Gems {
+			gm := &g.Gems[gi]
+			if !gm.Enabled {
+				continue
+			}
+			gem, id, ok := c.resolveGem(gm)
+			if !ok {
+				if gm.NameSpec != "" || gm.SkillID != "" || gm.GemID != "" {
+					res.Incomplete = append(res.Incomplete, fmt.Sprintf("skill gem %q not found", firstNonEmpty(gm.NameSpec, gm.SkillID, gm.GemID)))
+				}
+				continue
+			}
+			ids := []string{id}
+			if gem != nil && gem.SecondaryGrantedEffectID != "" {
+				ids = append(ids, gem.SecondaryGrantedEffectID)
+			}
+			for n, eid := range ids {
+				ge := skills[eid]
+				if ge == nil || ge.Support || ge.Unsupported {
+					continue
+				}
+				if ge.HasGlobalEffect && !(n == 0 && gm.EnableGlobal1 || n == 1 && gm.EnableGlobal2) {
+					continue
+				}
+				sq := socketQuality(db.items[gc.cfg.SlotName], ge, socketIndex[gm])
+				eff := &skillEffect{id: eid, ge: ge, gem: gem, level: gm.Level, quality: gm.Quality + sq,
+					srcLevel: gm.Level, srcQuality: gm.Quality, hasSrc: true}
+				if gem != nil {
+					cfg, socketed := gemCfg(gc, gi+1)
+					eff.cfg = cfg
+					props := gc.props
+					if socketed {
+						props = db.List(cfg, "GemProperty")
+					}
+					c.applyGemMods(eff, props)
+					countGem(gc, gm, gem)
+				}
+				applied := append([]*skillEffect(nil), supports[i]...)
+				if g.Source != "" && gc.cfg.SlotName != "" {
+					// Skills granted by an item take the supports of every group in its slot.
+					for j := range set.Groups {
+						if j != i && enabled[j] && cfgs[j].cfg.SlotName == gc.cfg.SlotName {
+							for _, s := range supports[j] {
+								applied = addBestSupport(s, applied)
+							}
+						}
+					}
+				}
+				s := c.createActiveSkill(eff, applied, g)
+				s.cfg = &Cfg{SlotName: gc.cfg.SlotName}
+				out = append(out, s)
+			}
+		}
+	}
+	return out
+}
+
+func firstNonEmpty(s ...string) string {
+	for _, v := range s {
+		if v != "" {
+			return v
+		}
+	}
+	return ""
+}
+
+func typeSet(l []int) map[int]bool {
+	m := make(map[int]bool, len(l))
+	for _, t := range l {
+		m[t] = true
+	}
+	return m
+}
+
+// typeExpressionMatch is calcLib.doesTypeExpressionMatch.
+func typeExpressionMatch(check []int, types, minionTypes map[int]bool) bool {
+	var stack []bool
+	for _, t := range check {
+		switch t {
+		case stOR, stAND:
+			if len(stack) < 2 {
+				return false
+			}
+			other := stack[len(stack)-1]
+			stack = stack[:len(stack)-1]
+			if t == stOR {
+				stack[len(stack)-1] = stack[len(stack)-1] || other
+			} else {
+				stack[len(stack)-1] = stack[len(stack)-1] && other
+			}
+		case stNOT:
+			if len(stack) == 0 {
+				return false
+			}
+			stack[len(stack)-1] = !stack[len(stack)-1]
+		default:
+			stack = append(stack, types[t] || minionTypes[t])
+		}
+	}
+	for _, v := range stack {
+		if v {
+			return true
+		}
+	}
+	return false
+}
+
+// canSupport is calcLib.canGrantedEffectSupportActiveSkill without the
+// weapon type and trigger checks (reported by the caller).
+func canSupport(sup *skillEffect, s *activeSkill) bool {
+	ge := sup.ge
+	if ge.Unsupported || s.active.ge.CannotBeSupported {
+		return false
+	}
+	if ge.SupportGemsOnly && s.active.gem == nil {
+		return false
+	}
+	// srcInstance.fromItem: gems of groups CalcSetup creates for skills granted by items.
+	srcFromItem := s.group != nil && strings.HasPrefix(s.group.Source, "Item")
+	if !sup.appliesToGranted && sup.fromItem && ge.Support && (s.active.ge.FromItem || srcFromItem) {
+		return false
+	}
+	var minionTypes map[int]bool
+	if !ge.IgnoreMinionTypes {
+		minionTypes = s.minionTypes
+	}
+	if len(ge.ExcludeSkillTypes) > 0 && typeExpressionMatch(ge.ExcludeSkillTypes, s.types, nil) {
+		return false
+	}
+	if len(ge.WeaponTypes) > 0 {
+		s.weaponSupports = true
+		return false // weapon type matching is not ported
+	}
+	return len(ge.RequireSkillTypes) == 0 || typeExpressionMatch(ge.RequireSkillTypes, s.types, minionTypes)
+}
+
+// createActiveSkill is calcs.createActiveSkill.
+func (c *Calculator) createActiveSkill(active *skillEffect, supports []*skillEffect, g *pobcode.SocketGroup) *activeSkill {
+	s := &activeSkill{active: active, group: g, data: map[string]any{},
+		types: typeSet(active.ge.SkillTypes), minionTypes: typeSet(active.ge.MinionSkillTypes), flags: map[string]bool{}}
+	for _, f := range active.ge.BaseFlags {
+		s.flags[f] = true
+	}
+	if s.types[stAttack] || s.types[stDamage] || s.types[stProjectile] {
+		s.flags["hit"] = true
+	}
+	s.effects = []*skillEffect{active}
+	var rejected []*skillEffect
+	for _, sup := range supports {
+		if !sup.ge.Support {
+			continue
+		}
+		if canSupport(sup, s) {
+			for _, t := range sup.ge.AddSkillTypes {
+				s.types[t] = true
+			}
+		} else {
+			rejected = append(rejected, sup)
+		}
+	}
+	for added := true; added; {
+		added = false
+		for i, sup := range rejected {
+			if sup != nil && canSupport(sup, s) {
+				added = true
+				rejected[i] = nil
+				for _, t := range sup.ge.AddSkillTypes {
+					s.types[t] = true
+				}
+			}
+		}
+	}
+	for _, sup := range supports {
+		if sup.ge.Support && canSupport(sup, s) {
+			s.effects = append(s.effects, sup)
+			for _, f := range sup.ge.AddFlags {
+				s.flags[f] = true
+			}
+		}
+	}
+	return s
+}
+
+// skillStats is calcLib.buildSkillInstanceStats. Effectiveness and linear
+// interpolation (statInterpolation 3 and 2) need the actor level.
+func skillStats(e *skillEffect, actorLevel float64) map[string]float64 {
+	stats := map[string]float64{}
+	ge := e.ge
+	if e.quality > 0 {
+		for _, q := range ge.QualityStats {
+			v, _ := math.Modf(q.Value * float64(e.quality))
+			stats[q.Stat] += v
+		}
+	}
+	level := ge.Levels[e.level]
+	if level == nil {
+		level = &gamedata.SkillLevel{}
+	}
+	if actorLevel == 0 {
+		actorLevel = float64(level.LevelRequirement)
+		if actorLevel == 0 {
+			actorLevel = 1
+		}
+	}
+	for i, stat := range ge.Stats {
+		v := 1.0
+		if i < len(level.Values) {
+			v = level.Values[i]
+		}
+		if i < len(level.StatInterpolation) {
+			switch level.StatInterpolation[i] {
+			case 3:
+				// SkillDamageBaseEffectiveness 3.885209, SkillDamageIncrementalEffectiveness 0.360246
+				be := ge.BaseEffectiveness
+				if be == 0 {
+					be = 1
+				}
+				eff := (3.885209 + 0.360246*(actorLevel-1)) * be * math.Pow(1+ge.IncrementalEffectiveness, actorLevel-1)
+				v = round(eff*v, 0)
+			case 2:
+				v = linearStat(ge, e.level, i, actorLevel)
+			}
+		}
+		stats[stat] += v
+	}
+	for _, cs := range ge.ConstantStats {
+		stats[cs.Stat] += cs.Value
+	}
+	return stats
+}
+
+func linearStat(ge *gamedata.Skill, lvl, index int, actorLevel float64) float64 {
+	keys := make([]int, 0, len(ge.Levels))
+	for k := range ge.Levels {
+		keys = append(keys, k)
+	}
+	sort.Ints(keys)
+	cur := 0
+	for i, k := range keys {
+		if k == lvl {
+			cur = i
+		}
+	}
+	at := func(i int) float64 {
+		l := ge.Levels[keys[i]]
+		if index < len(l.Values) {
+			return l.Values[index]
+		}
+		return 0
+	}
+	if len(keys) < 2 {
+		return round(at(cur), 0)
+	}
+	next := min(cur+1, len(keys)-1)
+	nextReq := float64(ge.Levels[keys[next]].LevelRequirement)
+	prevReq := float64(ge.Levels[keys[next-1]].LevelRequirement)
+	return round(at(next-1)+(at(next)-at(next-1))*(actorLevel-prevReq)/(nextReq-prevReq), 0)
+}
+
+// modFromMap decodes a mod of the generated skill data.
+func modFromMap(m map[string]any, source string) Mod {
+	mod := Mod{Value: m["value"], Source: source}
+	mod.Name, _ = m["name"].(string)
+	mod.Type, _ = m["type"].(string)
+	if f, ok := num(m["flags"]); ok {
+		mod.Flags = uint64(f)
+	}
+	if f, ok := num(m["keywordFlags"]); ok {
+		mod.KeywordFlags = uint64(f)
+	}
+	if l, ok := m["@list"].([]any); ok {
+		for _, t := range l {
+			if tm, ok := t.(map[string]any); ok {
+				mod.Tags = append(mod.Tags, tm)
+			}
+		}
+	}
+	return mod
+}
+
+// processMod is Data.lua processMod for one skill: source, nested mod
+// source and the notMinionStat tag.
+func processMod(ge *gamedata.Skill, id string, m map[string]any, stat string) Mod {
+	mod := modFromMap(m, "Skill:"+id)
+	if v, ok := mod.Value.(map[string]any); ok {
+		if sub, ok := v["mod"].(map[string]any); ok {
+			v = copyMap(v)
+			sub = copyMap(sub)
+			sub["source"] = "Skill:" + id
+			v["mod"] = sub
+			mod.Value = v
+		}
+	}
+	if stat != "" && (ge.Support || containsInt(ge.SkillTypes, 5)) {
+		for _, s := range ge.NotMinionStat {
+			if s == stat {
+				mod.Tags = append(append([]map[string]any(nil), mod.Tags...),
+					map[string]any{"type": "ActorCondition", "actor": "parent", "neg": true})
+				break
+			}
+		}
+	}
+	return mod
+}
+
+// statMap returns a stat's map: the skill's own, else data.skillStatMap.
+func (c *Calculator) statMap(ge *gamedata.Skill, stat string) *gamedata.StatMap {
+	if m := ge.StatMap[stat]; m != nil {
+		return m
+	}
+	return c.data.Skills.StatMap[stat]
+}
+
+// levelMod is mergeLevelMod: the mod with its value replaced.
+func levelMod(m Mod, value float64) Mod {
+	switch v := m.Value.(type) {
+	case map[string]any:
+		v = copyMap(v)
+		if sub, ok := v["mod"].(map[string]any); ok {
+			sub = copyMap(sub)
+			sub["value"] = value
+			v["mod"] = sub
+		} else {
+			v["value"] = value
+		}
+		m.Value = v
+	default:
+		m.Value = value
+	}
+	return m
+}
+
+func scalar(p *float64, def float64) float64 {
+	if p == nil {
+		return def
+	}
+	return *p
+}
+
+// mergeSkillInstanceMods is calcs.mergeSkillInstanceMods.
+func (c *Calculator) mergeSkillInstanceMods(list *ModDB, e *skillEffect, extra []ListEntry) {
+	e.level = validateLevel(e.level, e.ge, e.gem)
+	stats := skillStats(e, 0)
+	for _, x := range extra {
+		v, _ := x.Value.(map[string]any)
+		k, _ := v["key"].(string)
+		f, _ := num(v["value"])
+		stats[k] += f
+	}
+	names := make([]string, 0, len(stats))
+	for k := range stats {
+		names = append(names, k)
+	}
+	sort.Strings(names)
+	for _, stat := range names {
+		sm := c.statMap(e.ge, stat)
+		if sm == nil {
+			continue
+		}
+		val := stats[stat]
+		mapValue := func(g *gamedata.StatMap) float64 {
+			if g.Value != nil {
+				return *g.Value
+			}
+			return val*scalar(g.Mult, 1)/scalar(g.Div, 1) + scalar(g.Base, 0)
+		}
+		for _, it := range sm.Items {
+			if it.Mod != nil {
+				list.Add(levelMod(processMod(e.ge, e.id, it.Mod, stat), mapValue(sm)))
+				continue
+			}
+			for _, sub := range it.Group.Items {
+				if sub.Mod != nil {
+					list.Add(levelMod(processMod(e.ge, e.id, sub.Mod, stat), mapValue(it.Group)))
+				}
+			}
+		}
+	}
+	for _, m := range e.ge.BaseMods {
+		list.Add(processMod(e.ge, e.id, m, ""))
+	}
+}
+
+// buildSkillMods ports calcs.buildActiveSkillModList up to the buff list.
+func (c *Calculator) buildSkillMods(db *ModDB, s *activeSkill, res *Result) {
+	ge := s.active.ge
+	flags, types := s.flags, s.types
+	flags["buffs"], flags["combat"], flags["effective"] = true, true, true
+	w2, w1 := db.items["Weapon 2"], db.items["Weapon 1"]
+	if types[stRequireShield] && (w2 == nil || w2.Base == nil || w2.Base.Type != "Shield") {
+		s.disabled = true
+	}
+	if types[stRequireStaff] && (w1 == nil || w1.Base == nil || w1.Base.Type != "Staff") {
+		s.disabled = true
+	}
+	for stat, v := range skillStats(s.active, 0) {
+		if sm := c.statMap(ge, stat); v != 0 && sm != nil && sm.SkillFlag != "" {
+			flags[sm.SkillFlag] = true
+		}
+	}
+	var modFlags uint64
+	if flags["hit"] {
+		modFlags |= mfHit
+	}
+	if flags["attack"] {
+		modFlags |= mfAttack
+	} else {
+		modFlags |= mfCast
+		if flags["spell"] {
+			modFlags |= mfSpell
+		}
+	}
+	if flags["melee"] {
+		modFlags |= mfMelee
+	} else if flags["projectile"] {
+		modFlags |= mfProjectile
+	}
+	if flags["area"] {
+		modFlags |= mfArea
+	}
+	var kw uint64
+	for _, x := range []struct {
+		on bool
+		kf uint64
+	}{
+		{flags["hit"], kfHit}, {types[stAura], kfAura}, {types[stAppliesCurse], kfCurse}, {types[stWarcry], kfWarcry},
+		{types[stMovement], kfMovement}, {types[stVaal], kfVaal}, {types[stLightning], kfLightning},
+		{types[stCold], kfCold}, {types[stFire], kfFire}, {types[stChaos], kfChaos}, {types[stPhysical], kfPhysical},
+		{flags["brand"], kfBrand}, {flags["arrow"], kfArrow},
+	} {
+		if x.on {
+			kw |= x.kf
+		}
+	}
+	switch {
+	case flags["totem"]:
+		kw |= kfTotem
+	case flags["trap"]:
+		kw |= kfTrap
+	case flags["mine"]:
+		kw |= kfMine
+	}
+	if types[stAttack] {
+		kw |= kfAttack
+	}
+	if types[stSpell] && !flags["cast"] {
+		kw |= kfSpell
+	}
+	baseFlags := map[string]bool{}
+	for _, f := range ge.BaseFlags {
+		baseFlags[f] = true
+	}
+	s.cfg = &Cfg{
+		Flags: modFlags, KeywordFlags: kw, SkillName: strings.TrimPrefix(ge.Name, "Vaal "),
+		SkillID: s.active.id, BaseFlags: baseFlags, SkillTypes: types, SkillGem: s.active.gem,
+		SlotName: s.cfg.SlotName,
+	}
+	if s.active.cfg != nil {
+		s.cfg.SlotName, s.cfg.SocketColor, s.cfg.SocketNum = s.active.cfg.SlotName, s.active.cfg.SocketColor, s.active.cfg.SocketNum
+	}
+	list := db.child()
+	s.mods = list
+	if list.FlagCfg(s.cfg, "DisableSkill") && !list.FlagCfg(s.cfg, "EnableSkill") {
+		s.disabled = true
+	}
+	if s.disabled {
+		return
+	}
+	for _, e := range s.effects[1:] {
+		c.mergeSkillInstanceMods(list, e, nil)
+	}
+	a := s.active
+	lvl, q := a.level, a.quality
+	if a.hasSrc {
+		lvl, q = a.srcLevel, a.srcQuality
+	}
+	list.NewMod("GemLevel", "BASE", float64(lvl), "Max Level")
+	list.NewMod("GemQuality", "BASE", float64(q), "Max Quality")
+	for _, p := range list.List(s.cfg, "SupportedGemProperty") {
+		v, _ := p.Value.(map[string]any)
+		if v["keyword"] != "grants_active_skill" || a.gem == nil || hasTag(a.gem, "support") {
+			continue
+		}
+		key, _ := v["key"].(string)
+		val, _ := num(v["value"])
+		switch key {
+		case "level":
+			a.level += int(val)
+		case "quality":
+			a.quality += int(val)
+		}
+		var tags []map[string]any
+		if len(p.Mod.Tags) > 0 {
+			tags = p.Mod.Tags[:1]
+		}
+		list.Add(Mod{Name: "GemSupport" + upperFirst(key), Type: "BASE", Value: val, Source: p.Mod.Source, Tags: tags})
+	}
+	for _, p := range a.props {
+		var tags []map[string]any
+		if len(p.mod.Tags) > 0 {
+			tags = p.mod.Tags[:1]
+		}
+		list.Add(Mod{Name: "Gem" + p.sourceType + upperFirst(p.key), Type: "BASE", Value: p.value, Source: p.mod.Source, Tags: tags})
+	}
+	c.mergeSkillInstanceMods(list, a, list.List(s.cfg, "ExtraSkillStat"))
+	for _, e := range list.List(s.cfg, "ExtraSkillMod") {
+		v, _ := e.Value.(map[string]any)
+		if m, ok := v["mod"].(map[string]any); ok {
+			src, _ := m["source"].(string)
+			if src == "" {
+				src = e.Mod.Source
+			}
+			list.Add(modFromMap(m, src))
+		}
+	}
+	for _, e := range db.List(s.cfg, "SkillData") {
+		skillData(s.data, e.Value)
+	}
+	for _, e := range list.List(s.cfg, "SkillData") {
+		skillData(s.data, e.Value)
+	}
+	c.separateBuffs(s)
+	if len(s.buffs) > 0 && flags["attack"] {
+		// Weapon flags (getWeaponFlags) are not ported: attack skills
+		// match only mods without weapon flags.
+		res.Incomplete = append(res.Incomplete, "attack skill weapon flags: "+ge.Name)
+	}
+	if len(s.buffs) > 0 && s.weaponSupports {
+		res.Incomplete = append(res.Incomplete, "supports with weapon types: "+ge.Name)
+	}
+}
+
+func skillData(d map[string]any, v any) {
+	m, _ := v.(map[string]any)
+	if k, ok := m["key"].(string); ok {
+		d[k] = m["value"]
+	}
+}
+
+func upperFirst(s string) string {
+	if s == "" {
+		return s
+	}
+	return strings.ToUpper(s[:1]) + s[1:]
+}
+
+func truthy(v any) bool { return v != nil && v != false }
+
+// separateBuffs is the "Separate global effect modifiers" loop of
+// buildActiveSkillModList: mods with a GlobalEffect tag leave the skill's
+// list and become its buffs.
+func (c *Calculator) separateBuffs(s *activeSkill) {
+	list := s.mods
+	names := make([]string, 0, len(list.mods))
+	for n := range list.mods {
+		names = append(names, n)
+	}
+	sort.Strings(names)
+	for _, name := range names {
+		var keep []Mod
+		for _, m := range list.mods[name] {
+			var tag map[string]any
+			for _, t := range m.Tags {
+				if tagStr(t, "type") == "GlobalEffect" {
+					tag = t
+					break
+				}
+			}
+			if tag == nil {
+				keep = append(keep, m)
+				continue
+			}
+			if mc := tagStr(tag, "modCond"); mc != "" && !list.getCondition(mc, s.cfg, false) {
+				continue
+			}
+			typ := tagStr(tag, "effectType")
+			bname := tagStr(tag, "effectName")
+			if bname == "" {
+				bname = s.active.ge.Name
+			}
+			var buff *skillBuff
+			for _, b := range s.buffs {
+				if b.typ == typ && b.name == bname {
+					buff = b
+					break
+				}
+			}
+			if buff == nil {
+				buff = &skillBuff{typ: typ, name: bname, cond: tagStr(tag, "effectCond"),
+					enemyCond: tagStr(tag, "effectEnemyCond"), applyNotPlayer: tagBool(tag, "applyNotPlayer"),
+					allowTotemBuff: tagBool(tag, "allowTotemBuff")}
+				if m.Source == "Skill:"+s.active.id {
+					buff.activeSkillBuff = true
+					buff.applyNotPlayer = buff.applyNotPlayer || truthy(s.data["buffNotPlayer"])
+					buff.allowTotemBuff = truthy(s.data["allowTotemBuff"])
+				}
+				s.buffs = append(s.buffs, buff)
+			}
+			merged := false
+			for i, d := range buff.mods {
+				if sameParams(m, d) && (d.Type == "BASE" || d.Type == "INC") {
+					a, _ := num(d.Value)
+					b, _ := num(m.Value)
+					d.Value = a + b
+					buff.mods[i] = d
+					merged = true
+					break
+				}
+			}
+			if !merged {
+				buff.mods = append(buff.mods, m)
+			}
+		}
+		if len(keep) == 0 {
+			delete(list.mods, name)
+		} else {
+			list.mods[name] = keep
+		}
+	}
+}
+
+// mergeBuff is CalcPerform.lua mergeBuff: per comparable mod the highest value.
+func mergeBuff(src []Mod, dest map[string][]Mod, key string) {
+	d := dest[key]
+	for _, m := range src {
+		match := false
+		if m.Type != "LIST" {
+			for i, dm := range d {
+				if sameParams(m, dm) {
+					a, aok := num(dm.Value)
+					b, bok := num(m.Value)
+					if aok && bok && b > a {
+						d[i] = m
+					}
+					match = true
+					break
+				}
+			}
+		}
+		if !match {
+			d = append(d, m)
+		}
+	}
+	dest[key] = d
+}
+
+// applyBuffs ports the player's Buff and Aura branches of calcs.perform
+// and adds the merged buffs to the ModDB.
+func (c *Calculator) applyBuffs(db *ModDB, skills []*activeSkill, res *Result) {
+	buffs := map[string][]Mod{}
+	notBuff := map[string]bool{}
+	var order []string
+	add := func(src []Mod, name string) {
+		if _, ok := buffs[name]; !ok {
+			order = append(order, name)
+		}
+		mergeBuff(src, buffs, name)
+	}
+	for _, s := range skills {
+		if s.disabled {
+			continue
+		}
+		list, cfg := s.mods, s.cfg
+		for _, b := range s.buffs {
+			if b.cond != "" && !list.getCondition(b.cond, cfg, false) {
+				continue
+			}
+			if b.enemyCond != "" && (db.enemy == nil || !db.enemy.GetCondition(b.enemyCond)) {
+				continue
+			}
+			switch b.typ {
+			case "GlobalDB":
+				for _, m := range b.mods {
+					db.Add(m)
+				}
+			case "Buff":
+				if s.flags["totem"] && !b.allowTotemBuff || b.applyNotPlayer {
+					continue
+				}
+				store, bcfg := db, (*Cfg)(nil)
+				if b.activeSkillBuff {
+					store, bcfg = list, cfg
+				}
+				db.conditions["AffectedBy"+strings.ReplaceAll(b.name, " ", "")] = true
+				inc := store.SumCfg(bcfg, "INC", "BuffEffect", "BuffEffectOnSelf", "BuffEffectOnPlayer") +
+					list.SumCfg(cfg, "INC", strings.ReplaceAll(b.name, " ", "")+"Effect")
+				more := store.MoreCfg(bcfg, "BuffEffect", "BuffEffectOnSelf")
+				add(scaleMods(b.mods, (1+inc/100)*more), b.name)
+				if truthy(s.data["thisIsNotABuff"]) {
+					notBuff[b.name] = true
+				}
+			case "Aura":
+				var extra []Mod
+				for _, e := range db.List(cfg, "ExtraAuraEffect") {
+					v, _ := e.Value.(map[string]any)
+					mm, ok := v["mod"].(map[string]any)
+					if !ok {
+						continue
+					}
+					m := modFromMap(mm, e.Mod.Source)
+					merged := false
+					for i, x := range extra {
+						if sameParams(x, m) {
+							a, _ := num(x.Value)
+							bv, _ := num(m.Value)
+							x.Value = a + bv
+							extra[i] = x
+							merged = true
+							break
+						}
+					}
+					if !merged {
+						extra = append(extra, m)
+					}
+				}
+				if !truthy(s.data["auraCannotAffectSelf"]) {
+					mult := (1 + list.SumCfg(cfg, "INC", auraEffectNames...)/100) * list.MoreCfg(cfg, auraEffectNames...)
+					db.conditions["AffectedByAura"] = true
+					if strings.HasPrefix(b.name, "Vaal") && len(b.name) > 5 {
+						db.conditions["AffectedBy"+strings.ReplaceAll(b.name[5:], " ", "")] = true
+					}
+					db.conditions["AffectedBy"+strings.ReplaceAll(b.name, " ", "")] = true
+					add(append(scaleMods(b.mods, mult), scaleMods(extra, mult)...), b.name)
+				}
+				if db.Flag("AurasAffectEnemies") {
+					res.Incomplete = append(res.Incomplete, "auras affecting enemies: "+b.name)
+				}
+			case "Guard", "Warcry", "Link":
+				res.Incomplete = append(res.Incomplete, fmt.Sprintf("%s buff not applied: %s", strings.ToLower(b.typ), b.name))
+			}
+		}
+	}
+	for _, name := range order {
+		for _, m := range buffs[name] {
+			db.Add(m)
+		}
+		if !notBuff[name] {
+			db.multipliers["BuffOnSelf"]++
+		}
+	}
+}
+
+var auraEffectNames = []string{"AuraEffect", "BuffEffect", "BuffEffectOnSelf", "AuraEffectOnSelf", "AuraBuffEffect", "SkillAuraEffectOnSelf"}
+
+func skillInfo(skills []*activeSkill) []SkillInfo {
+	out := make([]SkillInfo, 0, len(skills))
+	for _, s := range skills {
+		info := SkillInfo{Name: s.active.ge.Name, Level: s.active.level, Quality: s.active.quality, Disabled: s.disabled}
+		for _, b := range s.buffs {
+			info.Buffs = append(info.Buffs, b.typ+":"+b.name)
+		}
+		if s.mods != nil {
+			info.AuraEffectInc = s.mods.SumCfg(s.cfg, "INC", auraEffectNames...)
+			info.AuraEffectMore = s.mods.MoreCfg(s.cfg, auraEffectNames...)
+		}
+		out = append(out, info)
+	}
+	return out
+}
+
+func scaleMods(l []Mod, scale float64) []Mod {
+	out := make([]Mod, len(l))
+	for i, m := range l {
+		out[i] = scaleMod(m, scale)
+	}
+	return out
+}
