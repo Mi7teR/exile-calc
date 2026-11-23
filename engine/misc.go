@@ -359,6 +359,25 @@ func playerBaseMods(db *ModDB) {
 	db.NewMod("MovementSpeed", "INC", 1, "Base", map[string]any{"type": "Multiplier", "var": "Rampage", "limit": 50.0, "div": 20.0})
 }
 
+// heraldAuraCounts is "Calculate number of active heralds and auras
+// affecting self" of calcs.perform (mode_buffs).
+func heraldAuraCounts(db *ModDB, skills []*activeSkill) {
+	const stHerald, stAuraAffectsEnemies = 52, 53
+	heralds, auras := map[string]bool{}, map[string]bool{}
+	for _, s := range skills {
+		name := s.cfg.SkillName
+		switch {
+		case s.types[stHerald] && !heralds[name]:
+			heralds[name] = true
+			db.multipliers["Herald"]++
+			db.conditions["AffectedByHerald"] = true
+		case !s.types[stHerald] && s.types[stAura] && !s.types[stAuraAffectsEnemies] && !truthy(s.data["auraCannotAffectSelf"]) && !auras[name]:
+			auras[name] = true
+			db.multipliers["AuraAffectingSelf"]++
+		}
+	}
+}
+
 // totemCounts is the totem part of calcs.perform's active skill loop:
 // with any totem skill, ActiveTotemLimit is the main skill's limit and
 // TotemsSummoned (read by "per summoned totem" mods) the configured count

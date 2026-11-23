@@ -434,6 +434,7 @@ func (c *Calculator) Calc(b *pobcode.Build) (*Result, error) {
 	reservations(db, skills, res)
 	totemCounts(db, skills)
 	c.minionCounts(db, skills)
+	heraldAuraCounts(db, skills)
 	chilling := chillSkills(db, skills)
 	charges(db) // early, for stats that depend on charges
 	curses, buffs := c.applyBuffs(db, skills, res)

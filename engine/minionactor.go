@@ -257,7 +257,10 @@ func extraAurasToMinion(db, mdb *ModDB) {
 	}
 }
 
-var debugMinionOffence = false
+var (
+	debugMinionOffence = false
+	debugMinionSkill   func(*activeSkill)
+)
 
 var minionOffenceStats = []string{"Speed", "HitChance", "CritChance", "CritMultiplier", "AverageDamage", "TotalDPS"}
 
@@ -330,6 +333,9 @@ func (c *Calculator) mainMinion(db *ModDB, skills []*activeSkill, buffs map[stri
 		stats[k] = mdb.output[k]
 	}
 	if ms := c.createMinionSkills(mdb, s, m, res); ms != nil {
+		if debugMinionSkill != nil {
+			debugMinionSkill(ms)
+		}
 		for k, v := range c.offence(mdb, ms, c.minionWeapon(s, m)) {
 			if contains(minionOffenceStats, k) || debugMinionOffence {
 				stats[k] = v

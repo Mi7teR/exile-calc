@@ -93,7 +93,7 @@ func (db *ModDB) Enemy() *ModDB { return db.enemy }
 // as a skill's skillModList does (CalcActiveSkill.lua).
 func (db *ModDB) child() *ModDB {
 	c := NewModDB()
-	c.parent, c.enemy, c.output = db, db.enemy, db.output
+	c.parent, c.enemy, c.output, c.owner, c.build, c.enemyEnv = db, db.enemy, db.output, db.owner, db.build, db.enemyEnv
 	c.items, c.tags, c.classConds, c.UnsupportedTags, c.gameIDs = db.items, db.tags, db.classConds, db.UnsupportedTags, db.gameIDs
 	return c
 }
@@ -828,4 +828,21 @@ func (db *ModDB) skillNameTag(t map[string]any, cfg *Cfg) bool {
 		match = !match
 	}
 	return match
+}
+
+// TabulateCfg is ModStore:Tabulate(typ, cfg, name) over the parent chain.
+func (db *ModDB) TabulateCfg(cfg *Cfg, typ, name string) []Row {
+	var rows []Row
+	for d := db; d != nil; d = d.parent {
+		for i := range d.mods[name] {
+			m := &d.mods[name][i]
+			if !eligible(m, typ, cfg) {
+				continue
+			}
+			if v, ok := db.eval(m, cfg); ok {
+				rows = append(rows, Row{Type: m.Type, Value: v, Source: m.Source})
+			}
+		}
+	}
+	return rows
 }
