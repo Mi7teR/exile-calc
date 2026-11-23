@@ -51,11 +51,11 @@ const minBuildsWithoutTimeless = 2
 const minMinionsWithinTolerance = 49
 
 // Minion offence ratchet: oracle minions whose TotalDPS is within tolerance.
-const minMinionDPSWithinTolerance = 46
+const minMinionDPSWithinTolerance = 48
 
 // Player offence ratchet: builds whose main skill TotalDPS is within
 // tolerance.
-const minPlayerDPSWithinTolerance = 16
+const minPlayerDPSWithinTolerance = 17
 
 // playerOffenceStats are the main skill's hit stats.
 var playerOffenceStats = []string{"Speed", "HitChance", "CritChance", "CritMultiplier", "AverageDamage", "TotalDPS"}

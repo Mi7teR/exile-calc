@@ -750,6 +750,8 @@ func enemyAilments(db *ModDB, skills []*activeSkill) {
 				enemy.NewMod("ColdDamageTaken", "INC", cur, "Chilled by Hits", when)
 			case db.Flag("ChillingAreaIncColdDamageTaken"):
 				enemy.NewMod("ColdDamageTaken", "INC", cur, "Chilling Area", when)
+			case out["HasBonechill"] != 0 && (db.conditions["hasGuaranteedBonechill"] || enemy.Sum("BASE", "ChillVal") > 0):
+				enemy.NewMod("ColdDamageTaken", "INC", cur, "Bonechill", when)
 			}
 			if db.Flag("ChillEffectLessDamageDealt") {
 				enemy.NewMod("Damage", "MORE", -cur/2, "Shaper of Winter", when)
@@ -841,6 +843,7 @@ func chillSkills(db *ModDB, skills []*activeSkill) []*activeSkill {
 					db.NewMod("Self"+a.name+"Override", "BASE", effect, name)
 				}
 				if a.name == "Chill" && bonechill {
+					db.conditions["hasGuaranteedBonechill"] = true
 					db.Add(Mod{Name: "SkitterbotBonechill", Type: "FLAG", Value: true, Source: name})
 				}
 			}
@@ -856,6 +859,9 @@ func chillSkills(db *ModDB, skills []*activeSkill) []*activeSkill {
 		} else if s.flags["guaranteedChill"] || s.types[stChillArea] || (s.types[stNonHitChill] && !s.mods.Flag("CannotChill")) {
 			guaranteed = append(guaranteed, s)
 			db.enemy.Add(Mod{Name: "Condition:Chilled", Type: "FLAG", Value: true, Source: name})
+			if bonechill {
+				db.conditions["hasGuaranteedBonechill"] = true
+			}
 		}
 	}
 	return guaranteed
