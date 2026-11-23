@@ -51,7 +51,7 @@ const minBuildsWithoutTimeless = 2
 const minMinionsWithinTolerance = 49
 
 // Minion offence ratchet: oracle minions whose TotalDPS is within tolerance.
-const minMinionDPSWithinTolerance = 43
+const minMinionDPSWithinTolerance = 45
 
 // goldenMinion is one entry of the oracle's "Minions" list.
 type goldenMinion struct {

@@ -458,6 +458,7 @@ func (c *Calculator) Calc(b *pobcode.Build) (*Result, error) {
 	enemyAilments(db, skills)
 	actorMisc(db.enemy, nil, false, -100)
 	exposures(db)
+	consecratedGround(db)
 	res.Skills = skillInfo(skills, b.ActiveSkills())
 	c.allyLifeMods(db, skills, buffs, b.Level, res)
 	c.resistances(db)

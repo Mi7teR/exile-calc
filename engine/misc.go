@@ -520,6 +520,16 @@ func convertedModTags(tags []map[string]any, mult float64, minionMods bool) []ma
 	return out
 }
 
+// consecratedGround is "Handle consecrated ground effects on enemies" of
+// calcs.perform.
+func consecratedGround(db *ModDB) {
+	if !db.enemy.Flag("Condition:OnConsecratedGround") {
+		return
+	}
+	effect := 1 + db.Sum("INC", "ConsecratedGroundEffect")/100
+	db.enemy.NewMod("DamageTaken", "INC", math.Floor(db.enemy.Sum("INC", "DamageTakenConsecratedGround")*effect), "Consecrated Ground")
+}
+
 // exposures is "Apply exposures" of calcs.perform: the strongest exposure
 // of each element on the enemy, changed by extra exposure and scaled by
 // exposure effect, as an enemy resistance.

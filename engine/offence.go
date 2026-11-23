@@ -171,6 +171,26 @@ func (c *Calculator) offence(actor *ModDB, s *activeSkill, w1 hitSource, w2 *hit
 	for _, e := range list.List(cfg, "SkillData") {
 		skillData(data, e.Value)
 	}
+	// Additional stat bonuses.
+	if list.Flag("IronGrip") {
+		list.Add(Mod{Name: "PhysicalDamage", Type: "INC", Value: actor.strDmgBonus, Flags: mfAttack | mfProjectile, Source: "Strength"})
+	}
+	if list.Flag("IronWill") {
+		list.Add(Mod{Name: "Damage", Type: "INC", Value: actor.strDmgBonus, Flags: mfSpell, Source: "Strength"})
+	}
+	const transfiguration = 0.3 // data.misc.Transfiguration
+	for _, x := range []struct {
+		flag, stat, source string
+		flags              uint64
+	}{
+		{"TransfigurationOfBody", "Life", "Transfiguration of Body", mfAttack},
+		{"TransfigurationOfMind", "Mana", "Transfiguration of Mind", 0},
+		{"TransfigurationOfSoul", "EnergyShield", "Transfiguration of Soul", mfSpell},
+	} {
+		if list.Flag(x.flag) {
+			list.Add(Mod{Name: "Damage", Type: "INC", Value: math.Floor(list.Sum("INC", x.stat) * transfiguration), Flags: x.flags, Source: x.source})
+		}
+	}
 	isAttack := s.flags["attack"]
 	var passes []*hitPass
 	if isAttack {
