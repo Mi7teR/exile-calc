@@ -54,7 +54,6 @@ func variantLines(it *itemtext.Item, lines []itemtext.ModLine) []itemtext.ModLin
 	return out
 }
 
-
 // findModifierSubstring ports ItemClass:FindModifierSubstring (Item.lua).
 func (t itemTags) findModifierSubstring(it *itemtext.Item, substring, slot string) bool {
 	explicitOnly := strings.Contains(substring, "explicit ")
