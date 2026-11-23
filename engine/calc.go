@@ -178,6 +178,13 @@ func (c *Calculator) Calc(b *pobcode.Build) (*Result, error) {
 	// Items in the active set; jewels in allocated tree sockets.
 	var flasks []flaskSlot
 	var gear []equipped
+	type reflect struct {
+		slot string
+		item *pobcode.Item
+		it   *itemtext.Item
+	}
+	var kalandra []reflect
+	var reflected []*itemtext.Item // the other ring of each Kalandra's Touch
 	useSwap := false
 	if set := b.ActiveItems(); set != nil {
 		useSwap = set.UseSecondWeaponSet
@@ -187,6 +194,7 @@ func (c *Calculator) Calc(b *pobcode.Build) (*Result, error) {
 			item         *pobcode.Item
 		}
 		var abyssal []abyss
+		ringItems := map[string]*pobcode.Item{}
 		parents := map[string]*itemtext.Item{}
 		jewelEffect := map[string]float64{}
 		for _, slot := range set.Slots {
@@ -206,6 +214,23 @@ func (c *Calculator) Calc(b *pobcode.Build) (*Result, error) {
 				abyssal = append(abyssal, abyss{slot.Name, slot.Name[:i], n, b.Item(slot.ItemID)})
 				continue
 			}
+			if strings.HasPrefix(slot.Name, "Ring") {
+				if pit := c.peekItem(b.Item(slot.ItemID)); pit != nil && strings.Contains(pit.Name, "Kalandra's Touch") {
+					// Kalandra's Touch: its own mods do not apply, except ExtraSkill.
+					it, mods := c.itemMods(b.Item(slot.ItemID), res)
+					for _, m := range mods {
+						if m.Name == "ExtraSkill" {
+							db.Add(slotTags(fromParsed(m, itemSource(b.Item(slot.ItemID), it)), slot.Name))
+						}
+					}
+					gear = append(gear, equipped{slot.Name, it})
+					db.items[slot.Name] = it
+					parents[slot.Name] = it
+					kalandra = append(kalandra, reflect{slot.Name, b.Item(slot.ItemID), it})
+					continue
+				}
+				ringItems[slot.Name] = b.Item(slot.ItemID)
+			}
 			it, mods := c.addItem(db, res, b.Item(slot.ItemID), 1, slot.Name)
 			if it != nil {
 				gear = append(gear, equipped{slot.Name, it})
@@ -222,6 +247,33 @@ func (c *Calculator) Calc(b *pobcode.Build) (*Result, error) {
 		}
 		// CalcSetup.lua: an abyss jewel counts only if its parent has that
 		// many abyssal sockets, scaled by the parent's socketed jewel effect.
+		// CalcSetup.lua: Kalandra's Touch takes the other ring's mods, except
+		// SocketedIn ones, with its own source.
+		for _, k := range kalandra {
+			other := "Ring 1"
+			if k.slot == "Ring 1" {
+				other = "Ring 2"
+			}
+			oi := ringItems[other]
+			if oi == nil {
+				continue
+			}
+			oit, omods := c.itemMods(oi, &Result{})
+			if oit == nil {
+				continue
+			}
+			source := itemSource(k.item, k.it)
+		mods:
+			for _, m := range omods {
+				for _, t := range m.Tags {
+					if tagStr(t, "type") == "SocketedIn" {
+						continue mods
+					}
+				}
+				db.Add(slotTags(fromParsed(m, source), k.slot))
+			}
+			reflected = append(reflected, oit)
+		}
 		for _, a := range abyssal {
 			parent := parents[a.parent]
 			if parent == nil || abyssalSockets(parent) < a.num {
@@ -272,6 +324,23 @@ func (c *Calculator) Calc(b *pobcode.Build) (*Result, error) {
 		}
 	}
 	itemConditions(db, gear)
+	// Kalandra's Touch: influence and corruption multipliers of the other ring.
+	for _, o := range reflected {
+		for mult, infl := range influenceMultipliers {
+			if hasInfluence(o, infl) {
+				db.multipliers[mult]++
+				db.multipliers["Non"+mult]--
+			}
+		}
+		if o.Corrupted {
+			db.multipliers["CorruptedItem"]++
+			db.multipliers["NonCorruptedItem"]--
+		}
+		if hasInfluence(o, "shaper") || hasInfluence(o, "elder") {
+			db.multipliers["ShaperOrElderItem"]++
+		}
+		db.multipliers[strings.ReplaceAll(o.BaseName, " ", "")+"Equipped"]++
+	}
 	buffMode(db)
 	c.applyConfig(db, res, config)
 	c.customMods(db, res, config)
