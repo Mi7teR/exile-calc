@@ -49,7 +49,7 @@ type Result struct {
 	Unparsed        []string
 	Incomplete      []string // parts of the build not computed (timeless data missing, ...)
 	UnsupportedTags map[string]int
-	Skills          []SkillInfo // the player's active skills, in PoB's order
+	Skills          []SkillInfo   // the player's active skills, in PoB's order
 	Minion          *MinionResult // the main skill's minion (env.minion)
 }
 
