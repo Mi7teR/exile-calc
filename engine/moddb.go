@@ -34,7 +34,7 @@ type ModDB struct {
 	mods        map[string][]Mod
 	conditions  map[string]bool
 	multipliers map[string]float64
-	enemyEnv    *enemyEnv // the player's: config about the enemy
+	enemyEnv    *enemyEnv          // the player's: config about the enemy
 	output      map[string]float64 // the actor's computed stats, read by PerStat
 	enemy       *ModDB
 	items       map[string]*itemtext.Item // the actor's itemList, by slot name
