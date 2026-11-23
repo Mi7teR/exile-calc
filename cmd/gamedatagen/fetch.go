@@ -52,18 +52,18 @@ func wanted(p, tree string) bool {
 		timelessLUT[strings.TrimPrefix(p, "src/Data/TimelessJewelData/")] || abyssLUT(p)
 }
 
-// abyssLUT selects the split lookup tables of the 3.30 abyssal timeless
-// jewels (Data/TimelessJewelData/Abyss<Name>.zip.part<N>).
+// abyssLUT selects the split lookup tables: the 3.30 abyssal timeless
+// jewels (Abyss<Name>.zip.part<N>) and Glorious Vanity.
 func abyssLUT(p string) bool {
-	name, ok := strings.CutPrefix(p, "src/Data/TimelessJewelData/Abyss")
-	return ok && strings.Contains(name, ".zip.part")
+	name, ok := strings.CutPrefix(p, "src/Data/TimelessJewelData/")
+	return ok && (strings.HasPrefix(name, "Abyss") || strings.HasPrefix(name, "GloriousVanity")) && strings.Contains(name, ".zip.part")
 }
 
 // fetchPoB downloads the needed files of a PoB tag into cacheDir (once) and
 // returns the directory that plays the role of PoB's src.
 func fetchPoB(tag, tree, cacheDir string) (string, error) {
 	// fetchLayout changes whenever wanted() starts selecting more files.
-	const fetchLayout = "6"
+	const fetchLayout = "7"
 	root := filepath.Join(cacheDir, "pob-"+tag+"-"+fetchLayout)
 	done := filepath.Join(root, ".complete")
 	if _, err := os.Stat(done); err == nil {

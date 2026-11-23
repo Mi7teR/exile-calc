@@ -34,23 +34,28 @@ func convertTimeless(read func(string) (string, error)) (*gamedata.Timeless, err
 	}
 	t := &gamedata.Timeless{
 		Nodes: legion.Nodes, Additions: legion.Additions,
-		NodeIndex: map[int]int{}, LocalToGlobal: map[int]map[int]int{},
+		NodeIndex: map[int]int{}, NodeSize: map[int]int{}, LocalToGlobal: map[int]map[int]int{},
 	}
 	for _, k := range list.Keys {
 		switch key := k.(type) {
 		case luadata.Number:
 			var entry struct {
 				Index int `lua:"index"`
+				Size  int `lua:"size"`
 			}
 			if err := luadata.Decode(list.Get(k), &entry); err != nil {
 				return nil, fmt.Errorf("NodeIndexMapping.lua [%v]: %w", key, err)
 			}
 			t.NodeIndex[int(key)] = entry.Index
+			t.NodeSize[int(key)] = entry.Size
 		case luadata.String:
 			switch key {
 			case "sizeNotable":
 				n, _ := list.Get(k).(luadata.Number)
 				t.SizeNotable = int(n)
+			case "size":
+				n, _ := list.Get(k).(luadata.Number)
+				t.Size = int(n)
 			case "localIdToGlobalId":
 				byType, _ := list.Get(k).(*luadata.Table)
 				for _, typ := range byType.Keys {

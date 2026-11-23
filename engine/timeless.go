@@ -46,6 +46,7 @@ type timelessLUTs struct {
 	mu        sync.Mutex
 	data      map[int][]byte
 	abyssData map[int]*abyssLUT
+	gv        *gvLUT
 }
 
 func defaultTimelessDir() string {
@@ -55,7 +56,7 @@ func defaultTimelessDir() string {
 		if err != nil {
 			return ""
 		}
-		d = filepath.Join(cache, "poe-lib", "pob-v2.68.1-6", "src", "Data", "TimelessJewelData")
+		d = filepath.Join(cache, "poe-lib", "pob-v2.68.1-7", "src", "Data", "TimelessJewelData")
 	}
 	if st, err := os.Stat(d); err != nil || !st.IsDir() {
 		return ""
@@ -219,14 +220,17 @@ func radiusByLabel(label string) (radius, bool) {
 var attributeNodeNames = map[string]bool{"Dexterity": true, "Intelligence": true, "Strength": true}
 
 // conqueredStats ports the conquest part of PassiveSpecClass:BuildAllDependsAndPaths
-// for jewel types 2-6: it returns the node's stats after conquest and the
-// source name PoB gives them. Glorious Vanity is not ported.
+// for jewel types 1-6: it returns the node's stats after conquest and the
+// source name PoB gives them.
 func (c *Calculator) conqueredStats(node *gamedata.Node, id int, cq conquest, res *Result) ([]string, string, bool) {
 	t := c.data.Timeless
 	src := fmt.Sprintf("Tree:%d", id)
-	if t == nil || cq.jewelType == 1 {
-		res.Incomplete = append(res.Incomplete, "Glorious Vanity conquest")
+	if t == nil {
 		return node.Stats, src, false
+	}
+	if cq.jewelType == 1 && !node.IsKeystone && !node.IsMastery && !node.IsJewelSocket && node.ClassStartIndex == nil && !node.IsAscendancyStart {
+		stats, ok := c.gvStats(node, id, cq, res)
+		return stats, src, ok
 	}
 	replace := func(index int) ([]string, string) {
 		if index < 0 || index >= len(t.Nodes) {

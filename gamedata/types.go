@@ -247,6 +247,10 @@ type Timeless struct {
 	// indices up to SizeNotable are notables (nodeIDList).
 	NodeIndex   map[int]int `json:"nodeIndex"`
 	SizeNotable int         `json:"sizeNotable"`
+	// Size is nodeIDList.size, the number of nodes in the Glorious Vanity
+	// table; NodeSize is each node's data length in it.
+	Size     int         `json:"size"`
+	NodeSize map[int]int `json:"nodeSize"`
 	// LocalToGlobal maps, per jewel type, the ids stored in the tables to
 	// legion ids (nodeIDList.localIdToGlobalId).
 	LocalToGlobal map[int]map[int]int `json:"localToGlobal"`
@@ -261,6 +265,8 @@ type LegionNode struct {
 	// StatMods describes the rolled values in Stats, by stat id ("stats"):
 	// abyssal timeless jewels store the roll for each index.
 	StatMods map[string]LegionStat `json:"statMods,omitempty" lua:"stats"`
+	// SortedStats are the stat ids of Stats, in order ("sortedStats").
+	SortedStats []string `json:"sortedStats,omitempty" lua:"sortedStats"`
 }
 
 type LegionStat struct {
