@@ -253,6 +253,9 @@ func skillLevels(v luadata.Value) (map[int]*gamedata.SkillLevel, error) {
 		l.LevelRequirement = int(num("levelRequirement"))
 		l.ManaMultiplier = num("manaMultiplier")
 		l.ManaReservationPercent = num("manaReservationPercent")
+		l.ManaReservationFlat = num("manaReservationFlat")
+		l.LifeReservationPercent = num("lifeReservationPercent")
+		l.LifeReservationFlat = num("lifeReservationFlat")
 		out[n] = l
 		return nil
 	}

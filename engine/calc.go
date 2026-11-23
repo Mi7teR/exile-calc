@@ -379,6 +379,7 @@ func (c *Calculator) Calc(b *pobcode.Build) (*Result, error) {
 	c.attributes(db)
 	shrineBuffs(db)
 	c.lifeMana(db)
+	reservations(db, skills, res)
 	charges(db) // early, for stats that depend on charges
 	c.applyBuffs(db, skills, res)
 	extraAuras(db)

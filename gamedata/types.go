@@ -353,4 +353,7 @@ type SkillLevel struct {
 	LevelRequirement       int       `json:"levelRequirement,omitempty"`
 	ManaMultiplier         float64   `json:"manaMultiplier,omitempty"`
 	ManaReservationPercent float64   `json:"manaReservationPercent,omitempty"`
+	ManaReservationFlat    float64   `json:"manaReservationFlat,omitempty"`
+	LifeReservationPercent float64   `json:"lifeReservationPercent,omitempty"`
+	LifeReservationFlat    float64   `json:"lifeReservationFlat,omitempty"`
 }

@@ -1009,6 +1009,14 @@ func (c *Calculator) buildSkillMods(db *ModDB, s *activeSkill, res *Result) {
 	}
 	for _, e := range s.effects[1:] {
 		c.mergeSkillInstanceMods(list, e, nil)
+		if lv := e.ge.Levels[e.level]; lv != nil {
+			if lv.ManaMultiplier != 0 {
+				list.NewMod("SupportManaMultiplier", "MORE", lv.ManaMultiplier, "Skill:"+e.id)
+			}
+			if lv.ManaReservationPercent != 0 {
+				s.data["manaReservationPercent"] = lv.ManaReservationPercent
+			}
+		}
 	}
 	a := s.active
 	lvl, q := a.level, a.quality

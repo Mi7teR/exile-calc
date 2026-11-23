@@ -94,6 +94,11 @@ var hooks = map[string]Hook{
 		return []any{withTags(newMod("SpellBlockChance", "BASE", arg(a, 0), 0, 0),
 			map[string]any{"type": "PerStat", "stat": "BlockChanceOverCap", "div": toNumber(argS(a, 2))})}
 	},
+	// ["grants armour equal to (%d+)%% of your reserved mana to you and nearby allies"] = function(num) return {
+	//   mod("GrantReservedManaAsAura", "LIST", { mod = mod("Armour", "BASE", num / 100) }) } end
+	// and the same for maximum energy shield.
+	"specialModList[^grants armour equal to (%d+)%% of your reserved mana to you and nearby allies$]":                reservedManaAura("Armour"),
+	"specialModList[^grants maximum energy shield equal to (%d+)%% of your reserved mana to you and nearby allies$]": reservedManaAura("EnergyShield"),
 	// ["grants level (%d+) (.+)"] = function(num, _, skill) return grantedExtraSkill(skill, num) end
 	"specialModList[^grants level (%d+) (.+)$]": func(p *Parser, a []any) any {
 		return p.grantedExtraSkill(argS(a, 2), arg(a, 0), nil)
@@ -128,6 +133,13 @@ var hooks = map[string]Hook{
 
 func corruptedJewelEffect(p *Parser, a []any) any {
 	return []any{newMod("JewelData", "LIST", map[string]any{"key": "corrupted" + firstToUpper(argS(a, 2)) + "JewelIncEffect", "value": arg(a, 0)}, 0, 0)}
+}
+
+func reservedManaAura(name string) Hook {
+	return func(p *Parser, a []any) any {
+		n, _ := toNumber(arg(a, 0)).(float64)
+		return []any{newMod("GrantReservedManaAsAura", "LIST", map[string]any{"mod": newMod(name, "BASE", n/100, 0, 0)}, 0, 0)}
+	}
 }
 
 func offeringEffectOnYou(sign float64) Hook {

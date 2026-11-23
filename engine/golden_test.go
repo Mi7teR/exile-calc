@@ -19,6 +19,7 @@ import (
 var goldenStats = []string{
 	"Str", "Dex", "Int", "Life", "Mana",
 	"FireResist", "ColdResist", "LightningResist", "ChaosResist",
+	"Armour", "Evasion", "EnergyShield", "Ward", "BlockChance", "SpellBlockChance",
 }
 
 const tolerance = 0.005
@@ -26,9 +27,6 @@ const tolerance = 0.005
 // Ratchet: builds where every stat above is within tolerance. Raise it as
 // the engine improves; never lower it.
 const minBuildsWithinTolerance = 18
-
-// defenceStats are compared and reported but not yet part of the ratchet.
-var defenceStats = []string{"Armour", "Evasion", "EnergyShield", "Ward", "BlockChance", "SpellBlockChance"}
 
 // minBuildsWithoutTimeless applies when the timeless jewel tables are absent.
 const minBuildsWithoutTimeless = 2
@@ -101,17 +99,9 @@ func TestGoldenCorpus(t *testing.T) {
 		if ok {
 			allOK++
 		}
-		var defDiffs []string
-		for _, s := range defenceStats {
-			if within(res.Stats[s], want[s]) {
-				perStat[s]++
-			} else {
-				defDiffs = append(defDiffs, fmt.Sprintf("%s %g/%g", s, res.Stats[s], want[s]))
-			}
-		}
-		t.Logf("%-14s %-12s ok=%v %s | defence: %s", name, b.AscendClassName, ok, strings.Join(diffs, ", "), strings.Join(defDiffs, ", "))
+		t.Logf("%-14s %-12s ok=%v %s", name, b.AscendClassName, ok, strings.Join(diffs, ", "))
 	}
-	for _, s := range append(append([]string(nil), goldenStats...), defenceStats...) {
+	for _, s := range goldenStats {
 		t.Logf("%-16s within %.1f%%: %d/%d", s, tolerance*100, perStat[s], len(codes))
 	}
 	var tags []string
