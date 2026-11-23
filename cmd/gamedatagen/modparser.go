@@ -21,7 +21,7 @@ var templateCount int
 var parserTables = []string{
 	"formList", "modNameList", "modFlagList", "preFlagList", "modTagList", "specialModList",
 	"unsupportedModList", "suffixTypes", "penTypes", "dmgTypes", "resourceTypes", "flagTypes",
-	"skillNameList",
+	"skillNameList", "conquerorList",
 }
 
 // parserEnv is what the extracted tables see: Global.lua plus the helpers

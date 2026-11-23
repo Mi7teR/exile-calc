@@ -25,7 +25,7 @@ const tolerance = 0.005
 
 // Ratchet: builds where every stat above is within tolerance. Raise it as
 // the engine improves; never lower it.
-const minBuildsWithinTolerance = 1
+const minBuildsWithinTolerance = 3
 
 func within(got, want float64) bool {
 	if want == 0 {

@@ -82,6 +82,9 @@ type Item struct {
 	Catalyst        string
 	CatalystQuality int
 
+	// Radius is a jewel's radius label ("Large", "Variable", ...).
+	Radius string
+
 	Variants []string // "Variant:" lines of a unique
 	Variant  int      // selected variant, 1-based; the last one by default
 
@@ -182,6 +185,7 @@ var (
 	rolledValueRe = regexp.MustCompile(`(-?\d+\.?\d*)\((-?\d+\.?\d*)-(-?\d+\.?\d*)\)`)
 	enumRangeRe   = regexp.MustCompile(`\s*\([^()\d]*-[^()\d]*\)`)
 	parenSuffixRe = regexp.MustCompile(` \(.+\)`)
+	radiusLabelRe = regexp.MustCompile(`^[A-Za-z ]+`)
 )
 
 // Item.lua catalystList / catalystDescriptorList: the game text names the
@@ -413,6 +417,9 @@ func (p *Parser) Parse(text string) (*Item, error) {
 				it.Source = specVal
 			case "Note":
 				it.Note = specVal
+			case "Radius":
+				// Item.lua: specVal:match("^[%a ]+")
+				it.Radius = strings.TrimSpace(radiusLabelRe.FindString(specVal))
 			case "Catalyst":
 				it.Catalyst = specVal
 			case "CatalystQuality":

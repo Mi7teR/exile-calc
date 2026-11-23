@@ -16,6 +16,7 @@ type Calculator struct {
 	data   *gamedata.Data
 	parser *modparser.Parser
 	items  *itemtext.Parser
+	luts   *timelessLUTs
 }
 
 func New() (*Calculator, error) {
@@ -27,7 +28,7 @@ func New() (*Calculator, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Calculator{data: d, parser: p, items: itemtext.New(d)}, nil
+	return &Calculator{data: d, parser: p, items: itemtext.New(d), luts: &timelessLUTs{dir: defaultTimelessDir()}}, nil
 }
 
 // Result is the computed output. Unparsed lists mod lines the parser did
@@ -37,6 +38,7 @@ type Result struct {
 	Stats           map[string]float64
 	DB              *ModDB
 	Unparsed        []string
+	Incomplete      []string // parts of the build not computed (timeless data missing, ...)
 	UnsupportedTags map[string]int
 }
 
@@ -104,6 +106,7 @@ func (c *Calculator) Calc(b *pobcode.Build) (*Result, error) {
 		mastery[m.Node] = m.Effect
 	}
 	cluster := c.clusterGraph(spec, b, res)
+	conquered := c.conquests(spec, b, allocated, res)
 	for _, id := range spec.Nodes {
 		if g, ok := cluster[id]; ok {
 			c.addNode(db, res, g.stats, g.incEffect, fmt.Sprintf("Tree:%d", id))
@@ -114,6 +117,7 @@ func (c *Calculator) Calc(b *pobcode.Build) (*Result, error) {
 			continue
 		}
 		stats := node.Stats
+		source := fmt.Sprintf("Tree:%d", id)
 		if node.IsMastery {
 			stats = nil
 			for _, e := range node.MasteryEffects {
@@ -121,8 +125,10 @@ func (c *Calculator) Calc(b *pobcode.Build) (*Result, error) {
 					stats = e.Stats
 				}
 			}
+		} else if cq, ok := conquered[id]; ok {
+			stats, source, _ = c.conqueredStats(node, id, cq, res)
 		}
-		c.addNode(db, res, stats, 0, fmt.Sprintf("Tree:%d", id))
+		c.addNode(db, res, stats, 0, source)
 	}
 
 	// Items in the active set; jewels in allocated tree sockets.
@@ -378,6 +384,7 @@ func (c *Calculator) attributes(db *ModDB) {
 		cond["DexHighestAttribute"] = dex >= str && dex >= int_
 	}
 	out["TotalAttr"] = out["Str"] + out["Dex"] + out["Int"]
+	out["Devotion"] = db.Sum("BASE", "Devotion") // CalcPerform.lua: special case for Devotion
 	if db.Flag("NoAttributeBonuses") {
 		return
 	}

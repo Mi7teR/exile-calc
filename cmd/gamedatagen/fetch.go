@@ -37,17 +37,26 @@ func get(url string) ([]byte, error) {
 	return io.ReadAll(resp.Body)
 }
 
+// timelessLUT are the timeless jewel lookup tables the engine reads (types
+// 2-6; Glorious Vanity and the abyss jewels are split into large parts and
+// not used yet). They stay in the cache: see engine.TimelessDirEnv.
+var timelessLUT = map[string]bool{
+	"LethalPride.zip": true, "BrutalRestraint.zip": true, "MilitantFaith.zip": true,
+	"ElegantHubris.zip": true, "HeroicTragedy.zip": true,
+}
+
 // wanted reports whether a repository path is needed for generation.
 func wanted(p, tree string) bool {
 	return (strings.HasPrefix(p, "src/Data/") && strings.HasSuffix(p, ".lua")) ||
-		p == "src/TreeData/"+tree+"/tree.lua" || p == "src/Modules/ModParser.lua"
+		p == "src/TreeData/"+tree+"/tree.lua" || p == "src/Modules/ModParser.lua" ||
+		timelessLUT[strings.TrimPrefix(p, "src/Data/TimelessJewelData/")]
 }
 
 // fetchPoB downloads the needed files of a PoB tag into cacheDir (once) and
 // returns the directory that plays the role of PoB's src.
 func fetchPoB(tag, tree, cacheDir string) (string, error) {
 	// fetchLayout changes whenever wanted() starts selecting more files.
-	const fetchLayout = "2"
+	const fetchLayout = "3"
 	root := filepath.Join(cacheDir, "pob-"+tag+"-"+fetchLayout)
 	done := filepath.Join(root, ".complete")
 	if _, err := os.Stat(done); err == nil {

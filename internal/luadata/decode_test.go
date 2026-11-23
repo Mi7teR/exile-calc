@@ -93,3 +93,14 @@ func TestDecodeErrorsNamePath(t *testing.T) {
 		t.Error("fractional number into int must fail")
 	}
 }
+
+func TestDecodeExplicitIndexList(t *testing.T) {
+	v := eval(t, `return { [1] = "a", [2] = "b", [4] = "gap" }`)
+	var got []string
+	if err := Decode(v, &got); err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(got, []string{"a", "b"}) {
+		t.Errorf("got %v", got)
+	}
+}

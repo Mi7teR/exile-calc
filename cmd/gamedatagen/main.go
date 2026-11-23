@@ -134,6 +134,11 @@ func run(src, out, parserOut string) error {
 		return err
 	}
 
+	timeless, err := convertTimeless(read)
+	if err != nil {
+		return err
+	}
+
 	if err := os.MkdirAll(out, 0o755); err != nil {
 		return err
 	}
@@ -143,7 +148,7 @@ func run(src, out, parserOut string) error {
 	}
 	for name, v := range map[string]any{
 		"bases": bases, "mods": mods, "gems": gems, "uniques": uniques, "tree": tree,
-		"clusterjewels": &cluster,
+		"clusterjewels": &cluster, "timeless": timeless,
 	} {
 		if err := writeGzipJSON(filepath.Join(out, name+".json.gz"), v); err != nil {
 			return fmt.Errorf("%s: %w", name, err)
@@ -157,6 +162,7 @@ func run(src, out, parserOut string) error {
 	for _, m := range mods {
 		modCount += len(m)
 	}
+	slog.Info("timeless jewel tables", "dir", filepath.Join(src, "Data", "TimelessJewelData"))
 	slog.Info("generated", "out", out, "bases", len(bases), "mods", modCount, "modDomains", len(mods),
 		"gems", len(gems), "uniques", len(uniques), "treeNodes", len(tree.Nodes))
 	return nil

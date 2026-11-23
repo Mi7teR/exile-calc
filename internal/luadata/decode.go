@@ -99,8 +99,13 @@ func decode(v Value, dst reflect.Value, path string) error {
 	}
 	switch dst.Kind() {
 	case reflect.Slice:
-		s := reflect.MakeSlice(dst.Type(), len(t.List), len(t.List))
-		for i, item := range t.List {
+		// Lua lists may be written with explicit keys: { [1] = a, [2] = b }.
+		list := t.List
+		for n := len(list) + 1; t.Has(Number(n)); n++ {
+			list = append(list[:len(list):len(list)], t.Get(Number(n)))
+		}
+		s := reflect.MakeSlice(dst.Type(), len(list), len(list))
+		for i, item := range list {
 			if err := decode(item, s.Index(i), fmt.Sprintf("%s[%d]", path, i+1)); err != nil {
 				return err
 			}

@@ -235,3 +235,27 @@ type MasteryEffect struct {
 	Effect int      `json:"effect" lua:"effect"`
 	Stats  []string `json:"stats" lua:"stats"`
 }
+
+// Timeless is the timeless jewel data of Data/TimelessJewelData: the
+// passives conquered nodes turn into, and how the lookup tables index
+// nodes. The lookup tables themselves (*.zip) are large and loaded by the
+// engine from a directory at run time.
+type Timeless struct {
+	Nodes     []LegionNode `json:"nodes"`     // legion.nodes, Lua index i at [i-1]
+	Additions []LegionNode `json:"additions"` // legion.additions
+	// NodeIndex maps a tree node id to its index in the lookup tables;
+	// indices up to SizeNotable are notables (nodeIDList).
+	NodeIndex   map[int]int `json:"nodeIndex"`
+	SizeNotable int         `json:"sizeNotable"`
+	// LocalToGlobal maps, per jewel type, the ids stored in the tables to
+	// legion ids (nodeIDList.localIdToGlobalId).
+	LocalToGlobal map[int]map[int]int `json:"localToGlobal"`
+}
+
+type LegionNode struct {
+	ID    string   `json:"id" lua:"id"`
+	Name  string   `json:"name" lua:"dn"`
+	Stats []string `json:"stats" lua:"sd"`
+	// Keystone is set for keystone replacements ("ks").
+	Keystone bool `json:"keystone,omitempty" lua:"ks"`
+}

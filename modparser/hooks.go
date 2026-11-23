@@ -190,7 +190,42 @@ func (p *Parser) call(v any, args []any) (any, bool) {
 		}
 		return h(p, args), true
 	}
+	// A table value that names a local helper function of ModParser.lua
+	// (["bathed in the blood of ..."] = timelessJewel) is called like a hook.
+	if name, ok := m["$ref"].(string); ok {
+		if h, ok := helpers[name]; ok {
+			return h(p, args), true
+		}
+	}
 	return v, true
+}
+
+// helpers are Go ports of ModParser.lua's local functions that tables
+// reference directly.
+var helpers = map[string]Hook{
+	// local function timelessJewel(num, _, name)
+	//   local conqueror = conquerorList[name:lower()]
+	//   if not conqueror then return nil end
+	//   return { mod("JewelData", "LIST", { key = "conqueredBy", value = { id = num, conqueror = conqueror } }) }
+	"timelessJewel": func(p *Parser, a []any) any {
+		conqueror, ok := p.t.exact["conquerorList"][strings.ToLower(argS(a, 2))]
+		if !ok {
+			return nil
+		}
+		return []any{newMod("JewelData", "LIST", map[string]any{
+			"key": "conqueredBy", "value": map[string]any{"id": arg(a, 0), "conqueror": deepCopy(conqueror)},
+		}, 0, 0)}
+	},
+}
+
+func isHelperRef(v any) bool {
+	m, ok := v.(map[string]any)
+	if !ok {
+		return false
+	}
+	name, _ := m["$ref"].(string)
+	_, known := helpers[name]
+	return known
 }
 
 func isFunc(v any) bool {
@@ -200,7 +235,7 @@ func isFunc(v any) bool {
 	}
 	_, t := m["$template"]
 	_, h := m["$hook"]
-	return t || h
+	return t || h || isHelperRef(v)
 }
 
 // substitute copies a template, replacing {"$arg": n} with args[n-1].

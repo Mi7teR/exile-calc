@@ -9,7 +9,7 @@ Go libraries for Path of Exile game data, ported from
 | `pobcode` | PoB export code ↔ `Build`: items by slot, gems, passive trees, config | done |
 | `gamedata` | Embedded game data: bases, mods with tiers, gems, uniques, passive tree | done |
 | `itemtext` | Item text (game Ctrl+C, Ctrl+Alt+C, PoB format) → base, sockets, enchants, implicits, explicits | done |
-| `modparser` | Mod text → ModDB modifiers, PoB's own pattern tables; matches PoB on 95.5% of ModCache lines, 0 wrong | in progress |
+| `modparser` | Mod text → ModDB modifiers, PoB's own pattern tables; matches PoB on 95.7% of ModCache lines, 0 wrong | in progress |
 | `engine` | Defence calculation against headless PoB on the golden corpus (attributes, life, mana, resists) | started |
 
 ```go

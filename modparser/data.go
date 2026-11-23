@@ -36,7 +36,7 @@ type tables struct {
 // Tables looked up by the exact lower-cased line, not scanned.
 var exactTables = map[string]bool{"clusterJewelSkills": true, "unsupportedModList": true, "SkillType": true,
 	"resourceTypes": true, "regenTypes": true, "degenTypes": true, "dmgTypes": true,
-	"gemIdLookup": true, "supportGems": true}
+	"gemIdLookup": true, "supportGems": true, "conquerorList": true}
 
 // Which ModParser.lua tables scan() reads with plain=true (substring search).
 var plainTables = map[string]bool{
