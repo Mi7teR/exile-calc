@@ -107,6 +107,7 @@ func (c *Calculator) Calc(b *pobcode.Build) (*Result, error) {
 		mastery[m.Node] = m.Effect
 	}
 	cluster := c.clusterGraph(spec, b, res)
+	treeCounts(db, tree, spec.Nodes, cluster)
 	conquered := c.conquests(spec, b, allocated, res)
 	radiusFuncs := c.radiusFuncs(spec, b, allocated, res)
 	for _, id := range spec.Nodes {
@@ -200,6 +201,7 @@ func (c *Calculator) Calc(b *pobcode.Build) (*Result, error) {
 
 	itemConditions(db, gear)
 	buffMode(db)
+	c.customMods(db, res, config)
 	c.applyFlasks(db, res, flasks)
 	c.attributes(db)
 	c.lifeMana(db)
@@ -241,21 +243,90 @@ func configString(c *pobcode.ConfigSet, name, def string) string {
 	return def
 }
 
+// treeCounts ports the allocated passive counts of CalcSetup.lua
+// (Multiplier:AllocatedNotable, Keystone, Mastery, MasteryType, LifeMastery).
+func treeCounts(db *ModDB, tree *gamedata.Tree, nodes []int, cluster map[int]clusterNode) {
+	var notables, keystones, masteries float64
+	types := map[string]float64{}
+	for _, id := range nodes {
+		if g, ok := cluster[id]; ok {
+			if g.notable {
+				notables++
+			} else if g.keystone {
+				keystones++
+			}
+			continue
+		}
+		n := tree.Nodes[id]
+		if n == nil {
+			continue
+		}
+		switch nodeType(n) {
+		case "Mastery":
+			masteries++
+			types[n.Name]++
+		case "Notable":
+			notables++
+		case "Keystone":
+			keystones++
+		}
+	}
+	add := func(name string, v float64) {
+		if v > 0 {
+			db.NewMod("Multiplier:"+name, "BASE", v, "")
+		}
+	}
+	add("AllocatedNotable", notables)
+	add("AllocatedKeystone", keystones)
+	add("AllocatedMastery", masteries)
+	add("AllocatedMasteryType", float64(len(types)))
+	add("AllocatedLifeMastery", types["Life Mastery"])
+}
+
+// nodeLines ports the line handling of PassiveTreeClass:ProcessStats: stat
+// strings are split on newlines, and a line that does not parse alone is
+// parsed together with the lines after it.
+func (c *Calculator) nodeLines(stats []string, res *Result) []modparser.Mod {
+	var lines []string
+	for _, s := range stats {
+		for _, l := range strings.Split(s, "\n") {
+			if l = strings.TrimSpace(l); l != "" {
+				lines = append(lines, l)
+			}
+		}
+	}
+	var mods []modparser.Mod
+	for i := 0; i < len(lines); i++ {
+		r := c.parser.Parse(lines[i])
+		if !r.Parsed() {
+			comb := lines[i]
+			done := false
+			for j := i + 1; j < len(lines); j++ {
+				comb += " " + lines[j]
+				if rc := c.parser.Parse(comb); rc.Parsed() {
+					mods = append(mods, rc.Mods...)
+					i, done = j, true
+					break
+				}
+			}
+			if !done {
+				res.Unparsed = append(res.Unparsed, lines[i])
+			}
+			continue
+		}
+		mods = append(mods, r.Mods...)
+	}
+	return mods
+}
+
 // addNode adds one passive's mods, scaled by its PassiveSkillEffect
 // (CalcSetup.lua buildModListForNode: calcLib.mod(modList, nil, "PassiveSkillEffect")).
 // incEffect is the cluster jewel's "increased Effect" of small passives.
 func (c *Calculator) addNode(db *ModDB, res *Result, stats []string, incEffect float64, source string, tn *gamedata.Node, funcs []radiusFunc) {
 	node := NewModDB()
 	var mods []Mod
-	for _, line := range stats {
-		r := c.parser.Parse(line)
-		if !r.Parsed() {
-			res.Unparsed = append(res.Unparsed, line)
-			continue
-		}
-		for _, m := range r.Mods {
-			mods = append(mods, fromParsed(m, source))
-		}
+	for _, m := range c.nodeLines(stats, res) {
+		mods = append(mods, fromParsed(m, source))
 	}
 	if incEffect != 0 {
 		mods = append(mods, Mod{Name: "PassiveSkillEffect", Type: "INC", Value: incEffect, Source: source})
@@ -532,5 +603,36 @@ func (c *Calculator) resistances(db *ModDB) {
 		out[elem+"Resist"] = final
 		out[elem+"ResistTotal"] = total
 		out[elem+"ResistOverCap"] = math.Max(0, total-max)
+	}
+}
+
+// customMods ports the Custom Modifiers of ConfigTabClass:BuildModList:
+// each line of each enabled block is parsed; fully parsed lines apply with
+// the source "Custom:<block title>".
+func (c *Calculator) customMods(db *ModDB, res *Result, config *pobcode.ConfigSet) {
+	if config == nil {
+		return
+	}
+	for _, block := range config.CustomMods {
+		if !block.Enabled {
+			continue
+		}
+		title := block.Title
+		if title == "" {
+			title = "Default"
+		}
+		for _, line := range strings.Split(block.Text, "\n") {
+			if line = strings.TrimSpace(line); line == "" {
+				continue
+			}
+			r := c.parser.Parse(line)
+			if !r.Parsed() {
+				res.Unparsed = append(res.Unparsed, line)
+				continue
+			}
+			for _, m := range r.Mods {
+				db.Add(fromParsed(m, "Custom:"+title))
+			}
+		}
 	}
 }

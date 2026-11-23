@@ -13,6 +13,8 @@ import (
 type clusterNode struct {
 	stats     []string
 	incEffect float64
+	notable   bool
+	keystone  bool
 }
 
 // jewelData is what Item.lua builds from a cluster jewel's mods.
@@ -130,7 +132,7 @@ func (c *Calculator) clusterGraph(spec *pobcode.Spec, b *pobcode.Build, res *Res
 
 		if d.keystone != "" {
 			if n := notableByName[d.keystone]; n != nil {
-				out[nodeID] = clusterNode{stats: n.Stats}
+				out[nodeID] = clusterNode{stats: n.Stats, keystone: true}
 			}
 			return
 		}
@@ -191,7 +193,7 @@ func (c *Calculator) clusterGraph(spec *pobcode.Spec, b *pobcode.Build, res *Res
 			if i >= len(notables) {
 				break
 			}
-			out[nodeID+idx] = clusterNode{stats: notables[i].Stats}
+			out[nodeID+idx] = clusterNode{stats: notables[i].Stats, notable: true}
 			used[idx] = true
 		}
 
