@@ -48,7 +48,7 @@ const minBuildsWithoutTimeless = 2
 
 // Minion ratchet: oracle minions (each minion skill as the main skill,
 // output.Minion) whose minionResultStats are all within tolerance.
-const minMinionsWithinTolerance = 37
+const minMinionsWithinTolerance = 42
 
 // goldenMinion is one entry of the oracle's "Minions" list.
 type goldenMinion struct {
@@ -197,7 +197,11 @@ func TestGoldenCorpus(t *testing.T) {
 			}
 		}
 		t.Logf("%-14s %-12s ok=%v %s | report: %s", name, b.AscendClassName, ok, strings.Join(diffs, ", "), strings.Join(extra, ", "))
-		mOK, mTotal, mDiffs := compareMinions(t, rawMinions.Minions, res.Minions, minionPerStat)
+		minions, err := calc.CalcMinions(b)
+		if err != nil {
+			t.Fatal(err)
+		}
+		mOK, mTotal, mDiffs := compareMinions(t, rawMinions.Minions, minions, minionPerStat)
 		minionsOK += mOK
 		minionsTotal += mTotal
 		if len(mDiffs) > 0 {

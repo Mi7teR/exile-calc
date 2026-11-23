@@ -3,6 +3,8 @@ package engine
 import (
 	"math"
 	"strings"
+
+	"github.com/Mi7teR/poe-lib/pobcode"
 )
 
 // MinionResult is one minion skill's minion: PoB's output.Minion with that
@@ -158,52 +160,104 @@ func minionBuffs(db *ModDB, skills []*activeSkill, mdb *ModDB) map[string][]Mod 
 	return out
 }
 
+// extraAurasToMinion is the minion side of calcs.perform's ExtraAura loop:
+// "you and allies within 6 metres" mods reach env.minion, scaled by its
+// buff and aura effect on self.
+func extraAurasToMinion(db, mdb *ModDB) {
+	scale := (1 + mdb.Sum("INC", "BuffEffectOnSelf", "AuraEffectOnSelf")/100) * mdb.More("BuffEffectOnSelf", "AuraEffectOnSelf")
+	for _, e := range db.List(nil, "ExtraAura") {
+		v, _ := e.Value.(map[string]any)
+		mm, ok := v["mod"].(map[string]any)
+		if !ok || !(truthy(v["fromAllies"]) || !db.Flag("SelfAurasCannotAffectAllies")) {
+			continue
+		}
+		mdb.Add(scaleMod(modFromMap(mm, e.Mod.Source), scale))
+	}
+}
+
 var minionResultStats = []string{
 	"Life", "EnergyShield", "Armour", "Evasion", "Str", "Dex", "Int",
 	"FireResist", "ColdResist", "LightningResist", "ChaosResist",
 	"BlockChance", "SpellBlockChance",
 }
 
-// minionResults computes each minion skill's minion the way calcs.perform
-// does for env.minion when that skill is the main skill: its ModDB, the
-// buffs and auras that reach it, then calcs.defence. Minion items, flasks,
-// curse and link buffs on minions are not ported.
-func (c *Calculator) minionResults(db *ModDB, skills []*activeSkill, buffs map[string][]Mod, charLevel int, res *Result) []MinionResult {
-	var out []MinionResult
-	for _, s := range skills {
-		if s.disabled {
-			continue
-		}
-		m := c.minionOf(s, charLevel, db.enemyEnv.level)
-		if m == nil || m.data.Hostile {
-			continue
-		}
-		mdb := c.initMinionDB(db, s, m, res)
-		if mdb == nil {
-			continue
-		}
-		addMinionModifiers(mdb, s.mods.List(s.cfg, "MinionModifier"), m.typ)
-		c.mergeKeystones(mdb, map[string]bool{}, res)
-		c.attributes(mdb)
-		c.lifeMana(mdb)
-		mb := minionBuffs(db, skills, mdb)
-		for _, l := range buffMinionModifiers(buffs, s.cfg) {
-			addMinionModifiers(mdb, l, m.typ)
-		}
-		for _, l := range mb {
-			for _, x := range l {
-				mdb.Add(x)
-			}
-		}
-		defenceForConditionals(mdb, nil)
-		charges(mdb)
-		c.resistances(mdb)
-		c.defence(mdb, nil, map[string]bool{})
-		stats := map[string]float64{}
-		for _, k := range minionResultStats {
-			stats[k] = mdb.output[k]
-		}
-		out = append(out, MinionResult{Skill: s.active.ge.Name, Minion: m.data.Name, Stats: stats})
+// mainMinion computes env.minion, the main skill's minion, the way
+// calcs.perform does: its ModDB, the buffs and auras that reach it, then
+// calcs.defence. Minion items, flasks, curse, warcry and link buffs on
+// minions are not ported.
+func (c *Calculator) mainMinion(db *ModDB, skills []*activeSkill, buffs map[string][]Mod, charLevel int, res *Result) *MinionResult {
+	s := mainSkill(skills)
+	if s == nil || s.disabled {
+		return nil
 	}
-	return out
+	m := c.minionOf(s, charLevel, db.enemyEnv.level)
+	if m == nil || m.data.Hostile {
+		return nil
+	}
+	mdb := c.initMinionDB(db, s, m, res)
+	if mdb == nil {
+		return nil
+	}
+	addMinionModifiers(mdb, s.mods.List(s.cfg, "MinionModifier"), m.typ)
+	c.mergeKeystones(mdb, map[string]bool{}, res)
+	c.attributes(mdb)
+	c.lifeMana(mdb)
+	mb := minionBuffs(db, skills, mdb)
+	for _, l := range buffMinionModifiers(buffs, s.cfg) {
+		addMinionModifiers(mdb, l, m.typ)
+	}
+	for _, l := range mb {
+		for _, x := range l {
+			mdb.Add(x)
+		}
+	}
+	extraAurasToMinion(db, mdb)
+	defenceForConditionals(mdb, nil)
+	charges(mdb)
+	c.resistances(mdb)
+	c.defence(mdb, nil, map[string]bool{})
+	stats := map[string]float64{}
+	for _, k := range minionResultStats {
+		stats[k] = mdb.output[k]
+	}
+	return &MinionResult{Skill: s.active.ge.Name, Minion: m.data.Name, Stats: stats}
+}
+
+// CalcMinions calculates the build once per enabled minion skill with that
+// skill as the main skill, as PoB does when you select it, and returns
+// each skill's minion.
+func (c *Calculator) CalcMinions(b *pobcode.Build) ([]MinionResult, error) {
+	res, err := c.Calc(b)
+	if err != nil {
+		return nil, err
+	}
+	var out []MinionResult
+	for _, s := range res.Skills {
+		if !s.HasMinion || s.Disabled {
+			continue
+		}
+		r, err := c.Calc(withMainSkill(b, s.Group, s.GroupSkill))
+		if err != nil {
+			return nil, err
+		}
+		if r.Minion != nil {
+			out = append(out, *r.Minion)
+		}
+	}
+	return out, nil
+}
+
+// withMainSkill returns a copy of b whose main skill is the n-th active
+// skill of socket group g (both 1-based) of the active skill set.
+func withMainSkill(b *pobcode.Build, g, n int) *pobcode.Build {
+	cp := *b
+	cp.SkillSets = append([]pobcode.SkillSet(nil), b.SkillSets...)
+	set := cp.ActiveSkills()
+	if set == nil {
+		return &cp
+	}
+	set.Groups = append([]pobcode.SocketGroup(nil), set.Groups...)
+	set.Groups[g-1].MainActiveSkill = n
+	cp.MainSocketGroup = g
+	return &cp
 }

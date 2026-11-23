@@ -50,7 +50,7 @@ type Result struct {
 	Incomplete      []string // parts of the build not computed (timeless data missing, ...)
 	UnsupportedTags map[string]int
 	Skills          []SkillInfo // the player's active skills, in PoB's order
-	Minions         []MinionResult
+	Minion          *MinionResult // the main skill's minion (env.minion)
 }
 
 // SkillInfo describes one active skill: its effective gem level and
@@ -64,6 +64,10 @@ type SkillInfo struct {
 	Buffs          []string
 	AuraEffectInc  float64
 	AuraEffectMore float64
+	// Group and GroupSkill locate the skill: its socket group and its
+	// index among the group's active skills (both 1-based).
+	Group, GroupSkill int
+	HasMinion         bool
 }
 
 // Data/Misc.lua characterConstants and Modules/Data.lua data.misc.
@@ -445,14 +449,14 @@ func (c *Calculator) Calc(b *pobcode.Build) (*Result, error) {
 	playerEnemyMods.apply(db)
 	enemyAilments(db, skills)
 	actorMisc(db.enemy, nil, false, -100)
-	res.Skills = skillInfo(skills)
+	res.Skills = skillInfo(skills, b.ActiveSkills())
 	c.allyLifeMods(db, skills, buffs, b.Level, res)
 	c.resistances(db)
 	c.defence(db, gearMods, keystones)
 	avoidanceAndRecovery(db)
 	recoup(db)
 	buildDefenceEstimations(db)
-	res.Minions = c.minionResults(db, skills, buffs, b.Level, res)
+	res.Minion = c.mainMinion(db, skills, buffs, b.Level, res)
 	for k, v := range db.UnsupportedTags {
 		if res.UnsupportedTags == nil {
 			res.UnsupportedTags = map[string]int{}

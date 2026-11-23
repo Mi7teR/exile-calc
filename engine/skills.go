@@ -1440,10 +1440,21 @@ func extraAuraMods(db *ModDB, cfg *Cfg) []Mod {
 
 var auraEffectNames = []string{"AuraEffect", "BuffEffect", "BuffEffectOnSelf", "AuraEffectOnSelf", "AuraBuffEffect", "SkillAuraEffectOnSelf"}
 
-func skillInfo(skills []*activeSkill) []SkillInfo {
+func skillInfo(skills []*activeSkill, set *pobcode.SkillSet) []SkillInfo {
 	out := make([]SkillInfo, 0, len(skills))
+	perGroup := map[*pobcode.SocketGroup]int{}
 	for _, s := range skills {
 		info := SkillInfo{Name: s.active.ge.Name, Level: s.active.level, Quality: s.active.quality, Disabled: s.disabled}
+		if set != nil {
+			for i := range set.Groups {
+				if s.group == &set.Groups[i] {
+					perGroup[s.group]++
+					info.Group, info.GroupSkill = i+1, perGroup[s.group]
+				}
+			}
+		}
+		list, _ := minionList(s)
+		info.HasMinion = len(list) > 0
 		for _, b := range s.buffs {
 			info.Buffs = append(info.Buffs, b.typ+":"+b.name)
 		}
