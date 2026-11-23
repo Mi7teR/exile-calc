@@ -331,6 +331,70 @@ var hooks = map[string]Hook{
 	// ["per second you've been stationary, up to a maximum of (%d+)%%"] = function(num) return {
 	//   tag = { type = "Multiplier", var = "StationarySeconds", limit = tonumber(num), limitTotal = true } } end
 	"modTagList[per second you've been stationary, up to a maximum of (%d+)%%]": limitTotalTag("StationarySeconds"),
+	// Tags of ModParser.lua modTagList (each line quotes the Lua tag).
+	// { type = "Multiplier", var = "PoisonAppliedRecently", globalLimit = tonumber(num), globalLimitKey = "DurationPerPoisonRecently" }
+	"modTagList[for each poison you have inflicted recently, up to a maximum of (%d+)%%]": globalLimitTag("Multiplier", "var", "PoisonAppliedRecently", "DurationPerPoisonRecently", false),
+	// { type = "Multiplier", var = "ManaSpentRecently", div = num, limit = tonumber(limit), limitTotal = true }
+	"modTagList[for each (%d+) total mana you have spent recently, up to (%d+)%%]": divLimitTag("Multiplier", "var", "ManaSpentRecently"),
+	// { type = "PerStat", stat = "Evasion", div = num, limit = tonumber(limit), limitTotal = true }
+	"modTagList[per (%d+) evasion rating, up to (%d+)%%]": divLimitTag("PerStat", "stat", "Evasion"),
+	// { type = "Multiplier", var = "ShockedNonShockedEnemyRecently", limit = tonumber(num), limitTotal = true }
+	"modTagList[for each time you have shocked a non%-shocked enemy recently, up to a maximum of (%d+)%%]": limitTotalTag("ShockedNonShockedEnemyRecently"),
+	// { type = "Multiplier", var = "EnemyKilledRecently", limit = tonumber(num), limitTotal = true }
+	"modTagList[per enemy killed recently, up to (%d+)%%]": limitTotalTag("EnemyKilledRecently"),
+	// { type = "Multiplier", var = "ManaBurnStacks", limit = tonumber(num), limitTotal = true }
+	"modTagList[per mana burn, up to a maximum of (%d+)%%]": limitTotalTag("ManaBurnStacks"),
+	// { type = "Multiplier", var = "PoisonStack", limit = tonumber(num), limitTotal = true }
+	"modTagList[for each poison on you up to a maximum of (%d+)%%]": limitTotalTag("PoisonStack"),
+	"modTagList[per poison on you, up to (%d+) per second]":         limitTotalTag("PoisonStack"),
+	// { type = "Multiplier", var = "Rampage", div = num, limit = 1000 / num, limitTotal = true }
+	"modTagList[per (%d+) rampage kills]": func(p *Parser, a []any) any {
+		n, _ := toNumber(arg(a, 0)).(float64)
+		return map[string]any{"tag": map[string]any{"type": "Multiplier", "var": "Rampage", "div": arg(a, 0), "limit": 1000 / n, "limitTotal": true}}
+	},
+	// { type = "PerStat", stat = "MissingFireResist", div = num, globalLimit = tonumber(limit), globalLimitKey = "ReplicaNebulisFire" }
+	"modTagList[per (%d+)%% missing fire resistance, up to a maximum of (%d+)%%]": globalLimitTag("PerStat", "stat", "MissingFireResist", "ReplicaNebulisFire", true),
+	"modTagList[per (%d+)%% missing cold resistance, up to a maximum of (%d+)%%]": globalLimitTag("PerStat", "stat", "MissingColdResist", "ReplicaNebulisCold", true),
+	// { type = "PerStat", statList = { "MissingFireResist", "MissingColdResist", "MissingLightningResist" }, div = num, globalLimit = tonumber(limit), globalLimitKey = "ReplicaNebulisCold" }
+	"modTagList[per (%d+)%% missing fire, cold, or lightning resistance, up to a maximum of (%d+)%%]": func(p *Parser, a []any) any {
+		return map[string]any{"tag": map[string]any{"type": "PerStat", "statList": []any{"MissingFireResist", "MissingColdResist", "MissingLightningResist"},
+			"div": arg(a, 0), "globalLimit": toNumber(argS(a, 2)), "globalLimitKey": "ReplicaNebulisCold"}}
+	},
+	// { type = "Multiplier", var = firstToUpper(effectName) .. "Effect", div = num, actor = "enemy" }
+	"modTagList[per (%d+)%% (%a+) effect on enemy]": func(p *Parser, a []any) any {
+		return map[string]any{"tag": map[string]any{"type": "Multiplier", "var": firstToUpper(argS(a, 2)) + "Effect", "div": arg(a, 0), "actor": "enemy"}}
+	},
+	// { type = "DistanceRamp", ramp = { { num * 10, 1 }, { num * 10, 0 } } }
+	"modTagList[against enemies within ([%d%.]+) metres?]": func(p *Parser, a []any) any {
+		n, _ := toNumber(arg(a, 0)).(float64)
+		return map[string]any{"tag": map[string]any{"type": "DistanceRamp", "ramp": []any{[]any{n * 10, 1.0}, []any{n * 10, 0.0}}}}
+	},
+	// { type = "Condition", var = rarity:gsub("^%l", string.upper).."ItemIn"..item:gsub("^%l", string.upper).." "..(slot == "right" and 2 or slot == "left" and 1) }
+	"modTagList[if you have a (%a+) (%a+) in (%a+) slot]": func(p *Parser, a []any) any {
+		n := map[string]string{"right": "2", "left": "1"}[argS(a, 3)]
+		if n == "" {
+			return nil // Lua concatenates false: an error
+		}
+		return map[string]any{"tag": map[string]any{"type": "Condition", "var": firstToUpper(argS(a, 1)) + "ItemIn" + firstToUpper(argS(a, 2)) + " " + n}}
+	},
+	// { type = "Multiplier", var = "ActiveBrand", globalLimit = tonumber(num), globalLimitKey = "ChipAway" }
+	"modTagList[per brand, up to a maximum of (%d+)%%]": globalLimitTag("Multiplier", "var", "ActiveBrand", "ChipAway", false),
+	// { type = "PerStat", stat = "ManaUnreserved", div = num, limit = tonumber(limit), limitTotal = true }
+	"modTagList[per (%d+) unreserved maximum mana, up to (%d+)%%]": divLimitTag("PerStat", "stat", "ManaUnreserved"),
+	// { type = "PerStat", stat = "Mana", div = num, limit = tonumber(limit), limitTotal = true }
+	"modTagList[per (%d+) maximum mana, up to (%d+)%%]": divLimitTag("PerStat", "stat", "Mana"),
+	// { type = "ActorCondition", actor = "enemy", var = "Has"..(firstToUpper(element).."Exposure") }
+	"modTagList[against enemies with (%w+) exposure]": func(p *Parser, a []any) any {
+		return map[string]any{"tag": map[string]any{"type": "ActorCondition", "actor": "enemy", "var": "Has" + firstToUpper(argS(a, 1)) + "Exposure"}}
+	},
+	// { type = "ItemCondition", searchCond = conditionSubstring, itemSlot = itemSlotName:sub(1, #itemSlotName - 1), bothSlots = true }
+	"modTagList[if both equipped left and right ([%a%s]+) have a?n? ?([%a%s]+) modifiers?]": func(p *Parser, a []any) any {
+		slot := argS(a, 1)
+		if slot != "" {
+			slot = slot[:len(slot)-1]
+		}
+		return map[string]any{"tag": map[string]any{"type": "ItemCondition", "searchCond": argS(a, 2), "itemSlot": slot, "bothSlots": true}}
+	},
 	"modTagList[if (%d+) (%a+) items are equipped]": func(p *Parser, a []any) any {
 		return map[string]any{"tag": map[string]any{"type": "MultiplierThreshold", "var": firstToUpper(argS(a, 2)) + "Item", "threshold": arg(a, 0)}}
 	},
@@ -662,4 +726,24 @@ func presenceDamage(n, limit float64, div any) map[string]any {
 	}
 	return withTags(newMod("Damage", "MORE", n, 0, kfHit|kfAilment), mult,
 		map[string]any{"type": "ActorCondition", "actor": "enemy", "var": "RareOrUnique"})
+}
+
+// divLimitTag is { type = typ, [key] = v, div = num, limit = tonumber(limit), limitTotal = true }.
+func divLimitTag(typ, key, v string) Hook {
+	return func(p *Parser, a []any) any {
+		return map[string]any{"tag": map[string]any{"type": typ, key: v, "div": arg(a, 0), "limit": toNumber(argS(a, 2)), "limitTotal": true}}
+	}
+}
+
+// globalLimitTag is { type = typ, [key] = v, (div = num,) globalLimit = tonumber(limit), globalLimitKey = gk }.
+func globalLimitTag(typ, key, v, gk string, div bool) Hook {
+	return func(p *Parser, a []any) any {
+		t := map[string]any{"type": typ, key: v, "globalLimitKey": gk}
+		if div {
+			t["div"], t["globalLimit"] = arg(a, 0), toNumber(argS(a, 2))
+		} else {
+			t["globalLimit"] = toNumber(arg(a, 0))
+		}
+		return map[string]any{"tag": t}
+	}
 }

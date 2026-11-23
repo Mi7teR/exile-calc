@@ -791,7 +791,30 @@ func preDamageFunc(actor *ModDB, s *activeSkill) {
 			}
 			data["FireBonusMin"], data["FireBonusMax"] = life*m, life*m
 		}
+	case "Ball Lightning of Orbiting":
+		if s.part == 2 || s.part == 3 {
+			interval, _ := num(data["strikeInterval"])
+			dur, _ := num(data["duration"])
+			if interval > 0 {
+				if n := math.Floor(dur / interval); n != 1 {
+					data["dpsMultiplier"] = numOr(data["dpsMultiplier"], 1) * n
+				}
+			}
+		}
+	case "Static Strike":
+		if s.part == 2 {
+			f, _ := num(data["repeatFrequency"])
+			data["hitTimeOverride"] = f / (1 + s.mods.SumCfg(s.cfg, "INC", "StaticStrikeFrequency")/100)
+		}
 	}
+}
+
+// numOr is num(v) with a default.
+func numOr(v any, def float64) float64 {
+	if f, ok := num(v); ok {
+		return f
+	}
+	return def
 }
 
 // pacts is the Pact part of the damage passes of calcs.offence: each

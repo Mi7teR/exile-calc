@@ -193,6 +193,11 @@ func rage(db *ModDB, mainCfg *Cfg) {
 	db.NewMod("Multiplier:RageEffect", "BASE", out["RageEffect"], "Base")
 	out["Rage"], out["MaximumRage"] = stacks, maxStacks
 	db.NewMod("Multiplier:Rage", "BASE", stacks, "Base")
+	if db.Flag("Condition:RageSpellDamage") {
+		db.Add(Mod{Name: "Damage", Type: "MORE", Value: out["RageEffect"], Flags: mfSpell, Source: "Rage"})
+	} else {
+		db.Add(Mod{Name: "Damage", Type: "MORE", Value: out["RageEffect"], Flags: mfAttack, Source: "Rage"})
+	}
 	if stacks == maxStacks {
 		db.Add(Mod{Name: "Condition:HaveMaximumRage", Type: "FLAG", Value: true})
 	}
