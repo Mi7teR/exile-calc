@@ -172,11 +172,7 @@ func (c *Calculator) Calc(b *pobcode.Build) (*Result, error) {
 		if isConquered && !node.IsMastery {
 			stats, source, _ = c.conqueredStats(node, id, cq, res)
 		}
-		var funcs []radiusFunc
-		var second []secondPassFunc
-		if !isConquered { // jewelFuncList: nodes changed by timeless jewels are left alone
-			funcs, second = radiusFuncs.byNode[id], radiusFuncs.second[id]
-		}
+		funcs, second := radiusFuncs.byNode[id], radiusFuncs.second[id]
 		mods := finishNode(c.nodeMods(res, stats, 0, source, node, funcs), add, node, second)
 		if !add {
 			return
