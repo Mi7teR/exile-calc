@@ -327,3 +327,64 @@ func withMainSkill(b *pobcode.Build, g, n int) *pobcode.Build {
 	cp.MainSocketGroup = g
 	return &cp
 }
+
+// createMinionSkills is calcs.createMinionSkills (CalcActiveSkill.lua):
+// the minion's skills (its minion data's skill list and ExtraMinionSkill
+// mods) at the highest level its level allows, supported by the summoning
+// skill's supports, with mod lists on the minion's ModDB. It returns the
+// minion's main skill (skillMinionSkill is not stored: the first).
+func (c *Calculator) createMinionSkills(mdb *ModDB, s *activeSkill, m *skillMinion, res *Result) *activeSkill {
+	skills := c.data.Skills.Effects
+	var ids []string
+	for _, id := range m.data.SkillList {
+		if skills[id] != nil {
+			ids = append(ids, id)
+		}
+	}
+	for _, e := range s.mods.List(s.cfg, "ExtraMinionSkill") {
+		v, _ := e.Value.(map[string]any)
+		id, _ := v["skillId"].(string)
+		if l, ok := v["minionList"].([]any); ok {
+			found := false
+			for _, t := range l {
+				found = found || t == m.typ
+			}
+			if !found {
+				continue
+			}
+		}
+		if skills[id] != nil {
+			ids = append(ids, id)
+		}
+	}
+	if len(ids) == 0 {
+		ids = []string{"Melee"}
+	}
+	weapon := m.data.WeaponType1
+	if weapon == "" {
+		weapon = "None"
+	}
+	var list []*activeSkill
+	for _, id := range ids {
+		ge := skills[id]
+		level := 1
+		if len(ge.Levels) > 1 {
+			for l := 1; ge.Levels[l] != nil; l++ {
+				if ge.Levels[l].LevelRequirement > m.level {
+					break
+				}
+				level = l
+			}
+		}
+		eff := &skillEffect{id: id, ge: ge, level: level}
+		ms := c.createActiveSkill(eff, s.supportList, nil, [2]string{weapon}, s)
+		ms.cfg = &Cfg{}
+		c.buildSkillMods(mdb, ms, res)
+		ms.flags["minion"], ms.flags["minionSkill"], ms.flags["haveMinion"] = true, true, true
+		ms.flags["spectre"] = s.flags["spectre"]
+		eff2, _ := num(s.data["minionDamageEffectiveness"])
+		ms.data["damageEffectiveness"] = 1 + eff2/100
+		list = append(list, ms)
+	}
+	return list[0]
+}

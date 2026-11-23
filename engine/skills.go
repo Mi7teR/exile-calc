@@ -235,6 +235,10 @@ type activeSkill struct {
 	// weapons are the types of the equipped weapons (weaponData1/2.type),
 	// which supports with weaponTypes check for skills granted by supports.
 	weapons [2]string
+	// supportList is the support list the skill was created with; summon
+	// is the summoning skill of a minion's skill (activeSkill.summonSkill).
+	supportList []*skillEffect
+	summon      *activeSkill
 }
 
 // resolveGem ports SkillsTabClass:LoadSkill and ProcessSocketGroup: the
@@ -594,7 +598,7 @@ func (c *Calculator) setupSkills(db *ModDB, b *pobcode.Build, useSwap bool, res 
 						}
 					}
 				}
-				s := c.createActiveSkill(eff, applied, g, weapons)
+				s := c.createActiveSkill(eff, applied, g, weapons, nil)
 				s.cfg = &Cfg{SlotName: gc.cfg.SlotName}
 				s.gem = gm
 				out = append(out, s)
@@ -751,12 +755,22 @@ func canSupport(sup *skillEffect, s *activeSkill) bool {
 	if !sup.appliesToGranted && sup.fromItem && ge.Support && (s.active.ge.FromItem || srcFromItem) {
 		return false
 	}
-	var minionTypes map[int]bool
+	// A minion's skill is supported by what supports its summoning skill.
+	types, minionTypes := s.types, map[int]bool(nil)
+	if s.summon != nil {
+		types = s.summon.types
+	}
 	if !ge.IgnoreMinionTypes {
 		minionTypes = s.minionTypes
+		if s.summon != nil {
+			minionTypes = s.summon.minionTypes
+		}
 	}
-	if len(ge.ExcludeSkillTypes) > 0 && typeExpressionMatch(ge.ExcludeSkillTypes, s.types, nil) {
+	if len(ge.ExcludeSkillTypes) > 0 && typeExpressionMatch(ge.ExcludeSkillTypes, types, nil) {
 		return false
+	}
+	if ge.IsTrigger && s.summon != nil {
+		return false // triggers support only the player's skills
 	}
 	if len(ge.WeaponTypes) > 0 {
 		// Varunastra's countsAsAll1H is not ported.
@@ -765,7 +779,7 @@ func canSupport(sup *skillEffect, s *activeSkill) bool {
 			for _, t := range s.active.ge.WeaponTypes {
 				have[t] = true
 			}
-		} else if s.types[stSkillGrantedBySupport] {
+		} else if types[stSkillGrantedBySupport] {
 			for _, t := range s.weapons {
 				if t != "" {
 					have[t] = true
@@ -780,12 +794,12 @@ func canSupport(sup *skillEffect, s *activeSkill) bool {
 			return false
 		}
 	}
-	return len(ge.RequireSkillTypes) == 0 || typeExpressionMatch(ge.RequireSkillTypes, s.types, minionTypes)
+	return len(ge.RequireSkillTypes) == 0 || typeExpressionMatch(ge.RequireSkillTypes, types, minionTypes)
 }
 
 // createActiveSkill is calcs.createActiveSkill.
-func (c *Calculator) createActiveSkill(active *skillEffect, supports []*skillEffect, g *pobcode.SocketGroup, weapons [2]string) *activeSkill {
-	s := &activeSkill{active: active, group: g, data: map[string]any{}, weapons: weapons,
+func (c *Calculator) createActiveSkill(active *skillEffect, supports []*skillEffect, g *pobcode.SocketGroup, weapons [2]string, summon *activeSkill) *activeSkill {
+	s := &activeSkill{active: active, group: g, data: map[string]any{}, weapons: weapons, supportList: supports, summon: summon,
 		types: typeSet(active.ge.SkillTypes), minionTypes: typeSet(active.ge.MinionSkillTypes), flags: map[string]bool{}}
 	for _, f := range active.ge.BaseFlags {
 		s.flags[f] = true
@@ -807,6 +821,9 @@ func (c *Calculator) createActiveSkill(active *skillEffect, supports []*skillEff
 	for _, sup := range supports {
 		if sup.ge.Support && canSupport(sup, s) {
 			s.effects = append(s.effects, sup)
+			if summon != nil {
+				continue
+			}
 			for _, f := range sup.ge.AddFlags {
 				s.flags[f] = true
 			}
