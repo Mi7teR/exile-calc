@@ -3,6 +3,7 @@ package engine
 import (
 	"fmt"
 	"math"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -111,8 +112,13 @@ func (c *Calculator) Calc(b *pobcode.Build) (*Result, error) {
 	treeCounts(db, tree, spec.Nodes, cluster)
 	conquered := c.conquests(spec, b, allocated, res)
 	radiusFuncs := c.radiusFuncs(spec, b, allocated, res)
-	addTreeNode := func(id int) {
+	// addTreeNode is buildModListForNode; with add false it only runs the
+	// radius functions (PoB's extraRadiusNodeList, whose lists are dropped).
+	addTreeNode := func(id int, add bool) {
 		if g, ok := cluster[id]; ok {
+			if !add {
+				return
+			}
 			c.addNode(db, res, g.stats, g.incEffect, fmt.Sprintf("Tree:%d", id), nil, nil)
 			return
 		}
@@ -136,12 +142,16 @@ func (c *Calculator) Calc(b *pobcode.Build) (*Result, error) {
 		}
 		var funcs []radiusFunc
 		if !isConquered { // jewelFuncList: nodes changed by timeless jewels are left alone
-			funcs = radiusFuncs[id]
+			funcs = radiusFuncs.byNode[id]
+		}
+		if !add {
+			c.nodeMods(res, stats, 0, source, node, funcs)
+			return
 		}
 		c.addNode(db, res, stats, 0, source, node, funcs)
 	}
 	for _, id := range spec.Nodes {
-		addTreeNode(id)
+		addTreeNode(id, true)
 	}
 
 	// Items in the active set; jewels in allocated tree sockets.
@@ -214,8 +224,30 @@ func (c *Calculator) Calc(b *pobcode.Build) (*Result, error) {
 		}
 	}
 
-	for _, id := range grantedNodes(db, tree, class.Name, allocated) {
-		addTreeNode(id)
+	granted := grantedNodes(db, tree, class.Name, allocated)
+	for _, id := range granted {
+		addTreeNode(id, true)
+	}
+	// buildModListForNodeList, finishJewels: unallocated nodes in a radius,
+	// then the radius jewels' finalisers.
+	isGranted := map[int]bool{}
+	for _, id := range granted {
+		isGranted[id] = true
+	}
+	extra := make([]int, 0, len(radiusFuncs.inRadius))
+	for id := range radiusFuncs.inRadius {
+		if !allocated[id] && !isGranted[id] {
+			extra = append(extra, id)
+		}
+	}
+	sort.Ints(extra)
+	for _, id := range extra {
+		addTreeNode(id, false)
+	}
+	for _, final := range radiusFuncs.finals {
+		for _, m := range final() {
+			db.Add(m)
+		}
 	}
 	itemConditions(db, gear)
 	buffMode(db)
@@ -341,7 +373,23 @@ func (c *Calculator) nodeLines(stats []string, res *Result) []modparser.Mod {
 // (CalcSetup.lua buildModListForNode: calcLib.mod(modList, nil, "PassiveSkillEffect")).
 // incEffect is the cluster jewel's "increased Effect" of small passives.
 func (c *Calculator) addNode(db *ModDB, res *Result, stats []string, incEffect float64, source string, tn *gamedata.Node, funcs []radiusFunc) {
+	mods := c.nodeMods(res, stats, incEffect, source, tn, funcs)
 	node := NewModDB()
+	for _, m := range mods {
+		node.Add(m)
+	}
+	// buildModListForNode: a node that "grants nothing" loses its mods.
+	if node.Flag("PassiveSkillHasNoEffect") || node.Flag("AllocatedPassiveSkillHasNoEffect") {
+		return
+	}
+	scale := (1 + node.Sum("INC", "PassiveSkillEffect")/100) * node.More("PassiveSkillEffect")
+	for _, m := range mods {
+		db.Add(scaleMod(m, scale))
+	}
+}
+
+// nodeMods is a node's own mods plus what the first-pass radius functions add.
+func (c *Calculator) nodeMods(res *Result, stats []string, incEffect float64, source string, tn *gamedata.Node, funcs []radiusFunc) []Mod {
 	var mods []Mod
 	for _, m := range c.nodeLines(stats, res) {
 		mods = append(mods, fromParsed(m, source))
@@ -356,17 +404,7 @@ func (c *Calculator) addNode(db *ModDB, res *Result, stats []string, incEffect f
 			mods = append(mods, f(tn, own)...)
 		}
 	}
-	for _, m := range mods {
-		node.Add(m)
-	}
-	// buildModListForNode: a node that "grants nothing" loses its mods.
-	if node.Flag("PassiveSkillHasNoEffect") || node.Flag("AllocatedPassiveSkillHasNoEffect") {
-		return
-	}
-	scale := (1 + node.Sum("INC", "PassiveSkillEffect")/100) * node.More("PassiveSkillEffect")
-	for _, m := range mods {
-		db.Add(scaleMod(m, scale))
-	}
+	return mods
 }
 
 // localDefence names the mods an armour piece applies to itself

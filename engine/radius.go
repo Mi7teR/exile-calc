@@ -155,6 +155,9 @@ func flagFor(name, onType string) func(caps []string, source string) radiusFunc 
 
 func isRadiusFuncLine(line string) bool {
 	l := asciiLowerTrim(line)
+	if _, ok := collectPatterns[l]; ok {
+		return true
+	}
 	for _, p := range radiusPatterns {
 		if p.re.MatchString(l) {
 			return true
@@ -165,10 +168,46 @@ func isRadiusFuncLine(line string) bool {
 
 func asciiLowerTrim(s string) string { return strings.ToLower(strings.TrimSpace(s)) }
 
-// radiusFuncs collects, per tree node, the radius functions of the jewels
-// socketed in allocated sockets (CalcSetup.lua env.radiusJewelList, type "Other").
-func (c *Calculator) radiusFuncs(spec *pobcode.Spec, b *pobcode.Build, alloc map[int]bool, res *Result) map[int][]radiusFunc {
-	out := map[int][]radiusFunc{}
+// radiusJewels is CalcSetup.lua's env.radiusJewelList for "Other" functions:
+// the functions per node, every node in a radius (the unallocated ones are
+// PoB's extraRadiusNodeList), and the finalisers buildModListForNodeList
+// runs with node = nil.
+type radiusJewels struct {
+	byNode   map[int][]radiusFunc
+	inRadius map[int]bool
+	finals   []func() []Mod
+}
+
+// collectUnallocated ports "Grants all bonuses of Unallocated Small/Notable
+// Passive Skills in Radius": the func keeps the first-pass mods of the
+// unallocated nodes of that type and the finaliser adds them, without
+// Condition:ConnectedTo*. The Lua func does not test allocation itself, yet
+// PoB's totals leave allocated nodes out (golden builds SE4GCSBAhJxM,
+// ljOk40ieEDlA), so allocated nodes are skipped here.
+func collectUnallocated(onType string, alloc map[int]bool) (radiusFunc, func() []Mod) {
+	var kept []Mod
+	f := func(n *gamedata.Node, own []Mod) []Mod {
+		if nodeType(n) == onType && !alloc[n.ID] {
+			for _, m := range own {
+				if !strings.HasPrefix(m.Name, "Condition:ConnectedTo") {
+					kept = append(kept, m)
+				}
+			}
+		}
+		return nil
+	}
+	return f, func() []Mod { return kept }
+}
+
+var collectPatterns = map[string]string{
+	"grants all bonuses of unallocated small passive skills in radius":   "Normal",
+	"grants all bonuses of unallocated notable passive skills in radius": "Notable",
+}
+
+// radiusFuncs collects the radius functions of the jewels socketed in
+// allocated sockets.
+func (c *Calculator) radiusFuncs(spec *pobcode.Spec, b *pobcode.Build, alloc map[int]bool, res *Result) radiusJewels {
+	out := radiusJewels{byNode: map[int][]radiusFunc{}, inRadius: map[int]bool{}}
 	var pos map[int]point
 	for _, s := range spec.Sockets {
 		if s.ItemID == 0 || !alloc[s.NodeID] {
@@ -195,6 +234,11 @@ func (c *Calculator) radiusFuncs(spec *pobcode.Spec, b *pobcode.Build, alloc map
 					funcs = append(funcs, p.make(m, src))
 				}
 			}
+			if t, ok := collectPatterns[l]; ok {
+				f, final := collectUnallocated(t, alloc)
+				funcs = append(funcs, f)
+				out.finals = append(out.finals, final)
+			}
 		}
 		if len(funcs) == 0 {
 			continue
@@ -203,7 +247,8 @@ func (c *Calculator) radiusFuncs(spec *pobcode.Spec, b *pobcode.Build, alloc map
 			pos = nodePositions(c.data.Tree)
 		}
 		for _, id := range nodesInRadius(c.data.Tree, pos, s.NodeID, r) {
-			out[id] = append(out[id], funcs...)
+			out.byNode[id] = append(out.byNode[id], funcs...)
+			out.inRadius[id] = true
 		}
 	}
 	return out
