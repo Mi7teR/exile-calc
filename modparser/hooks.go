@@ -63,6 +63,12 @@ var hooks = map[string]Hook{
 	"specialModList[^grants level (%d+) (.+)$]": func(p *Parser, a []any) any {
 		return p.grantedExtraSkill(argS(a, 2), arg(a, 0), nil)
 	},
+	// ["(%d+)%% more maximum life if you have at least (%d+) life masteries allocated"] = function(num, _, thresh) return {
+	//   mod("Life", "MORE", num, { type = "MultiplierThreshold", var = "AllocatedLifeMastery", threshold = tonumber(thresh) }) } end
+	"specialModList[^(%d+)%% more maximum life if you have at least (%d+) life masteries allocated$]": func(p *Parser, a []any) any {
+		return []any{withTags(newMod("Life", "MORE", arg(a, 0), 0, 0),
+			map[string]any{"type": "MultiplierThreshold", "var": "AllocatedLifeMastery", "threshold": toNumber(argS(a, 2))})}
+	},
 	// ["while holding a (%w+)"] = function (_, gear) return {
 	//   tag = { type = "Condition", varList = { "Using"..firstToUpper(gear) } } } end
 	"modTagList[while holding a (%w+)]": func(p *Parser, a []any) any {

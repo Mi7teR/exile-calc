@@ -1,6 +1,9 @@
 package luadata
 
-import "fmt"
+import (
+	"fmt"
+	"strings"
+)
 
 // EvalGlobals runs a chunk that only defines globals (Global.lua) and returns them.
 func EvalGlobals(src string, env map[string]Value) (map[string]Value, error) {
@@ -34,4 +37,38 @@ func ExtractLocal(src, name string, env map[string]Value) (Value, error) {
 		}
 	}
 	return nil, fmt.Errorf("luadata: no \"local %s =\" found", name)
+}
+
+// ExtractAssignment evaluates the expression of the first top-level
+// "<a.b.c> = <expr>" in src, such as "data.itemTagSpecial = { ... }" in
+// Modules/Data.lua, without running the rest of the file.
+func ExtractAssignment(src, path string, env map[string]Value) (Value, error) {
+	toks, err := lex(src)
+	if err != nil {
+		return nil, err
+	}
+	parts := strings.Split(path, ".")
+	for i := 0; i+2*len(parts) < len(toks); i++ {
+		j, ok := i, true
+		for k, p := range parts {
+			if k > 0 {
+				if !(toks[j].kind == tOp && toks[j].text == ".") {
+					ok = false
+					break
+				}
+				j++
+			}
+			if !(toks[j].kind == tName && toks[j].text == p) {
+				ok = false
+				break
+			}
+			j++
+		}
+		if ok && toks[j].kind == tOp && toks[j].text == "=" && (i == 0 || !(toks[i-1].kind == tOp && toks[i-1].text == ".")) {
+			root := &scope{vars: map[string]Value{}}
+			e := &evaluator{src: src, toks: toks, i: j + 1, sc: root, root: root, env: env}
+			return e.expr()
+		}
+	}
+	return nil, fmt.Errorf("luadata: no \"%s =\" found", path)
 }

@@ -67,6 +67,7 @@ func (c *Calculator) Calc(b *pobcode.Build) (*Result, error) {
 	}
 	class := tree.Classes[spec.ClassID]
 	db := NewModDB()
+	db.tags = itemTags{special: c.parser.Table("itemTagSpecial"), exclusion: c.parser.Table("itemTagSpecialExclusionPattern")}
 	db.enemy = NewModDB()
 	res := &Result{Stats: db.output, DB: db}
 	config := b.ActiveConfig()
@@ -173,6 +174,7 @@ func (c *Calculator) Calc(b *pobcode.Build) (*Result, error) {
 			it, mods := c.addItem(db, res, b.Item(slot.ItemID), 1)
 			if it != nil {
 				gear = append(gear, equipped{slot.Name, it})
+				db.items[slot.Name] = it
 				parents[slot.Name] = it
 				for _, m := range mods {
 					if m.Name == "SocketedJewelEffect" && m.Type == "INC" {
@@ -190,12 +192,16 @@ func (c *Calculator) Calc(b *pobcode.Build) (*Result, error) {
 			if parent == nil || abyssalSockets(parent) < a.num {
 				continue
 			}
-			c.addItem(db, res, a.item, 1+jewelEffect[a.parent]/100)
+			if it, _ := c.addItem(db, res, a.item, 1+jewelEffect[a.parent]/100); it != nil {
+				db.items[a.slot] = it
+			}
 		}
 	}
 	for _, s := range spec.Sockets {
 		if s.ItemID != 0 && allocated[s.NodeID] {
-			c.addItem(db, res, b.Item(s.ItemID), 1)
+			if it, _ := c.addItem(db, res, b.Item(s.ItemID), 1); it != nil {
+				db.items["Jewel "+strconv.Itoa(s.NodeID)] = it
+			}
 		}
 	}
 

@@ -205,6 +205,19 @@ func writeModParser(read func(string) (string, error), tree *gamedata.Tree, gems
 	if err != nil {
 		return err
 	}
+	// Modules/Data.lua tables the engine's ItemCondition tag reads.
+	dataSrc, err := read("Modules/Data.lua")
+	if err != nil {
+		return err
+	}
+	for _, name := range []string{"itemTagSpecial", "itemTagSpecialExclusionPattern"} {
+		v, err := luadata.ExtractAssignment(dataSrc, "data."+name, nil)
+		if err != nil {
+			return fmt.Errorf("Data.lua: %w", err)
+		}
+		conv := &jsonConv{}
+		tables[name] = conv.enc(v, name)
+	}
 	env, err := parserEnv(globalSrc)
 	if err != nil {
 		return err

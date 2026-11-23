@@ -6,6 +6,7 @@ package engine
 import (
 	"math"
 
+	"github.com/Mi7teR/poe-lib/itemtext"
 	"github.com/Mi7teR/poe-lib/modparser"
 )
 
@@ -31,6 +32,8 @@ type ModDB struct {
 	multipliers map[string]float64
 	output      map[string]float64 // the actor's computed stats, read by PerStat
 	enemy       *ModDB
+	items       map[string]*itemtext.Item // the actor's itemList, by slot name
+	tags        itemTags
 
 	// UnsupportedTags counts tag types EvalMod does not port yet; mods
 	// carrying them are left out of every sum.
@@ -43,6 +46,7 @@ func NewModDB() *ModDB {
 		conditions:      map[string]bool{},
 		multipliers:     map[string]float64{},
 		output:          map[string]float64{},
+		items:           map[string]*itemtext.Item{},
 		UnsupportedTags: map[string]int{},
 	}
 }
@@ -323,6 +327,10 @@ func (db *ModDB) eval(m *Mod) (any, bool) {
 			if !match {
 				return nil, false
 			}
+		case "ItemCondition":
+			if !db.itemCondition(t) {
+				return nil, false
+			}
 		case "ActorCondition":
 			target, _ := db.target(t)
 			match := false
@@ -359,7 +367,7 @@ func (db *ModDB) eval(m *Mod) (any, bool) {
 
 // unportedTags are the remaining tag types ModStoreClass:EvalMod handles.
 var unportedTags = map[string]bool{
-	"PercentStat": true, "DistanceRamp": true, "MeleeProximity": true, "ItemCondition": true,
+	"PercentStat": true, "DistanceRamp": true, "MeleeProximity": true,
 	"SocketedIn": true, "SkillName": true, "SkillId": true, "SkillPart": true, "SkillType": true,
 	"BaseFlag": true, "SlotName": true, "ModFlagOr": true, "KeywordFlagAnd": true, "MonsterTag": true,
 }

@@ -733,3 +733,7 @@ func decodeMods(l []any) []Mod {
 	}
 	return out
 }
+
+// Table returns one of ModParser.lua's or Data.lua's exact-lookup tables
+// (itemTagSpecial, conquerorList, ...), or nil. Callers must not modify it.
+func (p *Parser) Table(name string) map[string]any { return p.t.exact[name] }
