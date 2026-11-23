@@ -651,6 +651,36 @@ func isLocalArmourMod(m modparser.Mod, shield bool) bool {
 	return len(m.Tags) == 0 || tagStr(m.Tags[0], "type") == "InSlot"
 }
 
+// localWeapon are the mods the weapon branch of BuildModListForSlotNum
+// consumes with calcLocal (name -> "TYPE:flags"), so they leave the
+// item's mod list.
+var localWeapon = func() map[string]string {
+	m := map[string]string{
+		"Speed": "INC:1", "AlternateQualityLocalAttackSpeedPer8Quality": "INC:0",
+		"WeaponRange": "BASE:0", "WeaponRangeMetre": "BASE:0", "AlternateQualityLocalWeaponRangePer10Quality": "BASE:0",
+		"LocalElementalDamage": "INC:0", "PhysicalDamage": "INC:0", "AlternateQualityWeapon": "BASE:0",
+		"AlternateQualityLocalCritChancePer4Quality": "INC:0",
+	}
+	for _, t := range []string{"Physical", "Lightning", "Cold", "Fire", "Chaos"} {
+		m[t+"Min"], m[t+"Max"] = "BASE:0", "BASE:0"
+	}
+	for _, t := range []string{"Lightning", "Cold", "Fire"} {
+		m["Local"+t+"Damage"] = "INC:0"
+	}
+	return m
+}()
+
+// isLocalWeaponMod reports whether calcLocal consumes m on a weapon.
+func isLocalWeaponMod(m modparser.Mod) bool {
+	if m.KeywordFlags != 0 || (len(m.Tags) > 0 && tagStr(m.Tags[0], "type") != "InSlot") {
+		return false
+	}
+	if m.Name == "CritChance" && (m.Type == "BASE" || m.Type == "INC") && m.Flags == 0 {
+		return true
+	}
+	return localWeapon[m.Name] == fmt.Sprintf("%s:%d", m.Type, m.Flags)
+}
+
 // Item.lua catalystList and catalystTags: a catalyst scales the lines that
 // carry one of its tags by (100 + quality) / 100.
 var catalystTags = map[string][]string{
@@ -925,7 +955,7 @@ func (c *Calculator) addItem(db *ModDB, res *Result, item *pobcode.Item, scale f
 		if isArmour && isLocalArmourMod(m, it.Base.Armour.BlockChance != 0) {
 			continue // local to the item: part of its own defence values
 		}
-		if isWeapon && m.Flags != 0 {
+		if isWeapon && isLocalWeaponMod(m) {
 			continue // local weapon stats: part of the weapon's own data
 		}
 		if sm, ok := slotTags(fromParsed(m, source), slot, slotNumber(it, slot)); ok {
@@ -1111,11 +1141,27 @@ func (c *Calculator) attributes(db *ModDB) {
 	if db.Flag("NoAttributeBonuses") {
 		return
 	}
-	if !db.Flag("NoStrengthAttributeBonuses") && !db.Flag("NoStrBonusToLife") {
-		db.NewMod("Life", "BASE", math.Floor(out["Str"]/2), "Strength")
+	if !db.Flag("NoStrengthAttributeBonuses") {
+		if !db.Flag("NoStrBonusToLife") {
+			db.NewMod("Life", "BASE", math.Floor(out["Str"]/2), "Strength")
+		}
+		bonus := out["Str"] + db.Sum("BASE", "DexIntToMeleeBonus")
+		if r := db.Sum("BASE", "StrDmgBonusRatioOverride"); r > 0 {
+			db.strDmgBonus = math.Floor(bonus * r)
+		} else {
+			db.strDmgBonus = math.Floor(bonus / 5)
+		}
+		db.Add(Mod{Name: "PhysicalDamage", Type: "INC", Value: db.strDmgBonus, Flags: mfMelee, Source: "Strength"})
 	}
-	if !db.Flag("NoDexterityAttributeBonuses") && !db.Flag("NoDexBonusToEvasion") {
-		db.NewMod("Evasion", "INC", math.Floor(out["Dex"]/5), "Dexterity")
+	if !db.Flag("NoDexterityAttributeBonuses") {
+		perDex, ok := db.Override("DexAccBonusOverride")
+		if !ok {
+			perDex = 2 // data.misc.AccuracyPerDexBase
+		}
+		db.NewMod("Accuracy", "BASE", out["Dex"]*perDex, "Dexterity")
+		if !db.Flag("NoDexBonusToEvasion") {
+			db.NewMod("Evasion", "INC", math.Floor(out["Dex"]/5), "Dexterity")
+		}
 	}
 	if !db.Flag("NoIntelligenceAttributeBonuses") {
 		if !db.Flag("NoIntBonusToMana") {
