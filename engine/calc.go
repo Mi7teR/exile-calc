@@ -381,6 +381,7 @@ func (c *Calculator) Calc(b *pobcode.Build) (*Result, error) {
 			}
 		}
 	}
+	combatConditions(db, mainSkill(skills))
 	c.attributes(db)
 	shrineBuffs(db)
 	c.lifeMana(db)

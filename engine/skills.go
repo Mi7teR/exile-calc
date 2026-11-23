@@ -600,6 +600,67 @@ func (c *Calculator) setupSkills(db *ModDB, b *pobcode.Build, useSwap bool, res 
 	return out
 }
 
+// mainSkill is env.player.mainSkill, nil when there is none.
+func mainSkill(skills []*activeSkill) *activeSkill {
+	for _, s := range skills {
+		if s.main {
+			return s
+		}
+	}
+	return nil
+}
+
+const stChannel = 48 // SkillType.Channel
+
+// combatConditions ports the mode_combat part of doActorAttribsConditions:
+// conditions that follow from using the main skill.
+func combatConditions(db *ModDB, s *activeSkill) {
+	if s == nil {
+		return
+	}
+	cond, f := db.conditions, s.flags
+	if !truthy(s.data["triggered"]) && !f["trap"] && !f["mine"] && !f["totem"] {
+		if f["attack"] {
+			cond["AttackedRecently"] = true
+		} else if f["spell"] {
+			cond["CastSpellRecently"] = true
+		}
+		if s.types[stMovement] {
+			cond["UsedMovementSkillRecently"] = true
+		}
+		if f["minion"] && !f["permanentMinion"] {
+			cond["UsedMinionSkillRecently"] = true
+		}
+		if s.types[stVaal] {
+			cond["UsedVaalSkillRecently"] = true
+		}
+		if s.types[stChannel] {
+			cond["Channelling"] = true
+		}
+	}
+	if f["hit"] && !f["trap"] && !f["mine"] && !f["totem"] {
+		cond["HitRecently"] = true
+		if f["spell"] {
+			cond["HitSpellRecently"] = true
+		}
+	}
+	if f["totem"] {
+		cond["HaveTotem"], cond["SummonedTotemRecently"] = true, true
+		if f["hit"] {
+			cond["TotemsHitRecently"] = true
+			if f["spell"] {
+				cond["TotemsSpellHitRecently"] = true
+			}
+		}
+	}
+	if f["mine"] {
+		cond["DetonatedMinesRecently"] = true
+	}
+	if f["trap"] {
+		cond["TriggeredTrapsRecently"] = true
+	}
+}
+
 // mainCfg is env.player.mainSkill.skillCfg, nil when there is none (PoB
 // then uses a default Melee skill, which is not built).
 func mainCfg(skills []*activeSkill) *Cfg {
