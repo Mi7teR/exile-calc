@@ -93,6 +93,21 @@ var hooks = map[string]Hook{
 		}
 		return []any{newMod(from1+"DamageFromHitsTakenAs"+to, "BASE", arg(a, 0), 0, 0), newMod(from2+"DamageFromHitsTakenAs"+to, "BASE", arg(a, 0), 0, 0)}
 	},
+	// ["increases and reductions to (%a+) damage also apply to effect of auras from (%a+) skills at (%d+)%% of their value, up to a maximum of (%d+)%%"] = function(_, element, skillElement, effect, limit) return {
+	//   flag((element:gsub("^%l", string.upper)) .. "DamageAppliesTo" .. (skillElement:gsub("^%l", string.upper) .. "AuraEffect")),
+	//   mod(("Improved" .. element:gsub("^%l", string.upper)) .. "DamageAppliesTo" .. (skillElement:gsub("^%l", string.upper) .. "AuraEffect"), "BASE", tonumber(effect)),
+	//   mod((element:gsub("^%l", string.upper)) .. "DamageAppliesTo" .. (skillElement:gsub("^%l", string.upper) .. "AuraEffectLimit"), "MAX", tonumber(limit))
+	// } end
+	"specialModList[^increases and reductions to (%a+) damage also apply to effect of auras from (%a+) skills at (%d+)%% of their value, up to a maximum of (%d+)%%$]": func(p *Parser, a []any) any {
+		name := firstToUpper(argS(a, 1)) + "DamageAppliesTo" + firstToUpper(argS(a, 2)) + "AuraEffect"
+		effect, _ := toNumber(argS(a, 3)).(float64)
+		limit, _ := toNumber(argS(a, 4)).(float64)
+		return []any{
+			newMod(name, "FLAG", true, 0, 0),
+			newMod("Improved"+name, "BASE", effect, 0, 0),
+			newMod(name+"Limit", "MAX", limit, 0, 0),
+		}
+	},
 	// ["inflict (%w+) exposure on hit, applying %-(%d+)%% to (%w+) resistance"] = function(_, element1,  num, element2) return {
 	//   mod( firstToUpper(element1).."ExposureChance", "BASE", 100, { type = "Condition", var = "Effective" }),
 	//   mod("EnemyModifier", "LIST", { mod = mod(firstToUpper(element2).."Exposure", "BASE", -num) }, { type = "Condition", var = "Effective" }),

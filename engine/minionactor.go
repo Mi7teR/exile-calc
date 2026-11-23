@@ -315,6 +315,7 @@ var (
 	debugMinionOffence = false
 	debugMinionSkill   func(*activeSkill)
 	debugEnemy         func(*ModDB)
+	debugSkills        func([]*activeSkill)
 )
 
 var minionOffenceStats = []string{"Speed", "HitChance", "CritChance", "CritMultiplier", "AverageDamage", "TotalDPS"}

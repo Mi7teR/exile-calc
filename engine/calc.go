@@ -410,6 +410,9 @@ func (c *Calculator) Calc(b *pobcode.Build) (*Result, error) {
 	for _, s := range skills {
 		c.buildSkillMods(db, s, res)
 	}
+	if debugSkills != nil {
+		debugSkills(skills)
+	}
 	keystones := map[string]bool{}
 	flaskSt := c.applyFlasks(db, res, flasks)
 	c.mergeKeystones(db, keystones, res)
@@ -428,6 +431,7 @@ func (c *Calculator) Calc(b *pobcode.Build) (*Result, error) {
 			}
 		}
 	}
+	damageToAuraEffect(db)
 	combatConditions(db, mainSkill(skills))
 	c.attributes(db)
 	shrineBuffs(db)

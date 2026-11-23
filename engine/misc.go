@@ -450,6 +450,76 @@ func impaleStacks(db *ModDB) {
 	}
 }
 
+// damageToAuraEffect is the Breach ring conversion of calcs.perform:
+// increases to <Element> Damage also apply to the effect of <Element>
+// skills' auras at a share of their value, up to a limit.
+func damageToAuraEffect(db *ModDB) {
+	kf := map[string]uint64{"Lightning": kfLightning, "Fire": kfFire, "Cold": kfCold, "Chaos": kfChaos, "Physical": kfPhysical}
+	for _, el := range []string{"Lightning", "Fire", "Cold", "Chaos", "Physical"} {
+		name := el + "DamageAppliesTo" + el + "AuraEffect"
+		if !db.Flag(name) {
+			continue
+		}
+		mult := db.Sum("BASE", "Improved"+name) / 100
+		if mult == 0 {
+			mult = 1
+		}
+		limit, hasLimit := db.MaxCfg(nil, name+"Limit")
+		total := 0.0
+		cfg := &Cfg{}
+		var add []Mod
+		for d := db; d != nil; d = d.parent {
+			for i := range d.mods[el+"Damage"] {
+				m := &d.mods[el+"Damage"][i]
+				if !eligible(m, "INC", cfg) {
+					continue
+				}
+				if _, ok := db.eval(m, cfg); !ok {
+					continue
+				}
+				v, _ := num(m.Value)
+				conv := math.Floor(v * mult)
+				if hasLimit && conv > 0 {
+					if rem := limit - total; rem <= 0 {
+						conv = 0
+					} else {
+						conv = math.Min(conv, rem)
+						total += conv
+					}
+				}
+				if conv != 0 {
+					add = append(add, Mod{Name: "AuraEffect", Type: m.Type, Value: conv, Source: m.Source, Flags: m.Flags,
+						KeywordFlags: kf[el], Tags: convertedModTags(m.Tags, mult, true)})
+				}
+			}
+		}
+		for _, m := range add {
+			db.Add(m)
+		}
+	}
+}
+
+// convertedModTags is calcLib.getConvertedModTags.
+func convertedModTags(tags []map[string]any, mult float64, minionMods bool) []map[string]any {
+	out := make([]map[string]any, len(tags))
+	for i, t := range tags {
+		c := make(map[string]any, len(t))
+		for k, v := range t {
+			c[k] = v
+		}
+		switch {
+		case minionMods && t["type"] == "ActorCondition" && t["actor"] == "parent":
+			c = map[string]any{"type": "Condition", "var": t["var"]}
+		case truthy(t["limitTotal"]):
+			if l, ok := num(t["limit"]); ok {
+				c["limit"] = l * mult
+			}
+		}
+		out[i] = c
+	}
+	return out
+}
+
 // exposures is "Apply exposures" of calcs.perform: the strongest exposure
 // of each element on the enemy, changed by extra exposure and scaled by
 // exposure effect, as an enemy resistance.
