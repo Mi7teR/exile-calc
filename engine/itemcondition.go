@@ -193,4 +193,3 @@ func (db *ModDB) itemCondition(t map[string]any) bool {
 	}
 	return len(items) > 0 || neg
 }
-

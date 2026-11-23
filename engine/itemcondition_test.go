@@ -57,7 +57,7 @@ func TestItemConditionLifeOnBodyArmour(t *testing.T) {
 		{body("+40 to Strength"), true},
 		{body("+90 to maximum Life"), false},
 		{body("Socketed Gems are Supported by Level 20 Life Leech"), true}, // excluded
-		{body("Cannot Leech"), false}, // itemTagSpecial
+		{body("Cannot Leech"), false},                                      // itemTagSpecial
 	}
 	for _, c := range cases {
 		delete(db.items, "Body Armour")
