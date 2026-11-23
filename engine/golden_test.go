@@ -52,8 +52,8 @@ const minMinionsWithinTolerance = 37
 
 // goldenMinion is one entry of the oracle's "Minions" list.
 type goldenMinion struct {
-	Name   string             `json:"name"`
-	Minion string             `json:"minion"`
+	Name   string         `json:"name"`
+	Minion string         `json:"minion"`
 	Output map[string]any `json:"output"`
 }
 

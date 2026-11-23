@@ -125,7 +125,7 @@ func expected(r io.Reader) error {
 	n := 0
 	for sc.Scan() {
 		var res struct {
-			Name   string         `json:"name"`
+			Name    string         `json:"name"`
 			Output  map[string]any `json:"output"`
 			Minions []any          `json:"minions"`
 			Error   string         `json:"error"`
