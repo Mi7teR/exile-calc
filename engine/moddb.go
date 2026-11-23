@@ -112,8 +112,8 @@ type Cfg struct {
 	SkillGem            *gamedata.Gem
 	SocketColor         string
 	SocketNum           int
-	GemCounts           map[string]int // strengthGems, dexterityGems, intelligenceGems
-	Actor               string         // cfg.actor: an ActorCondition without var matches it
+	GemCounts           map[string]int  // strengthGems, dexterityGems, intelligenceGems
+	Actor               string          // cfg.actor: an ActorCondition without var matches it
 	SkillCond           map[string]bool // cfg.skillCond: conditions of this query (CriticalStrike, MainHandAttack)
 }
 

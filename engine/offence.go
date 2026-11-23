@@ -30,7 +30,7 @@ func damageStatsForTypes(k int) []string {
 const (
 	serverTickRate                          = 1 / 0.033
 	enemyMaxResist                          = 75
-	enemyPhysicalDamageReductionCap         = 90
+	enemyPhysicalDamageReductionCap         = 75 // monsterConstants maximum_physical_damage_reduction_%
 	enemyResistCap                          = 90 // data.misc.MaxResistCap
 	baseCritMultiplierMonster       float64 = 130
 )
@@ -279,6 +279,7 @@ func (c *Calculator) offence(actor *ModDB, s *activeSkill, weapon hitSource) map
 			p.src.min[t]*baseMult + addedMin*eff*addedMult,
 			p.src.max[t]*baseMult + addedMax*eff*addedMult,
 		}
+		out[t+"MinBase"], out[t+"MaxBase"] = p.base[t][0], p.base[t][1]
 	}
 
 	// Hit damage per type: pass 1 crits, pass 2 non-crits.
