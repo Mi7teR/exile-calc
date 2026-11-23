@@ -232,6 +232,9 @@ func (c *Calculator) offence(actor *ModDB, s *activeSkill, w1 hitSource, w2 *hit
 		list.Add(Mod{Name: "ChaosMin", Type: "BASE", Value: add, Source: "Sacrifice Support"})
 		list.Add(Mod{Name: "ChaosMax", Type: "BASE", Value: add, Source: "Sacrifice Support"})
 	}
+	if s.flags["totem"] {
+		out["TotemLife"] = c.totemLife(s)
+	}
 	preDamageFunc(actor, s, out)
 	// Corpse and enemy explosions: base damage from the monster's life.
 	monsterLife := 100.0
@@ -348,7 +351,7 @@ func (c *Calculator) offence(actor *ModDB, s *activeSkill, w1 hitSource, w2 *hit
 	if out["Speed"] != 0 {
 		out["Time"] = 1 / out["Speed"]
 	}
-	if both {
+	if isAttack {
 		hitTime(s, out, true)
 	}
 	dpsMult := 1.0
@@ -446,7 +449,7 @@ func (c *Calculator) hitAndSpeed(actor *ModDB, s *activeSkill, p *hitPass) {
 	repeats := math.Max(1, p.repeats)
 	triggered := truthy(data["triggered"])
 	switch {
-	case ge.CastTime == 0 && data["castTimeOverride"] == nil && !triggered:
+	case ge.CastTime == 0 && !ge.NoCastTime && data["castTimeOverride"] == nil && !triggered:
 		out["Time"], out["Speed"] = 0, 0
 		return
 	case data["timeOverride"] != nil:
@@ -494,15 +497,16 @@ func (c *Calculator) hitAndSpeed(actor *ModDB, s *activeSkill, p *hitPass) {
 		if v, ok := num(data["castTimeOverride"]); ok {
 			baseTime = v
 		}
-		if baseTime == 0 {
-			baseTime = 1
+		if ge.NoCastTime && data["castTimeOverride"] == nil {
+			baseTime = 1 // castTimeOverride or castTime or 1
 		}
 	}
 	// Trauma (HasTrauma) is not ported.
 	inc := list.SumCfg(p.cfg, "INC", "Speed")
 	more := list.MoreCfg(p.cfg, "Speed")
 	if s.flags["warcry"] {
-		out["Speed"] = 1 / actor.output["WarcryCastTime"]
+		out["WarcryCastTime"] = warcryCastTime(actor, s)
+		out["Speed"] = 1 / out["WarcryCastTime"]
 	} else {
 		out["Speed"] = 1 / (baseTime/round((1+inc/100)*more, 2) + list.SumCfg(p.cfg, "BASE", "TotalAttackTime") + list.SumCfg(p.cfg, "BASE", "TotalCastTime"))
 	}
@@ -995,7 +999,7 @@ func preDamageFunc(actor *ModDB, s *activeSkill, out map[string]float64) {
 			m, _ := num(data["selfFireExplosionLifeMultiplier"])
 			life := actor.output["Life"]
 			if s.flags["totem"] {
-				life = actor.output["TotemLife"]
+				life = out["TotemLife"]
 			}
 			data["FireBonusMin"], data["FireBonusMax"] = life*m, life*m
 		}

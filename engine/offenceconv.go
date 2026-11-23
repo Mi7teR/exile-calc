@@ -211,10 +211,8 @@ func (c *Calculator) offenceStatConversions(actor *ModDB, s *activeSkill, w1 hit
 	repeats(actor, s, out)
 	if list.Flag("WeaponPhysAppliesToSpells") {
 		// Runegraft of the Spellbound.
+		// PoB: (Sum(...) or 100) / 100, and Sum is never nil.
 		mult := list.SumCfg(cfg, "BASE", "WeaponPhysAppliesToSpellsPercent") / 100
-		if mult == 0 {
-			mult = 1
-		}
 		list.Add(Mod{Name: "PhysicalMin", Type: "BASE", Value: math.Floor(w1.min["Physical"] * mult), Flags: mfSpell, Source: "Runegraft of the Spellbound"})
 		list.Add(Mod{Name: "PhysicalMax", Type: "BASE", Value: math.Floor(w1.max["Physical"] * mult), Flags: mfSpell, Source: "Runegraft of the Spellbound"})
 	}

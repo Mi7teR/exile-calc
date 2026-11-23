@@ -677,7 +677,7 @@ var enemyAilmentData = []struct {
 // enemyAilments ports calcs.perform's "Calculate maximum and apply the
 // strongest non-damaging ailments": the player's chill, shock, scorch,
 // brittle and sap on the enemy, active while the enemy has the condition.
-func enemyAilments(db *ModDB, skills []*activeSkill) {
+func enemyAilments(db *ModDB, skills []*activeSkill, guaranteedBonechill bool) {
 	out, enemy := db.output, db.enemy
 	main := mainSkill(skills)
 	for _, a := range enemyAilmentData {
@@ -750,7 +750,7 @@ func enemyAilments(db *ModDB, skills []*activeSkill) {
 				enemy.NewMod("ColdDamageTaken", "INC", cur, "Chilled by Hits", when)
 			case db.Flag("ChillingAreaIncColdDamageTaken"):
 				enemy.NewMod("ColdDamageTaken", "INC", cur, "Chilling Area", when)
-			case out["HasBonechill"] != 0 && (db.conditions["hasGuaranteedBonechill"] || enemy.Sum("BASE", "ChillVal") > 0):
+			case out["HasBonechill"] != 0 && (guaranteedBonechill || enemy.Sum("BASE", "ChillVal") > 0):
 				enemy.NewMod("ColdDamageTaken", "INC", cur, "Bonechill", when)
 			}
 			if db.Flag("ChillEffectLessDamageDealt") {
@@ -814,9 +814,8 @@ func sumSkillSource(db *ModDB, name string) float64 {
 // chillSkills is the chill part of calcs.perform's active skill loop:
 // Skitterbots' ailments and the skills that always chill, returned for
 // guaranteedChills.
-func chillSkills(db *ModDB, skills []*activeSkill) []*activeSkill {
+func chillSkills(db *ModDB, skills []*activeSkill) (guaranteed []*activeSkill, guaranteedBonechill bool) {
 	out := db.output
-	var guaranteed []*activeSkill
 	for _, s := range skills {
 		if s.mods == nil {
 			continue
@@ -843,7 +842,7 @@ func chillSkills(db *ModDB, skills []*activeSkill) []*activeSkill {
 					db.NewMod("Self"+a.name+"Override", "BASE", effect, name)
 				}
 				if a.name == "Chill" && bonechill {
-					db.conditions["hasGuaranteedBonechill"] = true
+					guaranteedBonechill = true
 					db.Add(Mod{Name: "SkitterbotBonechill", Type: "FLAG", Value: true, Source: name})
 				}
 			}
@@ -860,11 +859,11 @@ func chillSkills(db *ModDB, skills []*activeSkill) []*activeSkill {
 			guaranteed = append(guaranteed, s)
 			db.enemy.Add(Mod{Name: "Condition:Chilled", Type: "FLAG", Value: true, Source: name})
 			if bonechill {
-				db.conditions["hasGuaranteedBonechill"] = true
+				guaranteedBonechill = true
 			}
 		}
 	}
-	return guaranteed
+	return guaranteed, guaranteedBonechill
 }
 
 // guaranteedChills is "Calculate guaranteed chills after buffs".

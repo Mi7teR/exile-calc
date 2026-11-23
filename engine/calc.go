@@ -447,7 +447,7 @@ func (c *Calculator) Calc(b *pobcode.Build) (*Result, error) {
 	c.minionCounts(db, skills)
 	warcryExertMods(db, skills)
 	heraldAuraCounts(db, skills)
-	chilling := chillSkills(db, skills)
+	chilling, guaranteedBonechill := chillSkills(db, skills)
 	charges(db) // early, for stats that depend on charges
 	curses, buffs := c.applyBuffs(db, skills, res)
 	curses = c.extraCurses(db, curses, res)
@@ -462,7 +462,7 @@ func (c *Calculator) Calc(b *pobcode.Build) (*Result, error) {
 	actorMisc(db, mainSkill(skills), flaskSt.silver, flaskSt.silverInc)
 	rage(db, mainCfg(skills))
 	playerEnemyMods.apply(db)
-	enemyAilments(db, skills)
+	enemyAilments(db, skills, guaranteedBonechill)
 	actorMisc(db.enemy, nil, false, -100)
 	exposures(db)
 	consecratedGround(db)

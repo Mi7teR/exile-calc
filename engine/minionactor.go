@@ -544,9 +544,7 @@ func (c *Calculator) minionSkillBuffs(db, mdb *ModDB, skills []*activeSkill, mai
 			if m == nil {
 				continue
 			}
-			casting = NewModDB()
-			casting.enemy, casting.owner, casting.build, casting.enemyEnv = db.enemy, db, db.build, db.enemyEnv
-			list = c.createMinionSkills(casting, s, m, [2]string{m.data.WeaponType1}, res)
+			casting, list = c.bareMinionSkills(db, s, m, res)
 		}
 		for _, ms := range list {
 			if !truthy(ms.data["enable"]) {
@@ -592,4 +590,21 @@ func (c *Calculator) minionSkillBuffs(db, mdb *ModDB, skills []*activeSkill, mai
 		}
 	}
 	return out
+}
+
+// bareMinionSkills is a non-main minion's skills, created on a bare minion
+// ModDB (its own mods are not built), cached per summoning skill for the
+// calculation.
+func (c *Calculator) bareMinionSkills(db *ModDB, s *activeSkill, m *skillMinion, res *Result) (*ModDB, []*activeSkill) {
+	if db.minionSkillCache == nil {
+		db.minionSkillCache = map[*activeSkill][]*activeSkill{}
+	}
+	if l, ok := db.minionSkillCache[s]; ok && len(l) > 0 {
+		return l[0].mods.root(), l
+	}
+	casting := NewModDB()
+	casting.enemy, casting.owner, casting.build, casting.enemyEnv = db.enemy, db, db.build, db.enemyEnv
+	l := c.createMinionSkills(casting, s, m, [2]string{m.data.WeaponType1}, res)
+	db.minionSkillCache[s] = l
+	return casting, l
 }

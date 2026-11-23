@@ -48,7 +48,10 @@ type ModDB struct {
 	owner       *ModDB                     // a minion's parent actor (tag actor "parent")
 	// activeSkills is actor.activeSkillList.
 	activeSkills []*activeSkill
-	gameIDs      func(gemName string) string // calcLib.getGameIdFromGemName(name, true)
+	// minionSkillCache holds the skills of non-main minions, by summoning
+	// skill, built once per calculation.
+	minionSkillCache map[*activeSkill][]*activeSkill
+	gameIDs          func(gemName string) string // calcLib.getGameIdFromGemName(name, true)
 
 	// UnsupportedTags counts tag types EvalMod does not port yet; mods
 	// carrying them are left out of every sum.
@@ -942,4 +945,12 @@ func (db *ModDB) TabulateCfg(cfg *Cfg, typ, name string) []Row {
 		}
 	}
 	return rows
+}
+
+// root is the end of the parent chain: the actor's ModDB.
+func (db *ModDB) root() *ModDB {
+	for db.parent != nil {
+		db = db.parent
+	}
+	return db
 }

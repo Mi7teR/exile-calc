@@ -1,7 +1,6 @@
 package engine
 
 import (
-	"fmt"
 	"math"
 	"regexp"
 	"strings"
@@ -14,8 +13,6 @@ import (
 // environment with the source as the main skill).
 
 const serverTickTime = 0.033
-
-var debugTrigger func(names []string, found bool)
 
 const stInbuiltTrigger = 50 // SkillType.InbuiltTrigger
 
@@ -181,9 +178,6 @@ func (c *Calculator) triggers(db *ModDB, main *activeSkill, w1 hitSource, w2 *hi
 			break
 		}
 	}
-	if debugTrigger != nil {
-		debugTrigger(names, cfgFn != nil)
-	}
 	for _, n := range names {
 		if n == "cast while channelling" {
 			c.cwcTrigger(db, main)
@@ -210,11 +204,8 @@ func (c *Calculator) defaultTrigger(db *ModDB, main *activeSkill, by *skillEffec
 		return o["Speed"]
 	}
 	for _, s := range db.activeSkills {
-		if debugTrigger != nil {
-			debugTrigger([]string{"cand", s.active.ge.Name, s.cfg.SlotName, fmt.Sprint(s.disabled, s.weapons)}, cfg.triggerSkillCond != nil && cfg.triggerSkillCond(main, s) && !isTriggered(s))
-		}
 		if cfg.triggerSkillCond != nil && cfg.triggerSkillCond(main, s) && !isTriggered(s) && s != main && !s.disabled {
-			o := c.offence(db, cloneSkill(s), w1, w2)
+			o := c.offenceOnCopy(db, s, w1, w2)
 			if r := rate(o); source == nil || r > trigRate {
 				if s.cfg.SkillCond["usedByMirage"] || s.types[95] {
 					continue
@@ -225,13 +216,6 @@ func (c *Calculator) defaultTrigger(db *ModDB, main *activeSkill, by *skillEffec
 		if cfg.triggeredSkillCond != nil && cfg.triggeredSkillCond(main, s) {
 			triggered = append(triggered, packageSim(s))
 		}
-	}
-	if debugTrigger != nil {
-		src := ""
-		if source != nil {
-			src = source.active.ge.Name
-		}
-		debugTrigger([]string{"result", src, fmt.Sprint(trigRate, sourceOut["HitChance"], sourceOut["CritChance"], sourceOut["Speed"], sourceOut["HitSpeed"], len(triggered))}, len(triggered) > 0)
 	}
 	if len(triggered) == 0 && cfg.triggeredSkillCond != nil {
 		return

@@ -365,6 +365,7 @@ type Skill struct {
 	AddMinionList            []string            `json:"addMinionList,omitempty"`
 	MinionHasItemSet         bool                `json:"minionHasItemSet,omitempty"`
 	CastTime                 float64             `json:"castTime,omitempty"`
+	NoCastTime               bool                `json:"noCastTime,omitempty"` // castTime is absent (nil in Lua)
 	MinionUses               []string            `json:"minionUses,omitempty"` // item slots the minion uses
 	Parts                    []SkillPart         `json:"parts,omitempty"`
 }

@@ -89,6 +89,8 @@ func convertSkill(t *luadata.Table) (*gamedata.Skill, error) {
 	s.SkillTotemID = int(f("skillTotemId"))
 	s.MinionHasItemSet = b("minionHasItemSet")
 	s.CastTime = f("castTime")
+	_, hasCast := t.Get("castTime").(luadata.Number)
+	s.NoCastTime = !hasCast
 	if uses, ok := t.Get("minionUses").(*luadata.Table); ok {
 		for _, k := range uses.Keys {
 			s.MinionUses = append(s.MinionUses, keyText(k))

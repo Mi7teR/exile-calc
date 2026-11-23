@@ -2,7 +2,9 @@ package engine
 
 import (
 	"fmt"
+	"maps"
 	"math"
+	"slices"
 	"sort"
 	"strings"
 
@@ -665,8 +667,8 @@ func (c *Calculator) setupSkills(db *ModDB, b *pobcode.Build, useSwap bool, res 
 					}
 				}
 				// Then the supports of cross-linked slots.
-				for src, targets := range crossLinked {
-					if !contains(targets, gc.cfg.SlotName) {
+				for _, src := range slices.Sorted(maps.Keys(crossLinked)) {
+					if !contains(crossLinked[src], gc.cfg.SlotName) {
 						continue
 					}
 					for j := range set.Groups {
@@ -2008,7 +2010,7 @@ func scaleMods(l []Mod, scale float64) []Mod {
 // minionAurasOnPlayer is the player part of calcs.perform's minion skill
 // buffs: the auras and ally buffs of a skill's minion's own skills (the
 // Elemental Relic's Anger, Hatred and Wrath). The minion's ModDB is a bare
-// one here: its own aura effect mods are not read.
+// one (bareMinionSkills): its own aura effect mods are not read.
 func (c *Calculator) minionAurasOnPlayer(db *ModDB, s *activeSkill, add func([]Mod, string), res *Result) {
 	if s.summon != nil || db.enemyEnv == nil {
 		return
@@ -2017,9 +2019,8 @@ func (c *Calculator) minionAurasOnPlayer(db *ModDB, s *activeSkill, add func([]M
 	if m == nil || m.data.Hostile {
 		return
 	}
-	casting := NewModDB()
-	casting.enemy, casting.owner, casting.build, casting.enemyEnv = db.enemy, db, db.build, db.enemyEnv
-	for _, ms := range c.createMinionSkills(casting, s, m, [2]string{m.data.WeaponType1}, res) {
+	casting, mskills := c.bareMinionSkills(db, s, m, res)
+	for _, ms := range mskills {
 		if ms.disabled || !truthy(ms.data["enable"]) {
 			continue
 		}

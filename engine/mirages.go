@@ -1,6 +1,9 @@
 package engine
 
-import "math"
+import (
+	"maps"
+	"math"
+)
 
 // cloneSkill copies a skill for a separate calculation (calcs.copyActiveSkill
 // for one offence run): its own skill mod list, data, flags, types and cfgs.
@@ -44,6 +47,33 @@ func cloneSkill(s *activeSkill) *activeSkill {
 	return &c
 }
 
+// offenceOnCopy runs calcs.offence for a copy of a skill without leaving
+// traces in the actor (PoB builds a separate environment for it): the
+// actor's output, mods, conditions, multipliers and unsupported tag counts
+// are restored afterwards.
+func (c *Calculator) offenceOnCopy(db *ModDB, s *activeSkill, w1 hitSource, w2 *hitSource) map[string]float64 {
+	output := maps.Clone(db.output)
+	mods := make(map[string][]Mod, len(db.mods))
+	for k, l := range db.mods {
+		mods[k] = append([]Mod(nil), l...)
+	}
+	conds, mults, tags := maps.Clone(db.conditions), maps.Clone(db.multipliers), maps.Clone(db.UnsupportedTags)
+	out := c.offence(db, cloneSkill(s), w1, w2)
+	restore := func(dst, src map[string]float64) {
+		clear(dst)
+		maps.Copy(dst, src)
+	}
+	restore(db.output, output)
+	restore(db.multipliers, mults)
+	clear(db.mods)
+	maps.Copy(db.mods, mods)
+	clear(db.conditions)
+	maps.Copy(db.conditions, conds)
+	clear(db.UnsupportedTags)
+	maps.Copy(db.UnsupportedTags, tags)
+	return out
+}
+
 // setSkillCond sets a skill condition on all of a skill's cfgs.
 func setSkillCond(s *activeSkill, name string) {
 	for _, cfg := range []*Cfg{s.cfg, s.weapon1Cfg, s.weapon2Cfg} {
@@ -64,7 +94,7 @@ func (c *Calculator) generalsCry(db *ModDB, s *activeSkill, w1 hitSource, w2 *hi
 	s.types[stTriggered] = true
 	s.types[stOtherThingUsesSkill] = true
 	setSkillCond(s, "usedByMirage")
-	cached := c.offence(db, cloneSkill(s), w1, w2)
+	cached := c.offenceOnCopy(db, s, w1, w2)
 	cooldown := 1.0
 	var gc *activeSkill
 	for _, v := range db.activeSkills {
