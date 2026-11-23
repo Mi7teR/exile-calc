@@ -272,3 +272,75 @@ type ConfigOption struct {
 	// DefaultValue is list[defaultIndex].val for a list with a defaultIndex.
 	DefaultValue any `json:"defaultValue,omitempty"`
 }
+
+// Skills is the skill data of Modules/Data.lua: every granted effect
+// (Data/Skills/*.lua) and the shared stat map (Data/SkillStatMap.lua).
+type Skills struct {
+	Effects map[string]*Skill   `json:"effects"` // by granted effect id
+	StatMap map[string]*StatMap `json:"statMap"`
+}
+
+// Skill is a granted effect. Mods are encoded like modparser's data:
+// {"name", "type", "value", "flags", "keywordFlags", "@list": [tags]}.
+type Skill struct {
+	Name                     string              `json:"name"`
+	Color                    int                 `json:"color,omitempty"`
+	Support                  bool                `json:"support,omitempty"`
+	SkillTypes               []int               `json:"skillTypes,omitempty"`
+	MinionSkillTypes         []int               `json:"minionSkillTypes,omitempty"`
+	AddSkillTypes            []int               `json:"addSkillTypes,omitempty"`
+	RequireSkillTypes        []int               `json:"requireSkillTypes,omitempty"` // postfix expression
+	ExcludeSkillTypes        []int               `json:"excludeSkillTypes,omitempty"`
+	IgnoreMinionTypes        bool                `json:"ignoreMinionTypes,omitempty"`
+	IsTrigger                bool                `json:"isTrigger,omitempty"`
+	AddFlags                 []string            `json:"addFlags,omitempty"`
+	PlusVersionOf            string              `json:"plusVersionOf,omitempty"`
+	CannotBeSupported        bool                `json:"cannotBeSupported,omitempty"`
+	SupportGemsOnly          bool                `json:"supportGemsOnly,omitempty"`
+	Unsupported              bool                `json:"unsupported,omitempty"`
+	FromItem                 bool                `json:"fromItem,omitempty"`
+	WeaponTypes              []string            `json:"weaponTypes,omitempty"`
+	BaseFlags                []string            `json:"baseFlags,omitempty"`
+	StatMap                  map[string]*StatMap `json:"statMap,omitempty"`
+	BaseMods                 []map[string]any    `json:"baseMods,omitempty"`
+	QualityStats             []StatValue         `json:"qualityStats,omitempty"`
+	Stats                    []string            `json:"stats,omitempty"`
+	ConstantStats            []StatValue         `json:"constantStats,omitempty"`
+	NotMinionStat            []string            `json:"notMinionStat,omitempty"`
+	Levels                   map[int]*SkillLevel `json:"levels,omitempty"`
+	BaseEffectiveness        float64             `json:"baseEffectiveness,omitempty"`
+	IncrementalEffectiveness float64             `json:"incrementalEffectiveness,omitempty"`
+	HasGlobalEffect          bool                `json:"hasGlobalEffect,omitempty"`
+}
+
+// StatValue is a {stat, value} pair (qualityStats, constantStats).
+type StatValue struct {
+	Stat  string  `json:"stat"`
+	Value float64 `json:"value"`
+}
+
+// StatMap maps one skill stat to mods. Items are mods or groups of mods
+// with their own scalars, in PoB's order.
+type StatMap struct {
+	Items     []StatMapItem `json:"items,omitempty"`
+	Value     *float64      `json:"value,omitempty"`
+	Mult      *float64      `json:"mult,omitempty"`
+	Div       *float64      `json:"div,omitempty"`
+	Base      *float64      `json:"base,omitempty"`
+	SkillFlag string        `json:"skillFlag,omitempty"`
+}
+
+type StatMapItem struct {
+	Mod   map[string]any `json:"mod,omitempty"`
+	Group *StatMap       `json:"group,omitempty"`
+}
+
+// SkillLevel is one entry of a granted effect's levels table: Values are
+// its positional stat values, in the order of Skill.Stats.
+type SkillLevel struct {
+	Values                 []float64 `json:"values,omitempty"`
+	StatInterpolation      []int     `json:"statInterpolation,omitempty"`
+	LevelRequirement       int       `json:"levelRequirement,omitempty"`
+	ManaMultiplier         float64   `json:"manaMultiplier,omitempty"`
+	ManaReservationPercent float64   `json:"manaReservationPercent,omitempty"`
+}

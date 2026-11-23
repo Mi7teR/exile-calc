@@ -148,6 +148,19 @@ func run(src, out, parserOut string) error {
 		return err
 	}
 
+	globalSrc, err := read("Data/Global.lua")
+	if err != nil {
+		return err
+	}
+	skillEnv, err := parserEnv(globalSrc)
+	if err != nil {
+		return err
+	}
+	skills, err := convertSkills(read, skillEnv)
+	if err != nil {
+		return err
+	}
+
 	if err := os.MkdirAll(out, 0o755); err != nil {
 		return err
 	}
@@ -157,7 +170,7 @@ func run(src, out, parserOut string) error {
 	}
 	for name, v := range map[string]any{
 		"bases": bases, "mods": mods, "gems": gems, "uniques": uniques, "tree": tree,
-		"clusterjewels": &cluster, "timeless": timeless, "config": config,
+		"clusterjewels": &cluster, "timeless": timeless, "config": config, "skills": skills,
 	} {
 		if err := writeGzipJSON(filepath.Join(out, name+".json.gz"), v); err != nil {
 			return fmt.Errorf("%s: %w", name, err)
@@ -173,7 +186,7 @@ func run(src, out, parserOut string) error {
 	}
 	slog.Info("timeless jewel tables", "dir", filepath.Join(src, "Data", "TimelessJewelData"))
 	slog.Info("generated", "out", out, "bases", len(bases), "mods", modCount, "modDomains", len(mods),
-		"gems", len(gems), "uniques", len(uniques), "treeNodes", len(tree.Nodes))
+		"gems", len(gems), "skills", len(skills.Effects), "skippedSkillMods", skippedMods, "uniques", len(uniques), "treeNodes", len(tree.Nodes))
 	return nil
 }
 
