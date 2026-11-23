@@ -309,6 +309,7 @@ func (c *Calculator) mainMinion(db *ModDB, skills []*activeSkill, buffs map[stri
 	if mdb == nil {
 		return nil
 	}
+	ms := c.createMinionSkills(mdb, s, m, res)
 	addMinionModifiers(mdb, s.mods.List(s.cfg, "MinionModifier"), m.typ)
 	c.mergeKeystones(mdb, map[string]bool{}, res)
 	c.attributes(mdb)
@@ -326,13 +327,14 @@ func (c *Calculator) mainMinion(db *ModDB, skills []*activeSkill, buffs map[stri
 	extraAurasToMinion(db, mdb)
 	defenceForConditionals(mdb, gear)
 	charges(mdb)
+	actorMisc(mdb, ms, false, 0)
 	c.resistances(mdb)
 	c.defence(mdb, gear, map[string]bool{})
 	stats := map[string]float64{}
 	for _, k := range minionResultStats {
 		stats[k] = mdb.output[k]
 	}
-	if ms := c.createMinionSkills(mdb, s, m, res); ms != nil {
+	if ms != nil {
 		if debugMinionSkill != nil {
 			debugMinionSkill(ms)
 		}
