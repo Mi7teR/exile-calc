@@ -157,6 +157,15 @@ func run(src, out, parserOut string) error {
 		return err
 	}
 
+	miscSrc, err := read("Data/Misc.lua")
+	if err != nil {
+		return err
+	}
+	monster, err := convertMonsterTables(miscSrc)
+	if err != nil {
+		return err
+	}
+
 	globalSrc, err := read("Data/Global.lua")
 	if err != nil {
 		return err
@@ -179,7 +188,7 @@ func run(src, out, parserOut string) error {
 	}
 	for name, v := range map[string]any{
 		"bases": bases, "mods": mods, "gems": gems, "uniques": uniques, "tree": tree,
-		"clusterjewels": &cluster, "timeless": timeless, "config": config, "skills": skills, "pantheons": pantheons,
+		"clusterjewels": &cluster, "timeless": timeless, "config": config, "skills": skills, "pantheons": pantheons, "monster": monster,
 	} {
 		if err := writeGzipJSON(filepath.Join(out, name+".json.gz"), v); err != nil {
 			return fmt.Errorf("%s: %w", name, err)

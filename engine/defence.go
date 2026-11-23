@@ -224,5 +224,76 @@ func (c *Calculator) defence(db *ModDB, gearMods map[string][]modparser.Mod, key
 		out["Armour"] = math.Max(round(arm, 0), 0)
 	}
 	out["Evasion"] = math.Max(round(eva, 0), 0)
+	out["MeleeEvasion"] = math.Max(round(eva*calcMod(db, nil, "MeleeEvasion"), 0), 0)
+	out["ProjectileEvasion"] = math.Max(round(eva*calcMod(db, nil, "ProjectileEvasion"), 0), 0)
+	out["LowestOfArmourAndEvasion"] = math.Min(out["Armour"], out["Evasion"])
 	out["Ward"] = math.Max(math.Floor(ward), 0)
+	c.evadeChance(db)
+}
+
+const evadeChanceCap = 95 // Data.lua data.misc.EvadeChanceCap
+
+// hitChance is calcs.hitChance.
+func hitChance(evasion, accuracy float64) float64 {
+	if accuracy < 0 {
+		return 5
+	}
+	raw := accuracy / (accuracy + math.Pow(evasion/5, 0.9)) * 125
+	return math.Max(math.Min(round(raw, 0), 100), 5)
+}
+
+// calcVal is calcLib.val: the BASE sum scaled by increased and more.
+func calcVal(db *ModDB, name string) float64 {
+	if b := db.Sum("BASE", name); b != 0 {
+		return b * calcMod(db, nil, name)
+	}
+	return 0
+}
+
+// evadeChance is the evasion part of calcs.defence: energy shield
+// recovery cap and the chance to evade the enemy's attacks.
+func (c *Calculator) evadeChance(db *ModDB) {
+	out := db.output
+	capping := (db.Flag("ArmourESRecoveryCap") && out["Armour"] < out["EnergyShield"]) ||
+		(db.Flag("EvasionESRecoveryCap") && out["Evasion"] < out["EnergyShield"]) || db.conditions["LowEnergyShield"]
+	out["EnergyShieldRecoveryCap"] = out["EnergyShield"]
+	if capping {
+		switch {
+		case db.Flag("ArmourESRecoveryCap") && db.Flag("EvasionESRecoveryCap"):
+			out["EnergyShieldRecoveryCap"] = math.Min(out["Armour"], out["Evasion"])
+		case db.Flag("ArmourESRecoveryCap"):
+			out["EnergyShieldRecoveryCap"] = out["Armour"]
+		case db.Flag("EvasionESRecoveryCap"):
+			out["EnergyShieldRecoveryCap"] = out["Evasion"]
+		}
+		if db.conditions["LowEnergyShield"] {
+			out["EnergyShieldRecoveryCap"] = math.Min(out["EnergyShield"]*lowPoolThreshold, out["EnergyShieldRecoveryCap"])
+		}
+	}
+	enemy := db.enemy
+	switch {
+	case db.Flag("CannotEvade") || enemy.Flag("CannotBeEvaded"):
+		out["EvadeChance"], out["MeleeEvadeChance"], out["ProjectileEvadeChance"] = 0, 0, 0
+	case db.Flag("AlwaysEvade"):
+		out["EvadeChance"], out["MeleeEvadeChance"], out["ProjectileEvadeChance"] = 100, 100, 100
+	default:
+		acc := round(calcVal(enemy, "Accuracy"), 0)
+		evade := db.Sum("BASE", "EvadeChance")
+		hit := calcMod(enemy, nil, "HitChance")
+		stat, melee, proj := out["Evasion"], out["MeleeEvasion"], out["ProjectileEvasion"]
+		if db.Flag("EvadeChanceBasedOnWard") {
+			o, _ := db.Override("EvadeChanceBasedOnWardPercent")
+			stat = out["Ward"] * o / 100
+			melee, proj = stat, stat
+		}
+		out["EvadeChance"] = 100 - (hitChance(stat, acc)-evade)*hit
+		chance := func(s float64, name string) float64 {
+			return math.Max(0, math.Min(evadeChanceCap, (100-(hitChance(s, acc)-evade)*hit)*calcMod(db, nil, "EvadeChance", name)))
+		}
+		out["MeleeEvadeChance"] = chance(melee, "MeleeEvadeChance")
+		out["ProjectileEvadeChance"] = chance(proj, "ProjectileEvadeChance")
+		if out["MeleeEvadeChance"] == out["ProjectileEvadeChance"] {
+			out["EvadeChance"] = out["MeleeEvadeChance"]
+		}
+	}
 }

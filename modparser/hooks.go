@@ -16,6 +16,13 @@ type Hook func(p *Parser, args []any) any
 // table and the key in ModParser.lua; each port quotes its Lua source.
 // Unported hooks make a line unsupported, never wrong.
 var hooks = map[string]Hook{
+	// ["marked enemy has (%d+)%% reduced accuracy rating"] = function(num) return {
+	//   mod("EnemyModifier", "LIST", { mod = mod("Accuracy", "INC", -num) }, {type = "ActorCondition", actor = "enemy", var = "Marked" }) } end
+	"specialModList[^marked enemy has (%d+)%% reduced accuracy rating$]": func(p *Parser, a []any) any {
+		n, _ := toNumber(arg(a, 0)).(float64)
+		return []any{withTags(newMod("EnemyModifier", "LIST", map[string]any{"mod": newMod("Accuracy", "INC", -n, 0, 0)}, 0, 0),
+			map[string]any{"type": "ActorCondition", "actor": "enemy", "var": "Marked"})}
+	},
 	// ["regenerate (%d+) life per second for each (%d+)%% uncapped fire resistance"] = function(num, _, percent)
 	//   return { mod("LifeRegen", "BASE", num, { type = "PerStat", stat = "FireResistTotal", div = 1 / percent }) } end
 	"specialModList[^regenerate (%d+) life per second for each (%d+)%% uncapped fire resistance$]": func(p *Parser, a []any) any {

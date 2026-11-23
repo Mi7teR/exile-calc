@@ -123,7 +123,11 @@ func run(ids string, stats []string, oracle string) error {
 		ours[name] = map[string]map[key]float64{}
 		for _, s := range stats {
 			ours[name][s] = map[key]float64{}
-			for _, r := range res.DB.Tabulate(s) {
+			db, stat := res.DB, s
+			if n, ok := strings.CutPrefix(s, "Enemy:"); ok {
+				db, stat = res.DB.Enemy(), n
+			}
+			for _, r := range db.Tabulate(stat) {
 				if f, ok := r.Value.(float64); ok {
 					ours[name][s][key{r.Type, r.Source}] += f
 				}

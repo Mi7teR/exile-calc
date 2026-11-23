@@ -24,6 +24,7 @@ type Data struct {
 	Timeless  *Timeless
 	Config    []ConfigOption // ConfigOptions.lua varList, in order
 	Skills    *Skills
+	Monster   *MonsterTables
 	Pantheons map[string]*Pantheon // Data/Pantheons.lua, by config key ("TheBrineKing")
 
 	uniqueByName map[string]*Unique
@@ -59,7 +60,7 @@ func load(fsys embed.FS, dir string) (*Data, error) {
 	for name, dst := range map[string]any{
 		"bases": &d.Bases, "mods": &d.Mods, "gems": &d.Gems, "uniques": &d.Uniques, "tree": &d.Tree,
 		"clusterjewels": &d.Cluster, "timeless": &d.Timeless, "config": &d.Config, "skills": &d.Skills,
-		"pantheons": &d.Pantheons,
+		"pantheons": &d.Pantheons, "monster": &d.Monster,
 	} {
 		gz, err := fsys.ReadFile(dir + "/" + name + ".json.gz")
 		if err != nil {

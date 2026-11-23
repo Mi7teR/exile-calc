@@ -2,6 +2,7 @@ package engine
 
 import (
 	"math"
+	"reflect"
 	"strings"
 
 	"github.com/Mi7teR/poe-lib/itemtext"
@@ -317,8 +318,8 @@ func elusive(db *ModDB, main *activeSkill) {
 }
 
 // initConditionMods is the part of calcs.initModDB (CalcSetup.lua) that
-// turns config conditions into buff flags and base debuffs, and the
-// defensive base mods of calcs.initEnv.
+// turns config conditions into buff flags and base debuffs; it runs for
+// the player and the enemy.
 func initConditionMods(db *ModDB) {
 	when := func(v string) map[string]any { return map[string]any{"type": "Condition", "var": v} }
 	for _, x := range [][2]string{
@@ -340,8 +341,10 @@ func initConditionMods(db *ModDB) {
 	db.NewMod("Damage", "MORE", -10, "Base", when("MalignantMadness"), madness)
 	db.NewMod("ActionSpeed", "MORE", -10, "Base", when("MalignantMadness"), madness)
 	db.NewMod("PhysicalDamageReduction", "BASE", -15, "Base", when("Crushed"))
+}
 
-	// calcs.initEnv's player base mods.
+// playerBaseMods are the defensive player base mods of calcs.initEnv.
+func playerBaseMods(db *ModDB) {
 	endurance := map[string]any{"type": "Multiplier", "var": "EnduranceCharge"}
 	db.NewMod("PhysicalDamageReduction", "BASE", 4, "Base", endurance) // physical_damage_reduction_%_per_endurance_charge
 	db.NewMod("ElementalDamageReduction", "BASE", 4, "Base", endurance)
@@ -404,4 +407,44 @@ func abyssCounts(db *ModDB, it *itemtext.Item, parent string) {
 		db.multipliers["UniqueAbyssJewels"]++
 	}
 	db.multipliers[base]++
+}
+
+// enemyModifiers is applyEnemyModifiers (CalcPerform.lua): the mods an
+// actor's EnemyModifier lists give its enemy, each added once.
+type enemyModifiers map[uintptr]bool
+
+func (applied enemyModifiers) apply(db *ModDB) {
+	for _, e := range db.List(nil, "EnemyModifier") {
+		v, _ := e.Value.(map[string]any)
+		mm, ok := v["mod"].(map[string]any)
+		if !ok {
+			continue
+		}
+		key := reflect.ValueOf(mm).Pointer()
+		if applied[key] {
+			continue
+		}
+		applied[key] = true
+		source, _ := mm["source"].(string)
+		if source == "" {
+			source = e.Mod.Source
+		}
+		db.enemy.Add(modFromMap(mm, source))
+	}
+}
+
+// warcryPower is the WarcryPower output and multiplier of calcs.perform.
+func warcryPower(db *ModDB) {
+	if db.Flag("CryWolfMinimumPower") && db.Sum("BASE", "WarcryPower") < 10 {
+		db.NewMod("WarcryPower", "OVERRIDE", 10, "Minimum Warcry Power from CryWolf")
+	}
+	if db.Flag("WarcryInfinitePower") {
+		db.NewMod("WarcryPower", "OVERRIDE", 999999, "Warcries have infinite power")
+	}
+	p, ok := db.Override("WarcryPower")
+	if !ok {
+		p = db.Sum("BASE", "WarcryPower")
+	}
+	db.output["WarcryPower"] = p
+	db.multipliers["WarcryPower"] = p
 }

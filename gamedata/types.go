@@ -209,6 +209,16 @@ type ExpansionJewel struct {
 
 // ClusterJewels is Data/ClusterJewels.lua: how each cluster jewel base lays
 // out its subgraph, and the order notables take on it.
+// MonsterTables are Data/Misc.lua's per-level monster stats, index 0 =
+// level 1.
+type MonsterTables struct {
+	Evasion             []float64 `json:"evasion"`
+	Accuracy            []float64 `json:"accuracy"`
+	Damage              []float64 `json:"damage"`
+	Armour              []float64 `json:"armour"`
+	PhysConversionMulti []float64 `json:"physConversionMulti"`
+}
+
 // Pantheon is a god of Data/Pantheons.lua; Souls[0] is the god's own soul
 // and names the source of every soul's mods.
 type Pantheon struct {

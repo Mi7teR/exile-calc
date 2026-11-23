@@ -31,6 +31,7 @@ var reportStats = []string{"ManaRegenRecovery", "MovementSpeedMod",
 	"ActionSpeedMod", "BasePhysicalDamageReduction", "BasePhysicalDamageReductionWhenHit", "AvoidAllDamageFromHitsChance",
 	"IgniteAvoidChance", "ChillAvoidChance", "FreezeAvoidChance", "ShockAvoidChance", "BleedAvoidChance", "PoisonAvoidChance",
 	"CritExtraDamageReduction", "CurseEffectOnSelf",
+	"EvadeChance", "MeleeEvadeChance", "ProjectileEvadeChance",
 }
 
 // Ratchet: builds where every stat above is within tolerance. Raise it as

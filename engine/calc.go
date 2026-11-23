@@ -91,6 +91,7 @@ func (c *Calculator) Calc(b *pobcode.Build) (*Result, error) {
 	db := NewModDB()
 	db.tags = itemTags{special: c.parser.Table("itemTagSpecial"), exclusion: c.parser.Table("itemTagSpecialExclusionPattern")}
 	db.enemy = NewModDB()
+	db.enemy.enemy = db
 	db.gameIDs = c.gemIdx.gameID
 	res := &Result{Stats: db.output, DB: db}
 	config := b.ActiveConfig()
@@ -118,6 +119,8 @@ func (c *Calculator) Calc(b *pobcode.Build) (*Result, error) {
 	db.NewMod("Mana", "BASE", manaPerLevel, "Base", map[string]any{"type": "Multiplier", "var": "Level", "base": 34.0})
 	db.NewMod("Evasion", "BASE", baseEvasion, "Base")
 	initConditionMods(db)
+	playerBaseMods(db)
+	initConditionMods(db.enemy)
 	penalty := -60.0
 	if in, ok := configInput(config, "resistancePenalty"); ok && in.Kind == pobcode.KindNumber {
 		penalty = in.Number
@@ -390,7 +393,10 @@ func (c *Calculator) Calc(b *pobcode.Build) (*Result, error) {
 		db.multipliers[strings.ReplaceAll(o.BaseName, " ", "")+"Equipped"]++
 	}
 	buffMode(db)
+	buffMode(db.enemy)
 	c.applyConfig(db, res, config)
+	db.enemyEnv = newEnemyEnv(config, c.data.Config, b.Level, c.data.Monster, res)
+	db.enemy.NewMod("Accuracy", "BASE", enemyAccuracy(c.data.Monster, db.enemyEnv.level), "Base")
 	c.customMods(db, res, config)
 	shrineBaseMods(db)
 	skills := c.setupSkills(db, b, useSwap, res)
@@ -401,6 +407,9 @@ func (c *Calculator) Calc(b *pobcode.Build) (*Result, error) {
 	flaskSt := c.applyFlasks(db, res, flasks)
 	c.mergeKeystones(db, keystones, res)
 	banners(db)
+	warcryPower(db)
+	playerEnemyMods := enemyModifiers{}
+	playerEnemyMods.apply(db)
 	// CalcPerform.lua: "gain maximum life instead of maximum energy shield
 	// from equipped armour items".
 	if db.Flag("ConvertArmourESToLife") {
@@ -428,6 +437,8 @@ func (c *Calculator) Calc(b *pobcode.Build) (*Result, error) {
 	flaskRecovery(db, flaskSt)
 	actorMisc(db, mainSkill(skills), flaskSt.silver, flaskSt.silverInc)
 	rage(db, mainCfg(skills))
+	playerEnemyMods.apply(db)
+	actorMisc(db.enemy, nil, false, -100)
 	res.Skills = skillInfo(skills)
 	c.resistances(db)
 	c.defence(db, gearMods, keystones)
