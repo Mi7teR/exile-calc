@@ -43,6 +43,7 @@ type ModDB struct {
 	classConds  map[string]string           // conditions[item title] = item.classRestriction
 	build       *pobcode.Build              // the build being calculated (minion item sets)
 	strDmgBonus float64                     // actor.strDmgBonus
+	gearMods    map[string][]modparser.Mod  // the player's parsed gear mods per slot (weaponData)
 	parent      *ModDB                      // a skill's mod list reads through to the actor's ModDB
 	owner       *ModDB                      // a minion's parent actor (tag actor "parent")
 	gameIDs     func(gemName string) string // calcLib.getGameIdFromGemName(name, true)

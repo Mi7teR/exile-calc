@@ -356,6 +356,45 @@ func playerBaseMods(db *ModDB) {
 	db.NewMod("EnemyCurseLimit", "BASE", 1, "Base")
 	db.NewMod("SocketedCursesHexLimitValue", "BASE", 1, "Base")
 	db.NewMod("ImpaleStacksMax", "BASE", 5, "Base") // impaled_debuff_number_of_reflected_hits
+	// Offence base mods of calcs.initEnv (characterConstants).
+	when := func(v string, neg bool) map[string]any {
+		t := map[string]any{"type": "Condition", "var": v}
+		if neg {
+			t["neg"] = true
+		}
+		return t
+	}
+	db.NewMod("Accuracy", "BASE", 2, "Base", map[string]any{"type": "Multiplier", "var": "Level", "base": -2.0}) // accuracy_rating_per_level
+	db.NewMod("CritMultiplier", "BASE", 50, "Base")                                                              // base_critical_strike_multiplier 150
+	db.NewMod("DotMultiplier", "BASE", 50, "Base", when("CriticalStrike", false))                                // critical_ailment_dot_multiplier_+
+	db.NewMod("CritChance", "INC", 50, "Base", map[string]any{"type": "Multiplier", "var": "PowerCharge"})
+	frenzy := map[string]any{"type": "Multiplier", "var": "FrenzyCharge"}
+	db.Add(Mod{Name: "Speed", Type: "INC", Value: 4.0, Flags: mfAttack, Source: "Base", Tags: []map[string]any{frenzy}})
+	db.Add(Mod{Name: "Speed", Type: "INC", Value: 4.0, Flags: mfCast, Source: "Base", Tags: []map[string]any{frenzy}})
+	db.NewMod("Damage", "MORE", 4, "Base", frenzy)
+	db.NewMod("Multiplier:GaleForce", "BASE", 0, "Base")
+	db.NewMod("MaximumGaleForce", "BASE", 10, "Base")
+	db.NewMod("Multiplier:IntensityLimit", "BASE", 3, "Base")
+	db.NewMod("Damage", "INC", 2, "Base", map[string]any{"type": "Multiplier", "var": "Rampage", "limit": 50.0, "div": 20.0})
+	db.NewMod("ActiveTrapLimit", "BASE", 15, "Base")
+	db.NewMod("ActiveMineLimit", "BASE", 15, "Base")
+	db.NewMod("MineThrowCount", "BASE", 1, "Base")
+	db.NewMod("TrapThrowCount", "BASE", 1, "Base")
+	db.NewMod("ActiveBrandLimit", "BASE", 3, "Base")
+	db.NewMod("ProjectileCount", "BASE", 1, "Base")
+	// dual_wield_inherent_attack_speed_+%_final 10
+	db.Add(Mod{Name: "Speed", Type: "MORE", Value: 10.0, Flags: mfAttack, Source: "Base", Tags: []map[string]any{when("DualWielding", false), when("DoubledInherentDualWieldingSpeed", true)}})
+	db.Add(Mod{Name: "Speed", Type: "MORE", Value: 20.0, Flags: mfAttack, Source: "Base", Tags: []map[string]any{when("DualWielding", false), when("DoubledInherentDualWieldingSpeed", false)}})
+	db.Add(Mod{Name: "Damage", Type: "MORE", Value: 200.0, KeywordFlags: 0x400000, Source: "Base", // KeywordFlag.Bleed
+		Tags: []map[string]any{{"type": "ActorCondition", "actor": "enemy", "var": "Moving"}, when("NoExtraBleedDamageToMovingEnemy", true)}})
+	db.Add(Mod{Name: "Condition:BloodStance", Type: "FLAG", Value: true, Source: "Base", Tags: []map[string]any{when("SandStance", true)}})
+	db.Add(Mod{Name: "Condition:PrideMinEffect", Type: "FLAG", Value: true, Source: "Base", Tags: []map[string]any{when("PrideMaxEffect", true)}})
+	db.NewMod("PerBrutalTripleDamageChance", "BASE", 3, "Base")
+	db.NewMod("PerAfflictionAilmentDamage", "BASE", 8, "Base")
+	db.NewMod("PerAfflictionNonDamageEffect", "BASE", 8, "Base")
+	db.NewMod("PerAbsorptionElementalEnergyShieldRecoup", "BASE", 12, "Base")
+	db.NewMod("TinctureLimit", "BASE", 1, "Base")
+	db.NewMod("PresenceRadius", "BASE", 80, "Base")
 	// movement_velocity_+%_per_10_rampage_stacks, max_rampage_stacks 1000
 	db.NewMod("MovementSpeed", "INC", 1, "Base", map[string]any{"type": "Multiplier", "var": "Rampage", "limit": 50.0, "div": 20.0})
 }

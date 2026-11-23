@@ -178,7 +178,7 @@ func buffMinionModifiers(buffs map[string][]Mod, cfg *Cfg) [][]ListEntry {
 
 // minionBuffs ports the minion side of the player's Buff and Aura branches
 // in calcs.perform's buff loop: the buffs that reach env.minion.
-func minionBuffs(db *ModDB, skills []*activeSkill, mdb *ModDB, res *Result) map[string][]Mod {
+func minionBuffs(db *ModDB, skills []*activeSkill, mdb *ModDB, mainCfg *Cfg, res *Result) map[string][]Mod {
 	out := map[string][]Mod{}
 	selfAurasStay := db.Flag("SelfAurasCannotAffectAllies") || db.Flag("SelfAurasOnlyAffectYou") || db.Flag("SelfAuraSkillsCannotAffectAllies")
 	for _, s := range skills {
@@ -214,9 +214,6 @@ func minionBuffs(db *ModDB, skills []*activeSkill, mdb *ModDB, res *Result) map[
 				if list.Flag("CannotShareWarcryBuffs") {
 					continue
 				}
-				if b.name == "Rallying Cry" {
-					res.Incomplete = append(res.Incomplete, "Rallying Cry weapon damage on minions not applied")
-				}
 				bonus, uptime := warcryBonus(db, s, b)
 				warcry := strings.ReplaceAll(strings.ReplaceAll(strings.ReplaceAll(b.name, " Cry", ""), "'s", ""), " ", "")
 				mdb.conditions["AffectedBy"+warcry] = true
@@ -225,6 +222,9 @@ func minionBuffs(db *ModDB, skills []*activeSkill, mdb *ModDB, res *Result) map[
 				var src []Mod
 				for i, m := range b.mods {
 					src = append(src, scaleMod(m, (1+inc/100)*more*bonus[i]*uptime))
+				}
+				if s.active.ge.Name == "Rallying Cry" {
+					src = append(src, rallyingCryWeaponDamage(db, s, mainCfg, (1+inc/100)*uptime)...)
 				}
 				mergeBuff(src, out, b.name)
 			case "Aura":
@@ -238,6 +238,37 @@ func minionBuffs(db *ModDB, skills []*activeSkill, mdb *ModDB, res *Result) map[
 				mdb.conditions["AffectedByAura"] = true
 				mergeBuff(append(scaleMods(b.mods, mult), scaleMods(extraAuraMods(db, cfg), mult)...), out, b.name)
 			}
+		}
+	}
+	return out
+}
+
+// rallyingCryWeaponDamage is the minion side's "flat damage bonus" of
+// Rallying Cry in calcs.perform: a share of the player's main hand weapon
+// damage per 5 warcry power (up to 30). An unarmed player is not ported.
+func rallyingCryWeaponDamage(db *ModDB, s *activeSkill, mainCfg *Cfg, scale float64) []Mod {
+	w, _, ok := itemWeapon(db.items["Weapon 1"], db.gearMods["Weapon 1"])
+	if !ok {
+		return nil
+	}
+	power, ok := db.Override("WarcryPower")
+	if !ok {
+		power = math.Max(db.Sum("BASE", "WarcryPower")*(1+db.Sum("INC", "WarcryPower")/100), db.Sum("BASE", "MinimumWarcryPower"))
+	}
+	effect := math.Floor(s.mods.SumCfg(mainCfg, "BASE", "RallyingCryAllyDamageBonusPer5Power") * math.Floor(math.Min(power, 30)/5))
+	more := 1 + s.mods.SumCfg(mainCfg, "BASE", "RallyingCryMinionDamageBonusMultiplier")
+	tag := map[string]any{"type": "GlobalEffect", "effectType": "Warcry", "div": 5.0, "limit": 30.0}
+	var out []Mod
+	for _, t := range dmgTypeList {
+		if w.min[t] == 0 && w.max[t] == 0 {
+			continue
+		}
+		for _, x := range []struct {
+			name string
+			v    float64
+		}{{t + "Min", w.min[t]}, {t + "Max", w.max[t]}} {
+			out = append(out, scaleMod(Mod{Name: x.name, Type: "BASE", Value: x.v * effect / 100,
+				KeywordFlags: kfAttack, Source: "Rallying Cry", Tags: []map[string]any{tag}}, scale*more))
 		}
 	}
 	return out
@@ -337,7 +368,7 @@ func (c *Calculator) mainMinion(db *ModDB, skills []*activeSkill, buffs map[stri
 	c.attributes(mdb)
 	shrineBuffs(mdb)
 	c.lifeMana(mdb)
-	mb := minionBuffs(db, skills, mdb, res)
+	mb := minionBuffs(db, skills, mdb, s.cfg, res)
 	for k, l := range c.minionSkillBuffs(db, mdb, skills, s, mskills, charLevel, res) {
 		mergeBuff(l, mb, k)
 	}
