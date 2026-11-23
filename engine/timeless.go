@@ -53,7 +53,7 @@ func defaultTimelessDir() string {
 		if err != nil {
 			return ""
 		}
-		d = filepath.Join(cache, "poe-lib", "pob-v2.68.1-4", "src", "Data", "TimelessJewelData")
+		d = filepath.Join(cache, "poe-lib", "pob-v2.68.1-5", "src", "Data", "TimelessJewelData")
 	}
 	if st, err := os.Stat(d); err != nil || !st.IsDir() {
 		return ""

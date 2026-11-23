@@ -22,6 +22,7 @@ type Data struct {
 	Tree     *Tree
 	Cluster  *ClusterJewels
 	Timeless *Timeless
+	Config   []ConfigOption // ConfigOptions.lua varList, in order
 
 	uniqueByName map[string]*Unique
 }
@@ -55,7 +56,7 @@ func load(fsys embed.FS, dir string) (*Data, error) {
 	}
 	for name, dst := range map[string]any{
 		"bases": &d.Bases, "mods": &d.Mods, "gems": &d.Gems, "uniques": &d.Uniques, "tree": &d.Tree,
-		"clusterjewels": &d.Cluster, "timeless": &d.Timeless,
+		"clusterjewels": &d.Cluster, "timeless": &d.Timeless, "config": &d.Config,
 	} {
 		gz, err := fsys.ReadFile(dir + "/" + name + ".json.gz")
 		if err != nil {

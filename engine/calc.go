@@ -19,6 +19,7 @@ type Calculator struct {
 	parser *modparser.Parser
 	items  *itemtext.Parser
 	luts   *timelessLUTs
+	config configApplies
 }
 
 func New() (*Calculator, error) {
@@ -251,9 +252,12 @@ func (c *Calculator) Calc(b *pobcode.Build) (*Result, error) {
 	}
 	itemConditions(db, gear)
 	buffMode(db)
+	c.applyConfig(db, res, config)
 	c.customMods(db, res, config)
+	shrineBaseMods(db)
 	c.applyFlasks(db, res, flasks)
 	c.attributes(db)
+	shrineBuffs(db)
 	c.lifeMana(db)
 	c.resistances(db)
 	for k, v := range db.UnsupportedTags {

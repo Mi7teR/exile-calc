@@ -48,7 +48,7 @@ var timelessLUT = map[string]bool{
 // wanted reports whether a repository path is needed for generation.
 func wanted(p, tree string) bool {
 	return (strings.HasPrefix(p, "src/Data/") && strings.HasSuffix(p, ".lua")) ||
-		p == "src/TreeData/"+tree+"/tree.lua" || p == "src/Modules/ModParser.lua" || p == "src/Modules/Data.lua" ||
+		p == "src/TreeData/"+tree+"/tree.lua" || p == "src/Modules/ModParser.lua" || p == "src/Modules/Data.lua" || p == "src/Modules/ConfigOptions.lua" ||
 		timelessLUT[strings.TrimPrefix(p, "src/Data/TimelessJewelData/")]
 }
 
@@ -56,7 +56,7 @@ func wanted(p, tree string) bool {
 // returns the directory that plays the role of PoB's src.
 func fetchPoB(tag, tree, cacheDir string) (string, error) {
 	// fetchLayout changes whenever wanted() starts selecting more files.
-	const fetchLayout = "4"
+	const fetchLayout = "5"
 	root := filepath.Join(cacheDir, "pob-"+tag+"-"+fetchLayout)
 	done := filepath.Join(root, ".complete")
 	if _, err := os.Stat(done); err == nil {

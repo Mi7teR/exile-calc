@@ -259,3 +259,16 @@ type LegionNode struct {
 	// Keystone is set for keystone replacements ("ks").
 	Keystone bool `json:"keystone,omitempty" lua:"ks"`
 }
+
+// ConfigOption is one entry of Modules/ConfigOptions.lua's varList.
+type ConfigOption struct {
+	Var  string `json:"var"`
+	Type string `json:"type"` // check, count, integer, countAllowZero, float, list, text
+	// Apply is the Lua source of apply(val, modList, enemyModList, build);
+	// the engine runs it with internal/luadata. Empty when there is none.
+	Apply                   string `json:"apply,omitempty"`
+	DefaultState            any    `json:"defaultState,omitempty"`
+	DefaultPlaceholderState any    `json:"defaultPlaceholderState,omitempty"`
+	// DefaultValue is list[defaultIndex].val for a list with a defaultIndex.
+	DefaultValue any `json:"defaultValue,omitempty"`
+}

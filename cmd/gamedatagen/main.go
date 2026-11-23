@@ -139,6 +139,15 @@ func run(src, out, parserOut string) error {
 		return err
 	}
 
+	configSrc, err := read("Modules/ConfigOptions.lua")
+	if err != nil {
+		return err
+	}
+	config, err := convertConfigOptions(configSrc)
+	if err != nil {
+		return err
+	}
+
 	if err := os.MkdirAll(out, 0o755); err != nil {
 		return err
 	}
@@ -148,7 +157,7 @@ func run(src, out, parserOut string) error {
 	}
 	for name, v := range map[string]any{
 		"bases": bases, "mods": mods, "gems": gems, "uniques": uniques, "tree": tree,
-		"clusterjewels": &cluster, "timeless": timeless,
+		"clusterjewels": &cluster, "timeless": timeless, "config": config,
 	} {
 		if err := writeGzipJSON(filepath.Join(out, name+".json.gz"), v); err != nil {
 			return fmt.Errorf("%s: %w", name, err)

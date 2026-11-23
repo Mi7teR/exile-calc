@@ -249,7 +249,7 @@ func (e *evaluator) truthy(v Value) (bool, error) {
 	case Bool:
 		return bool(x), nil
 	case Ref, *Call:
-		return false, e.errf("truth value of unresolved %s", typeName(v))
+		return false, e.errf("truth value of %s", typeName(v))
 	}
 	return true, nil
 }
@@ -545,9 +545,22 @@ func (e *evaluator) concat() (Value, error) {
 	ls, lok := toStr(l)
 	rs, rok := toStr(r)
 	if !lok || !rok {
+		// Text built from an unresolved name stays unresolved
+		// (ConfigOptions.lua tooltips quote data tables).
+		if isUnresolved(l) || isUnresolved(r) {
+			return Ref(fmt.Sprintf("(%v .. %v)", l, r)), nil
+		}
 		return nil, e.errf("cannot concatenate %s and %s", typeName(l), typeName(r))
 	}
 	return String(ls + rs), nil
+}
+
+func isUnresolved(v Value) bool {
+	switch v.(type) {
+	case Ref, *Call:
+		return true
+	}
+	return false
 }
 
 func toStr(v Value) (string, bool) {
@@ -564,6 +577,9 @@ func (e *evaluator) arith(op string, l, r Value) (Value, error) {
 	a, aok := l.(Number)
 	b, bok := r.(Number)
 	if !aok || !bok {
+		if isUnresolved(l) || isUnresolved(r) {
+			return Ref(fmt.Sprintf("(%v %s %v)", l, op, r)), nil
+		}
 		return nil, e.errf("cannot apply %q to %s and %s", op, typeName(l), typeName(r))
 	}
 	switch op {
