@@ -160,7 +160,7 @@ func buffMinionModifiers(buffs map[string][]Mod, cfg *Cfg) [][]ListEntry {
 
 // minionBuffs ports the minion side of the player's Buff and Aura branches
 // in calcs.perform's buff loop: the buffs that reach env.minion.
-func minionBuffs(db *ModDB, skills []*activeSkill, mdb *ModDB) map[string][]Mod {
+func minionBuffs(db *ModDB, skills []*activeSkill, mdb *ModDB, res *Result) map[string][]Mod {
 	out := map[string][]Mod{}
 	selfAurasStay := db.Flag("SelfAurasCannotAffectAllies") || db.Flag("SelfAurasOnlyAffectYou") || db.Flag("SelfAuraSkillsCannotAffectAllies")
 	for _, s := range skills {
@@ -192,6 +192,23 @@ func minionBuffs(db *ModDB, skills []*activeSkill, mdb *ModDB) map[string][]Mod 
 				inc := store.SumCfg(bcfg, "INC", "BuffEffect") + mdb.Sum("INC", "BuffEffectOnSelf")
 				more := store.MoreCfg(bcfg, "BuffEffect") * mdb.More("BuffEffectOnSelf")
 				mergeBuff(scaleMods(b.mods, (1+inc/100)*more), out, b.name)
+			case "Warcry":
+				if list.Flag("CannotShareWarcryBuffs") {
+					continue
+				}
+				if b.name == "Rallying Cry" {
+					res.Incomplete = append(res.Incomplete, "Rallying Cry weapon damage on minions not applied")
+				}
+				bonus, uptime := warcryBonus(db, s, b)
+				warcry := strings.ReplaceAll(strings.ReplaceAll(strings.ReplaceAll(b.name, " Cry", ""), "'s", ""), " ", "")
+				mdb.conditions["AffectedBy"+warcry] = true
+				inc := list.SumCfg(cfg, "INC", "BuffEffect") + mdb.SumCfg(cfg, "INC", "BuffEffectOnSelf")
+				more := list.MoreCfg(cfg, "BuffEffect") * mdb.MoreCfg(cfg, "BuffEffectOnSelf")
+				var src []Mod
+				for i, m := range b.mods {
+					src = append(src, scaleMod(m, (1+inc/100)*more*bonus[i]*uptime))
+				}
+				mergeBuff(src, out, b.name)
 			case "Aura":
 				if selfAurasStay {
 					continue
@@ -251,7 +268,7 @@ func (c *Calculator) mainMinion(db *ModDB, skills []*activeSkill, buffs map[stri
 	c.attributes(mdb)
 	shrineBuffs(mdb)
 	c.lifeMana(mdb)
-	mb := minionBuffs(db, skills, mdb)
+	mb := minionBuffs(db, skills, mdb, res)
 	for _, l := range buffMinionModifiers(buffs, s.cfg) {
 		addMinionModifiers(mdb, l, m.typ)
 	}

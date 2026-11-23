@@ -1467,23 +1467,11 @@ func skillInfo(skills []*activeSkill, set *pobcode.SkillSet) []SkillInfo {
 	return out
 }
 
-// warcry ports the Warcry branch of calcs.perform: exerted attacks, warcry
-// power bonuses on mods tagged with a div, uptime from duration and
-// cooldown, and the buff on the player scaled by buff effect.
-func (c *Calculator) warcry(db *ModDB, s *activeSkill, b *skillBuff, mainCfg *Cfg, seen map[string]bool, add func([]Mod, string)) {
+// warcryBonus is the warcry power bonus of each buff mod (mods tagged with
+// a div) and the buff uptime from duration and cooldown, as the Warcry
+// branch of calcs.perform computes them.
+func warcryBonus(db *ModDB, s *activeSkill, b *skillBuff) ([]float64, float64) {
 	list, cfg := s.mods, s.cfg
-	name := strings.ReplaceAll(strings.ReplaceAll(strings.ReplaceAll(b.name, " Cry", ""), "'s", ""), " ", "")
-	if base := list.SumCfg(mainCfg, "BASE", name+"ExertedAttacks"); base > 0 {
-		extra := list.Sum("BASE", "ExtraExertedAttacks")
-		db.NewMod("Num"+name+"Exerts", "BASE", math.Floor((base+extra)*list.More("ExtraExertedAttacks")), "")
-		if !seen[b.name] {
-			db.NewMod("Multiplier:ExertingWarcryCount", "BASE", 1, b.name)
-			seen[b.name] = true
-		}
-	}
-	if list.Flag("CannotShareWarcryBuffs") {
-		return
-	}
 	power, ok := db.Override("WarcryPower")
 	if !ok {
 		power = math.Max(db.Sum("BASE", "WarcryPower")*(1+db.Sum("INC", "WarcryPower")/100), db.Sum("BASE", "MinimumWarcryPower"))
@@ -1512,6 +1500,27 @@ func (c *Calculator) warcry(db *ModDB, s *activeSkill, b *skillBuff, mainCfg *Cf
 	if !db.Flag("Condition:WarcryMaxHit") {
 		uptime = math.Min(duration/cooldown, 1)
 	}
+	return bonus, uptime
+}
+
+// warcry ports the Warcry branch of calcs.perform: exerted attacks, warcry
+// power bonuses on mods tagged with a div, uptime from duration and
+// cooldown, and the buff on the player scaled by buff effect.
+func (c *Calculator) warcry(db *ModDB, s *activeSkill, b *skillBuff, mainCfg *Cfg, seen map[string]bool, add func([]Mod, string)) {
+	list, cfg := s.mods, s.cfg
+	name := strings.ReplaceAll(strings.ReplaceAll(strings.ReplaceAll(b.name, " Cry", ""), "'s", ""), " ", "")
+	if base := list.SumCfg(mainCfg, "BASE", name+"ExertedAttacks"); base > 0 {
+		extra := list.Sum("BASE", "ExtraExertedAttacks")
+		db.NewMod("Num"+name+"Exerts", "BASE", math.Floor((base+extra)*list.More("ExtraExertedAttacks")), "")
+		if !seen[b.name] {
+			db.NewMod("Multiplier:ExertingWarcryCount", "BASE", 1, b.name)
+			seen[b.name] = true
+		}
+	}
+	if list.Flag("CannotShareWarcryBuffs") {
+		return
+	}
+	bonus, uptime := warcryBonus(db, s, b)
 	if db.Flag("CannotGainWarcryBuffs") || b.applyNotPlayer {
 		return
 	}
