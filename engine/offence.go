@@ -108,6 +108,7 @@ type hitPass struct {
 	// repeats, cooldown: the skill's Repeats and cooldown (if any).
 	repeats, cooldown float64
 	hasCooldown       bool
+	trapCooldown      float64 // output.TrapCooldown (0: none)
 	// mainHandCrit is the main hand weapon's crit chance (BaseCritFromMainHand).
 	mainHandCrit float64
 	// label is the pass label ("Main Hand", "Off Hand", "Skill").
@@ -215,6 +216,8 @@ func (c *Calculator) offence(actor *ModDB, s *activeSkill, w1 hitSource, w2 *hit
 	c.offenceStatConversions(actor, s, w1, w2, out)
 	preSkillTypeFunc(s)
 	projectileStats(s, out)
+	trapMineStats(actor, s, out)
+	offenceDuration(actor, s, out)
 	costs := map[string]float64{}
 	skillCosts(actor, s, costs)
 	for k, v := range costs {
@@ -324,13 +327,19 @@ func (c *Calculator) offence(actor *ModDB, s *activeSkill, w1 hitSource, w2 *hit
 		}
 	}
 	cooldown, hasCooldown := skillCooldown(list, cfg, data)
-	if hasCooldown {
+	if tc, ok := out["TrapCooldown"]; ok {
+		// Traps: the throwing time is limited by the trap cooldown instead.
+		cooldown, hasCooldown = tc, false
+	} else if hasCooldown {
 		out["Cooldown"] = cooldown
 	}
 	shared := &passShared{}
 	for _, p := range passes {
 		p.conv = conversionTable(list, p.cfg)
 		p.repeats, p.cooldown, p.hasCooldown = out["Repeats"], cooldown, hasCooldown && cooldown > 0
+		if _, ok := out["TrapCooldown"]; ok {
+			p.trapCooldown = cooldown
+		}
 		p.mainHandCrit = w1.critChance
 		p.shared = shared
 		c.hitAndSpeed(actor, s, p)
@@ -454,7 +463,9 @@ func (c *Calculator) hitAndSpeed(actor *ModDB, s *activeSkill, p *hitPass) {
 		return
 	case data["timeOverride"] != nil:
 		t, _ := num(data["timeOverride"])
-		if p.hasCooldown {
+		if p.trapCooldown > 0 {
+			t = math.Max(t, p.trapCooldown)
+		} else if p.hasCooldown {
 			t = math.Max(t, p.cooldown)
 		}
 		out["Time"], out["Speed"] = t, 1/t
@@ -978,6 +989,10 @@ func preDamageFunc(actor *ModDB, s *activeSkill, out map[string]float64) {
 		if s.part == 2 {
 			mulDPS(proj + 1)
 		}
+	case "Spark", "Spark of the Nova":
+		if s.part == 2 {
+			mulDPS(1 + math.Floor(out["Duration"]/0.66))
+		}
 	case "Ice Spear", "Ice Spear of Splitting":
 		if s.part == 3 || s.part == 4 {
 			mulDPS(proj)
@@ -1289,4 +1304,100 @@ func projectileStats(s *activeSkill, out map[string]float64) {
 	}
 	proj := math.Floor(list.SumCfg(cfg, "BASE", "ProjectileCount") * list.MoreCfg(cfg, "ProjectileCount"))
 	out["ProjectileCount"] = math.Max(math.Min(proj, projMax), projMin)
+}
+
+// valCfg is calcLib.val with a cfg: BASE * (1 + INC) * MORE.
+func valCfg(db *ModDB, cfg *Cfg, name string) float64 {
+	base := db.SumCfg(cfg, "BASE", name)
+	if base == 0 {
+		return 0
+	}
+	return base * calcMod(db, cfg, name)
+}
+
+// trapMineStats is the trap and mine part of calcs.offence's skill type
+// stats: throwing and laying rates become skillData.timeOverride.
+func trapMineStats(actor *ModDB, s *activeSkill, out map[string]float64) {
+	list, cfg, data := s.mods, s.cfg, s.data
+	_, hasCD := data["cooldown"]
+	_, hasTrapCD := data["trapCooldown"]
+	action := actor.output["ActionSpeedMod"]
+	if s.flags["trap"] {
+		base := 1 / list.SumCfg(cfg, "BASE", "TrapThrowingTime")
+		if m := calcMod(list, cfg, "SkillTrapThrowingTime"); m > 0 {
+			base /= m
+		}
+		speed := base * calcMod(list, cfg, "TrapThrowingSpeed") * action
+		count := valCfg(list, cfg, "TrapThrowCount")
+		if hasCD || hasTrapCD {
+			count = 1
+		}
+		if o, ok := actor.Override("TrapThrowCount"); ok {
+			count = o
+		}
+		out["TrapThrowCount"] = count
+		out["TrapThrowingSpeed"] = math.Min(speed, serverTickRate)
+		out["TrapThrowingTime"] = 1 / out["TrapThrowingSpeed"]
+		data["timeOverride"] = out["TrapThrowingTime"] / count
+		baseCD, ok := num(data["trapCooldown"])
+		if !ok {
+			baseCD, ok = num(data["cooldown"])
+		}
+		if ok || list.SumCfg(cfg, "BASE", "CooldownRecovery") != 0 {
+			if ok {
+				cd, has := list.OverrideCfg(cfg, "CooldownRecovery")
+				if !has {
+					cd = baseCD / calcMod(list, cfg, "CooldownRecovery")
+				}
+				out["TrapCooldown"] = math.Ceil(cd*serverTickRate) / serverTickRate
+			} else {
+				out["TrapCooldown"], _ = skillCooldown(list, cfg, data)
+			}
+		}
+	}
+	if s.flags["mine"] {
+		base := 1 / list.SumCfg(cfg, "BASE", "MineLayingTime")
+		if m := calcMod(list, cfg, "SkillMineThrowingTime"); m > 0 {
+			base /= m
+		}
+		speed := base * calcMod(list, cfg, "MineLayingSpeed") * action
+		count := valCfg(list, cfg, "MineThrowCount")
+		if hasCD || hasTrapCD {
+			count = 1
+		}
+		if o, ok := actor.Override("MineThrowCount"); ok {
+			count = o
+		}
+		out["MineThrowCount"] = count
+		if count >= 1 {
+			speed /= 1 + (count-1)*0.1
+		}
+		out["MineLayingSpeed"] = math.Min(speed, serverTickRate)
+		out["MineLayingTime"] = 1 / out["MineLayingSpeed"]
+		if s.flags["trap"] {
+			data["timeOverride"] = out["MineLayingTime"] / count / out["TrapThrowCount"]
+		} else {
+			data["timeOverride"] = out["MineLayingTime"] / count
+		}
+	}
+}
+
+// offenceDuration is the "Skill duration" part of calcs.offence: the primary
+// duration (output.Duration), rounded up to a server tick.
+func offenceDuration(actor *ModDB, s *activeSkill, out map[string]float64) {
+	list, cfg, data := s.mods, s.cfg, s.data
+	names := []string{"Duration", "PrimaryDuration"}
+	if truthy(data["mineDurationAppliesToSkill"]) {
+		names = append(names, "MineDuration")
+	}
+	out["DurationMod"] = math.Max(calcMod(list, cfg, names...), 0)
+	base := numOr(data["duration"], 0) + list.SumCfg(cfg, "BASE", "Duration", "PrimaryDuration")
+	if base <= 0 {
+		return
+	}
+	d := base * out["DurationMod"]
+	if truthy(data["debuff"]) {
+		d /= math.Max(0.25, calcMod(actor.enemy, cfg, "BuffExpireFaster")) // BuffExpirationSlowCap
+	}
+	out["Duration"] = math.Ceil(d*serverTickRate) / serverTickRate
 }

@@ -149,15 +149,27 @@ func (c *Calculator) applyFlasks(db *ModDB, res *Result, slots []flaskSlot) *fla
 				add("base:"+it.BaseName, scaleMod(fromParsed(m, source), scale))
 			}
 		}
+		// Item.lua: the mods calcLocal reads are removed from the flask's
+		// mod list.
+		local := [][2]string{{"Duration", "INC"}, {"Duration", "MORE"}, {"FlaskCharges", "BASE"},
+			{"FlaskChargesUsed", "INC"}, {"FlaskChargeRecovery", "INC"}, {"FlaskEffect", "INC"}, {"LocalEffect", "INC"}}
+		if recovery {
+			local = append(local, [2]string{"FlaskInstantRecovery", "BASE"}, [2]string{"FlaskLowLifeInstantRecovery", "BASE"},
+				[2]string{"FlaskRecovery", "INC"}, [2]string{"FlaskRecoveryRate", "INC"})
+			if base.Life > 0 {
+				local = append(local, [2]string{"FlaskAdditionalLifeRecovery", "BASE"})
+			}
+		}
+		kept := withoutLocal(mods, local)
 		key := it.Name
 		if it.Rarity != "UNIQUE" && it.Rarity != "RELIC" {
 			var b strings.Builder
-			for _, m := range mods {
+			for _, m := range kept {
 				fmt.Fprintf(&b, "%s|%s|%v&", m.Name, m.Type, m.Value)
 			}
 			key = b.String()
 		}
-		for _, m := range mods {
+		for _, m := range kept {
 			add("mods:"+key, scaleMod(fromParsed(m, source), scale))
 		}
 	}
@@ -414,6 +426,8 @@ func (c *Calculator) applyTinctures(db *ModDB, res *Result, slots []flaskSlot) {
 			inc += effectIncMagic
 		}
 		scale := math.Floor((1+inc/100)*(1+float64(it.Quality)/100)*100) / 100
+		mods = withoutLocal(mods, [][2]string{{"TinctureManaBurnRate", "INC"}, {"TinctureManaBurnRate", "MORE"},
+			{"TinctureCooldownRecovery", "INC"}, {"CooldownRecovery", "INC"}, {"TinctureEffect", "INC"}, {"LocalEffect", "INC"}})
 		key := it.Name
 		if it.Rarity != "UNIQUE" && it.Rarity != "RELIC" {
 			var b strings.Builder
@@ -452,4 +466,23 @@ func (c *Calculator) applyTinctures(db *ModDB, res *Result, slots []flaskSlot) {
 			}
 		}
 	}
+}
+
+// withoutLocal drops the mods Item.lua calcLocal consumes (and removes):
+// the given names and types, without flags, keyword flags or tags other
+// than InSlot.
+func withoutLocal(mods []modparser.Mod, local [][2]string) []modparser.Mod {
+	var out []modparser.Mod
+next:
+	for _, m := range mods {
+		if m.Flags == 0 && m.KeywordFlags == 0 && (len(m.Tags) == 0 || tagStr(m.Tags[0], "type") == "InSlot") {
+			for _, l := range local {
+				if m.Name == l[0] && m.Type == l[1] {
+					continue next
+				}
+			}
+		}
+		out = append(out, m)
+	}
+	return out
 }
