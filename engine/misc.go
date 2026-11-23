@@ -349,6 +349,7 @@ func initConditionMods(db *ModDB) {
 	db.NewMod("Damage", "MORE", -10, "Base", when("MalignantMadness"), madness)
 	db.NewMod("ActionSpeed", "MORE", -10, "Base", when("MalignantMadness"), madness)
 	db.NewMod("PhysicalDamageReduction", "BASE", -15, "Base", when("Crushed"))
+	db.NewMod("CritChanceCap", "BASE", 100, "Base")
 	// IgnoreCond only hides these from the config tab's condition list.
 	ignore := map[string]any{"type": "IgnoreCond"}
 	db.Add(Mod{Name: "Condition:Burning", Type: "FLAG", Value: true, Source: "Base", Tags: []map[string]any{ignore, when("Ignited")}})

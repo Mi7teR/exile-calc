@@ -20,26 +20,28 @@ import (
 
 // Data/Global.lua SkillType ids used here.
 const (
-	stAttack        = 1
-	stSpell         = 2
-	stProjectile    = 3
-	stDamage        = 7
-	stRequireShield = 10
-	stPhysical      = 28
-	stFire          = 29
-	stCold          = 30
-	stLightning     = 31
-	stTriggered     = 37
-	stVaal          = 38
-	stAura          = 39
-	stChaos         = 42
-	stWarcry        = 63
-	stAppliesCurse  = 69
-	stOR            = 73
-	stAND           = 74
-	stNOT           = 75
-	stMovement      = 34
-	stRequireStaff  = 134
+	stAttack                          = 1
+	stSpell                           = 2
+	stProjectile                      = 3
+	stDamage                          = 7
+	stRequireShield                   = 10
+	stPhysical                        = 28
+	stFire                            = 29
+	stCold                            = 30
+	stLightning                       = 31
+	stTriggered                       = 37
+	stVaal                            = 38
+	stAura                            = 39
+	stChaos                           = 42
+	stWarcry                          = 63
+	stAppliesCurse                    = 69
+	stOR                              = 73
+	stAND                             = 74
+	stNOT                             = 75
+	stMovement                        = 34
+	stRequireStaff                    = 134
+	stDualWieldOnly                   = 4
+	stDualWieldRequiresDifferentTypes = 119
 
 	stSkillGrantedBySupport = 115
 )
@@ -65,6 +67,7 @@ const (
 	kfLightning = 0x80
 	kfChaos     = 0x100
 	kfVaal      = 0x200
+	kfBow       = 0x400
 	kfArrow     = 0x800
 	kfTrap      = 0x1000
 	kfMine      = 0x2000
@@ -197,6 +200,7 @@ type skillEffect struct {
 	level, quality   int
 	srcLevel         int // srcInstance.level and quality: the gem's own values
 	srcQuality       int
+	srcPart          int // srcInstance.skillPart (0: not set)
 	hasSrc           bool
 	cfg              *Cfg // gemCfg
 	props            []gemProperty
@@ -245,6 +249,8 @@ type activeSkill struct {
 	// weapon1Cfg and weapon2Cfg are the skill cfgs of main and off hand
 	// attacks (weapon flags).
 	weapon1Cfg, weapon2Cfg *Cfg
+	// part is activeSkill.skillPart (1-based, 0 for single part skills).
+	part int
 }
 
 // modFlagByName is the weapon part of Data/Global.lua ModFlag.
@@ -525,7 +531,7 @@ func (c *Calculator) setupSkills(db *ModDB, b *pobcode.Build, useSwap bool, res 
 	newEffect := func(gc *groupCfg, gi int, gm *pobcode.Gem, gem *gamedata.Gem, eid string, ge *gamedata.Skill) *skillEffect {
 		sq := socketQuality(db.items[gc.cfg.SlotName], ge, socketIndex[gm])
 		eff := &skillEffect{id: eid, ge: ge, gem: gem, level: gm.Level, quality: gm.Quality + sq,
-			srcLevel: gm.Level, srcQuality: gm.Quality, hasSrc: true}
+			srcLevel: gm.Level, srcQuality: gm.Quality, srcPart: gm.SkillPart, hasSrc: true}
 		if gem != nil {
 			cfg, socketed := gemCfg(gc, gi+1)
 			eff.cfg = cfg
@@ -1087,6 +1093,18 @@ func (c *Calculator) buildSkillMods(db *ModDB, s *activeSkill, res *Result) {
 	ge := s.active.ge
 	flags, types := s.flags, s.types
 	flags["buffs"], flags["combat"], flags["effective"] = true, true, true
+	// Multipart skills: the selected part's flags.
+	if parts := ge.Parts; len(parts) > 1 {
+		s.part = min(len(parts), max(s.active.srcPart, 1))
+		for k, v := range parts[s.part-1].Flags {
+			if v {
+				flags[k] = true
+			} else {
+				delete(flags, k)
+			}
+		}
+		flags["multiPart"] = true
+	}
 	w2, w1 := db.items["Weapon 2"], db.items["Weapon 1"]
 	if types[stRequireShield] && (w2 == nil || w2.Base == nil || w2.Base.Type != "Shield") {
 		s.disabled = true
@@ -1098,6 +1116,67 @@ func (c *Calculator) buildSkillMods(db *ModDB, s *activeSkill, res *Result) {
 		if sm := c.statMap(ge, stat); v != 0 && sm != nil && sm.SkillFlag != "" {
 			flags[sm.SkillFlag] = true
 		}
+	}
+	// Weapon flags (CalcActiveSkill.lua "Set weapon flags"): each hand's
+	// weapon type must be in the active skill's and its supports'
+	// weaponTypes; an empty main hand is unarmed ("None"); minion skills
+	// ignore weapon types. Shield attacks, forced source weapons,
+	// countsAsAll1H and "as though" weapon types are not ported.
+	var w1Flags, w2Flags uint64
+	w1Attack, w2Attack := false, false
+	weaponTypes := [][]string{}
+	if len(ge.WeaponTypes) > 0 {
+		weaponTypes = append(weaponTypes, ge.WeaponTypes)
+	}
+	for _, e := range s.effects {
+		if e.ge.Support && len(e.ge.WeaponTypes) > 0 {
+			weaponTypes = append(weaponTypes, e.ge.WeaponTypes)
+		}
+	}
+	handFlags := func(typ string) (uint64, bool, bool) {
+		if _, known := weaponTypeInfo[typ]; !known {
+			return 0, false, false
+		}
+		for _, l := range weaponTypes {
+			if !contains(l, typ) {
+				return 0, false, true
+			}
+		}
+		f, _ := weaponFlags(typ)
+		return f, true, true
+	}
+	attackLike := flags["attack"] || flags["dotFromAttack"]
+	main := s.weapons[0]
+	if main == "" {
+		main = "None"
+	}
+	f, ok, known := handFlags(main)
+	if !ok && s.summon != nil {
+		f, ok = weaponFlags("None")
+		main = "None"
+	}
+	if ok {
+		if attackLike {
+			w1Flags, w1Attack = f, true
+			flags["weapon1Attack"] = true
+			if weaponTypeInfo[main].melee && flags["melee"] {
+				delete(flags, "projectile")
+			} else if !weaponTypeInfo[main].melee && flags["projectile"] {
+				delete(flags, "melee")
+			}
+		}
+	} else if (types[stDualWieldOnly] || known) && s.summon == nil {
+		s.disabled = true
+	}
+	if f, ok, known := handFlags(s.weapons[1]); ok && s.weapons[1] != "" {
+		if types[stDualWieldRequiresDifferentTypes] && s.weapons[0] == s.weapons[1] {
+			s.disabled = true
+		} else if attackLike {
+			w2Flags, w2Attack = f, true
+			flags["weapon2Attack"] = true
+		}
+	} else if (types[stDualWieldOnly] || known && s.weapons[1] != "") && s.summon == nil {
+		s.disabled = true
 	}
 	var modFlags uint64
 	if flags["hit"] {
@@ -1143,6 +1222,9 @@ func (c *Calculator) buildSkillMods(db *ModDB, s *activeSkill, res *Result) {
 	case !types[stTriggered]:
 		flags["selfCast"] = true
 	}
+	if w1Attack && w1Flags&modFlagByName["Bow"] != 0 {
+		kw |= kfBow
+	}
 	if types[stAttack] {
 		kw |= kfAttack
 	}
@@ -1153,30 +1235,6 @@ func (c *Calculator) buildSkillMods(db *ModDB, s *activeSkill, res *Result) {
 	for _, f := range ge.BaseFlags {
 		baseFlags[f] = true
 	}
-	// Weapon flags of a minion's attack: its weapon type, and minion skills
-	// ignore weapon types ("None" when unknown). The player's weapon flags
-	// (weaponTypes checks, off hand) are not ported yet.
-	var w1Flags, w2Flags uint64
-	w1Attack, w2Attack := false, false
-	if s.summon != nil && flags["attack"] {
-		f, ok := weaponFlags(s.weapons[0])
-		if !ok {
-			f, _ = weaponFlags("None")
-		}
-		w1Flags, w1Attack = f, true
-		if info := weaponTypeInfo[s.weapons[0]]; info.melee || s.weapons[0] == "" {
-			if flags["melee"] {
-				delete(flags, "projectile")
-			}
-		} else if flags["projectile"] {
-			delete(flags, "melee")
-		}
-		flags["weapon1Attack"] = true
-		if f, ok := weaponFlags(s.weapons[1]); ok && s.weapons[1] != "" {
-			w2Flags, w2Attack = f, true
-			flags["weapon2Attack"] = true
-		}
-	}
 	summonName := ""
 	if s.summon != nil {
 		summonName = s.summon.active.ge.Name
@@ -1184,7 +1242,7 @@ func (c *Calculator) buildSkillMods(db *ModDB, s *activeSkill, res *Result) {
 	s.cfg = &Cfg{
 		Flags: modFlags | w1Flags, KeywordFlags: kw, SkillName: strings.TrimPrefix(ge.Name, "Vaal "),
 		SkillID: s.active.id, BaseFlags: baseFlags, SkillTypes: types, SkillGem: s.active.gem,
-		SlotName: s.cfg.SlotName, SummonSkillName: summonName,
+		SlotName: s.cfg.SlotName, SummonSkillName: summonName, SkillPart: s.part,
 	}
 	if w1Attack {
 		w := *s.cfg

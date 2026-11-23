@@ -467,6 +467,15 @@ func (c *Calculator) Calc(b *pobcode.Build) (*Result, error) {
 	recoup(db)
 	buildDefenceEstimations(db)
 	res.Minion = c.mainMinion(db, skills, buffs, b.Level, res)
+	if s := mainSkill(skills); s != nil {
+		w1, w2 := playerWeapons(db, gearMods, spec.ClassID)
+		if debugPlayerSkill != nil {
+			debugPlayerSkill(s)
+		}
+		for k, v := range c.offence(db, s, w1, w2) {
+			db.output[k] = v
+		}
+	}
 	for k, v := range db.UnsupportedTags {
 		if res.UnsupportedTags == nil {
 			res.UnsupportedTags = map[string]int{}

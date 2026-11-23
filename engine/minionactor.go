@@ -25,7 +25,6 @@ func minionBaseMods(mdb *ModDB) {
 	}
 	mdb.NewMod("BlockChanceMax", "BASE", 75, "Base")
 	mdb.NewMod("SpellBlockChanceMax", "BASE", 75, "Base")
-	mdb.NewMod("CritChanceCap", "BASE", 100, "Base")
 	mdb.NewMod("ImpaleStacksMax", "BASE", 5, "Base")
 	mdb.conditions["Buffed"], mdb.conditions["Combat"], mdb.conditions["Effective"] = true, true, true
 	chargeBaseMods(mdb)
@@ -316,6 +315,7 @@ var (
 	debugMinionSkill   func(*activeSkill)
 	debugEnemy         func(*ModDB)
 	debugSkills        func([]*activeSkill)
+	debugPlayerSkill   func(*activeSkill)
 )
 
 var minionOffenceStats = []string{"Speed", "HitChance", "CritChance", "CritMultiplier", "AverageDamage", "TotalDPS"}

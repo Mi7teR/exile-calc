@@ -1,6 +1,10 @@
 package engine
 
-import "math"
+import (
+	"math"
+
+	"github.com/Mi7teR/poe-lib/modparser"
+)
 
 // The hit damage part of calcs.offence (Modules/CalcOffence.lua) for one
 // pass: the main hand of an attack or the skill itself. Not ported yet:
@@ -171,6 +175,31 @@ func (c *Calculator) offence(actor *ModDB, s *activeSkill, w1 hitSource, w2 *hit
 	for _, e := range list.List(cfg, "SkillData") {
 		skillData(data, e.Value)
 	}
+	// Corpse and enemy explosions: base damage from the monster's life.
+	monsterLife := 100.0
+	if v, ok := num(data["corpseLife"]); ok {
+		monsterLife = v
+	} else if actor.enemyEnv != nil && actor.enemyEnv.level > 0 && actor.enemyEnv.level <= len(c.data.Monster.Life) {
+		lv := actor.enemyEnv.level
+		monsterLife = c.data.Monster.Life[lv-1]
+	}
+	if truthy(data["explodeCorpse"]) {
+		t := "Fire"
+		if v, ok := data["corpseExplosionDamageType"].(string); ok {
+			t = v
+		}
+		m, ok := num(data["corpseExplosionLifeMultiplier"])
+		if !ok {
+			m, _ = num(data["selfFireExplosionLifeMultiplier"])
+		}
+		data[t+"BonusMin"], data[t+"BonusMax"] = monsterLife*m, monsterLife*m
+	}
+	if s.flags["monsterExplode"] {
+		for _, t := range dmgTypeList {
+			p, _ := num(data[t+"EffectiveExplodePercentage"])
+			data[t+"Min"], data[t+"Max"] = p*monsterLife/100, p*monsterLife/100
+		}
+	}
 	// Additional stat bonuses.
 	if list.Flag("IronGrip") {
 		list.Add(Mod{Name: "PhysicalDamage", Type: "INC", Value: actor.strDmgBonus, Flags: mfAttack | mfProjectile, Source: "Strength"})
@@ -191,6 +220,7 @@ func (c *Calculator) offence(actor *ModDB, s *activeSkill, w1 hitSource, w2 *hit
 			list.Add(Mod{Name: "Damage", Type: "INC", Value: math.Floor(list.Sum("INC", x.stat) * transfiguration), Flags: x.flags, Source: x.source})
 		}
 	}
+	c.offenceStatConversions(actor, s, w1, w2)
 	isAttack := s.flags["attack"]
 	var passes []*hitPass
 	if isAttack {
@@ -606,4 +636,25 @@ func (c *Calculator) enemyEffMult(actor, list *ModDB, cfg *Cfg, s *activeSkill, 
 		eff *= 1 - (resist-pen)*useResChance/100
 	}
 	return eff
+}
+
+// unarmedWeaponData is data.unarmedWeaponData (Data.lua) by class id:
+// attack rate 1.2, no crit, physical 2 to this.
+var unarmedPhysicalMax = [...]float64{6, 8, 5, 5, 6, 6, 5}
+
+// playerWeapons is env.player.weaponData1/2 (CalcSetup.lua): the equipped
+// weapons, an unarmed main hand, and no off hand pass for a shield or
+// quiver. Hollow Palm and countsAsDualWielding are not ported.
+func playerWeapons(db *ModDB, gear map[string][]modparser.Mod, classID int) (hitSource, *hitSource) {
+	w1, _, ok := itemWeapon(db.items["Weapon 1"], gear["Weapon 1"])
+	if !ok {
+		w1 = hitSource{min: map[string]float64{"Physical": 2}, max: map[string]float64{"Physical": 6}, attackRate: 1.2}
+		if classID >= 0 && classID < len(unarmedPhysicalMax) {
+			w1.max["Physical"] = unarmedPhysicalMax[classID]
+		}
+	}
+	if w2, _, ok := itemWeapon(db.items["Weapon 2"], gear["Weapon 2"]); ok {
+		return w1, &w2
+	}
+	return w1, nil
 }

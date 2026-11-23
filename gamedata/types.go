@@ -366,6 +366,14 @@ type Skill struct {
 	MinionHasItemSet         bool                `json:"minionHasItemSet,omitempty"`
 	CastTime                 float64             `json:"castTime,omitempty"`
 	MinionUses               []string            `json:"minionUses,omitempty"` // item slots the minion uses
+	Parts                    []SkillPart         `json:"parts,omitempty"`
+}
+
+// SkillPart is one of a granted effect's parts: its name and the skill
+// flags it sets (true) or clears (false).
+type SkillPart struct {
+	Name  string          `json:"name"`
+	Flags map[string]bool `json:"flags,omitempty"`
 }
 
 // StatValue is a {stat, value} pair (qualityStats, constantStats).

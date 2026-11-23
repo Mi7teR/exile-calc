@@ -113,6 +113,29 @@ func convertSkill(t *luadata.Table) (*gamedata.Skill, error) {
 			return nil, err
 		}
 	}
+	if parts, ok := t.Get("parts").(*luadata.Table); ok {
+		for _, pv := range parts.List {
+			pt, ok := pv.(*luadata.Table)
+			if !ok {
+				continue
+			}
+			part := gamedata.SkillPart{}
+			for _, k := range pt.Keys {
+				switch v := pt.Get(k).(type) {
+				case luadata.String:
+					if keyText(k) == "name" {
+						part.Name = sanitiseText(string(v))
+					}
+				case luadata.Bool:
+					if part.Flags == nil {
+						part.Flags = map[string]bool{}
+					}
+					part.Flags[keyText(k)] = bool(v)
+				}
+			}
+			s.Parts = append(s.Parts, part)
+		}
+	}
 	s.AddFlags = trueKeys(t.Get("addFlags"))
 	s.WeaponTypes = trueKeys(t.Get("weaponTypes"))
 	s.BaseFlags = trueKeys(t.Get("baseFlags"))

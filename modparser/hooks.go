@@ -40,6 +40,20 @@ var hooks = map[string]Hook{
 				cond("ArmourMax", true), cond("ArmourAvg", true)),
 		}
 	},
+	// ["deal (%d+)%% more damage with hits and ailments to rare and unique enemies for each second they've ever been in your presence, up to a maximum of (%d+)%%"] = function(num, _, limit) return {
+	//   mod("Damage", "MORE", num, nil, 0, bor(KeywordFlag.Hit, KeywordFlag.Ailment), { type = "Multiplier", var = "EnemyPresenceSeconds", actor = "enemy", limit = tonumber(limit) }, { type = "ActorCondition", actor = "enemy", var = "RareOrUnique" }) } end
+	"specialModList[^deal (%d+)%% more damage with hits and ailments to rare and unique enemies for each second they've ever been in your presence, up to a maximum of (%d+)%%$]": func(p *Parser, a []any) any {
+		n, _ := toNumber(arg(a, 0)).(float64)
+		limit, _ := toNumber(argS(a, 2)).(float64)
+		return []any{presenceDamage(n, limit, nil)}
+	},
+	// ["deal (%d+)%% more damage with hits and ailments to rare and unique enemies for every (%d+) seconds they've ever been in your presence, up to a maximum of (%d+)%%"] = function(num, _, div, limit) return {
+	//   mod("Damage", "MORE", num, nil, 0, bor(KeywordFlag.Hit, KeywordFlag.Ailment), { type = "Multiplier", var = "EnemyPresenceSeconds", actor = "enemy", limit = tonumber(limit), div = div }, { type = "ActorCondition", actor = "enemy", var = "RareOrUnique" }) } end
+	"specialModList[^deal (%d+)%% more damage with hits and ailments to rare and unique enemies for every (%d+) seconds they've ever been in your presence, up to a maximum of (%d+)%%$]": func(p *Parser, a []any) any {
+		n, _ := toNumber(arg(a, 0)).(float64)
+		limit, _ := toNumber(argS(a, 3)).(float64)
+		return []any{presenceDamage(n, limit, argS(a, 2))}
+	},
 	// ["(%d+)%% of chaos damage t?a?k?e?n? ?does not bypass energy shield"] = function(num) return {
 	//   mod("ChaosEnergyShieldBypass", "BASE", -num) } end
 	"specialModList[^(%d+)%% of chaos damage t?a?k?e?n? ?does not bypass energy shield$]": func(p *Parser, a []any) any {
@@ -636,4 +650,16 @@ func unresolved(v any) bool {
 		}
 	}
 	return false
+}
+
+// presenceDamage is the War of Attrition mod: MORE damage with hits and
+// ailments per second (or per div seconds) the enemy was in your presence.
+func presenceDamage(n, limit float64, div any) map[string]any {
+	const kfHit, kfAilment = 0x40000, 0x80000
+	mult := map[string]any{"type": "Multiplier", "var": "EnemyPresenceSeconds", "actor": "enemy", "limit": limit}
+	if div != nil {
+		mult["div"] = div
+	}
+	return withTags(newMod("Damage", "MORE", n, 0, kfHit|kfAilment), mult,
+		map[string]any{"type": "ActorCondition", "actor": "enemy", "var": "RareOrUnique"})
 }
