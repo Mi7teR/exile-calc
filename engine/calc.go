@@ -427,10 +427,12 @@ func (c *Calculator) Calc(b *pobcode.Build) (*Result, error) {
 	c.lifeMana(db)
 	reservations(db, skills, res)
 	totemCounts(db, skills)
+	chilling := chillSkills(db, skills)
 	charges(db) // early, for stats that depend on charges
 	c.applyBuffs(db, skills, res)
 	c.extraCurses(db, res)
 	extraAuras(db)
+	guaranteedChills(db, chilling)
 	c.mergeKeystones(db, keystones, res)
 	defenceForConditionals(db, gearMods)
 	charges(db)
@@ -438,11 +440,13 @@ func (c *Calculator) Calc(b *pobcode.Build) (*Result, error) {
 	actorMisc(db, mainSkill(skills), flaskSt.silver, flaskSt.silverInc)
 	rage(db, mainCfg(skills))
 	playerEnemyMods.apply(db)
+	enemyAilments(db, skills)
 	actorMisc(db.enemy, nil, false, -100)
 	res.Skills = skillInfo(skills)
 	c.resistances(db)
 	c.defence(db, gearMods, keystones)
 	avoidanceAndRecovery(db)
+	recoup(db)
 	buildDefenceEstimations(db)
 	for k, v := range db.UnsupportedTags {
 		if res.UnsupportedTags == nil {

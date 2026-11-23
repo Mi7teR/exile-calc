@@ -214,8 +214,7 @@ func actorMisc(db *ModDB, main *activeSkill, silverFlask bool, silverFlaskInc fl
 		db.NewMod("Accuracy", "MORE", math.Floor(-20*effect), "Blind")
 		db.NewMod("Evasion", "MORE", math.Floor(-20*effect), "Blind")
 	}
-	if db.Flag("Chill") {
-		effect := selfAilment(db, "Chill", true)
+	if effect, ok := selfAilment(db, "Chill", true); ok && db.Flag("Chill") {
 		sign := -1.0
 		if db.Flag("SelfChillEffectIsReversed") {
 			sign = 1
@@ -225,11 +224,11 @@ func actorMisc(db *ModDB, main *activeSkill, silverFlask bool, silverFlaskInc fl
 		}
 		db.NewMod("ActionSpeed", "INC", sign*effect, "Chill")
 	}
-	if db.Flag("Shock") {
-		db.NewMod("DamageTaken", "INC", selfAilment(db, "Shock", false), "Shock")
+	if effect, ok := selfAilment(db, "Shock", false); ok && db.Flag("Shock") {
+		db.NewMod("DamageTaken", "INC", effect, "Shock")
 	}
-	if db.Flag("Scorch") {
-		db.NewMod("ElementalResist", "BASE", -selfAilment(db, "Scorch", true), "Scorch")
+	if effect, ok := selfAilment(db, "Scorch", true); ok && db.Flag("Scorch") {
+		db.NewMod("ElementalResist", "BASE", -effect, "Scorch")
 	}
 	if db.Flag("Freeze") {
 		effect := math.Max(math.Floor(70*calcMod(db, nil, "SelfChillEffect")), 0)
@@ -254,20 +253,19 @@ func actorMisc(db *ModDB, main *activeSkill, silverFlask bool, silverFlaskInc fl
 	}
 }
 
-// selfAilment is the effect of Chill, Shock or Scorch on the player;
+// selfAilment is the effect of Chill, Shock or Scorch on the actor;
 // shockAvoid says whether ShockAvoidAppliesToElementalAilments counts.
-func selfAilment(db *ModDB, name string, shockAvoid bool) float64 {
+// PoB reads m_max(Sum(Self<X>Override), Override(<X>Val)) or default: with
+// no override the call returns no values, so m_max gets the sum alone, and
+// a number is never nil, so the default never applies.
+func selfAilment(db *ModDB, name string, shockAvoid bool) (float64, bool) {
 	a := nonDamagingAilment[name]
 	value := db.Sum("BASE", "Self"+name+"Override")
 	if o, ok := db.Override(name + "Val"); ok {
 		value = math.Max(value, o)
-	} else if value == 0 {
-		// m_max(sum, nil) errors in Lua unless the override is set; a
-		// zero sum with no override falls back to the default.
-		value = a.def
 	}
 	if db.Flag(name+"Immune", "ElementalAilmentImmune") {
-		return 0
+		return 0, true
 	}
 	avoid := db.Sum("BASE", "Avoid"+name, "AvoidAilments", "AvoidElementalAilments")
 	if shockAvoid && db.Flag("ShockAvoidAppliesToElementalAilments") {
@@ -277,13 +275,13 @@ func selfAilment(db *ModDB, name string, shockAvoid bool) float64 {
 		avoid += db.Sum("BASE", "SpellSuppressionChance") / 2
 	}
 	if math.Floor(math.Min(avoid, 100)) == 100 {
-		return 0
+		return 0, true
 	}
 	max := a.max
 	if o, ok := db.Override(name + "Max"); ok {
 		max = o
 	}
-	return math.Min(math.Max(math.Floor(value*calcMod(db, nil, "Self"+name+"Effect")), 0), max)
+	return math.Min(math.Max(math.Floor(value*calcMod(db, nil, "Self"+name+"Effect")), 0), max), true
 }
 
 // elusive is the Elusive part of doActorMisc.
@@ -447,4 +445,210 @@ func warcryPower(db *ModDB) {
 	}
 	db.output["WarcryPower"] = p
 	db.multipliers["WarcryPower"] = p
+}
+
+// selfAilmentData is Data.lua data.nonDamagingAilment for the ailments the
+// player applies to the enemy: maximum effect and display precision.
+var enemyAilmentData = []struct {
+	name, condition string
+	max             float64
+	precision       int
+}{
+	{"Chill", "Chilled", 30, 0}, {"Shock", "Shocked", 50, 0}, {"Scorch", "Scorched", 30, 0},
+	{"Brittle", "Brittle", 6, 2}, {"Sap", "Sapped", 20, 0},
+}
+
+// enemyAilments ports calcs.perform's "Calculate maximum and apply the
+// strongest non-damaging ailments": the player's chill, shock, scorch,
+// brittle and sap on the enemy, active while the enemy has the condition.
+func enemyAilments(db *ModDB, skills []*activeSkill) {
+	out, enemy := db.output, db.enemy
+	main := mainSkill(skills)
+	for _, a := range enemyAilmentData {
+		if enemy.Flag("Condition:Already"+a.condition) || enemy.Flag(a.name+"Immune", "ElementalAilmentImmune") ||
+			enemy.Sum("BASE", "Avoid"+a.name, "AvoidAilments", "AvoidElementalAilments") >= 100 {
+			continue
+		}
+		override, minimum := 0.0, 0.0
+		var rows []Mod
+		for _, n := range []string{a.name + "Base", a.name + "Override", a.name + "Minimum"} {
+			for i := range db.mods[n] {
+				m := db.mods[n][i]
+				if m.Type != "BASE" || m.Flags != 0 || m.KeywordFlags != 0 {
+					continue
+				}
+				if v, ok := db.eval(&m, nil); ok {
+					if f, isNum := num(v); isNum && f == 0 {
+						continue
+					}
+					rows = append(rows, m)
+				}
+			}
+		}
+		for _, m := range rows {
+			effect, _ := num(m.Value)
+			scales := m.Name == a.name+"Base" || m.Name == a.name+"Minimum"
+			if m.Name == a.name+"Override" {
+				enemy.Add(Mod{Name: "Condition:" + a.condition, Type: "FLAG", Value: true, Source: m.Source})
+			}
+			if scales {
+				src := db
+				if a.name != "Scorch" && a.name != "Sap" && a.name != "Brittle" && main != nil && main.mods != nil &&
+					!main.mods.Flag("Cannot"+a.name) && main.flags["hit"] && db.Flag("ChecksHighestDamage") {
+					src = main.mods
+				}
+				effect *= calcMod(src, nil, "Enemy"+a.name+"Effect")
+			}
+			effect *= calcMod(enemy, nil, "Self"+a.name+"Effect")
+			if scales {
+				db.Add(Mod{Name: a.name + "Override", Type: "BASE", Value: effect, Flags: m.Flags, KeywordFlags: m.KeywordFlags, Tags: m.Tags, Source: m.Source})
+				if m.Name == a.name+"Minimum" {
+					minimum += effect
+				}
+			}
+			override = math.Max(math.Max(override, effect), minimum)
+		}
+		maxAilment, ok := db.Override(a.name + "Max")
+		if !ok {
+			maxAilment = 0
+			for _, s := range skills {
+				v := a.max
+				if s.mods != nil {
+					v += s.mods.Sum("BASE", a.name+"Max")
+				}
+				maxAilment = math.Max(maxAilment, v)
+			}
+		}
+		out["Maximum"+a.name] = maxAilment
+		p := math.Pow(10, float64(a.precision))
+		cur := math.Floor(math.Min(math.Max(override, enemy.Sum("BASE", a.name+"Val")), maxAilment)*p) / p
+		out["Current"+a.name] = cur
+		when := map[string]any{"type": "Condition", "var": a.condition}
+		switch a.name {
+		case "Chill":
+			enemy.NewMod("ActionSpeed", "INC", -cur, "Chill", when)
+			switch {
+			case db.Flag("ChillEffectIncDamageTaken"):
+				enemy.NewMod("DamageTaken", "INC", cur, "Ahuana's Bite", when)
+			case db.Flag("ChillEffectIncColdDamageTaken"):
+				enemy.NewMod("ColdDamageTaken", "INC", cur, "Chilled by Hits", when)
+			case db.Flag("ChillingAreaIncColdDamageTaken"):
+				enemy.NewMod("ColdDamageTaken", "INC", cur, "Chilling Area", when)
+			}
+			if db.Flag("ChillEffectLessDamageDealt") {
+				enemy.NewMod("Damage", "MORE", -cur/2, "Shaper of Winter", when)
+			}
+		case "Shock":
+			if db.Flag("ShockCanStack") {
+				limit, ok := db.Override("ShockStacksMax")
+				if !ok {
+					limit = db.Sum("BASE", "ShockStacksMax")
+				}
+				enemy.NewMod("DamageTaken", "INC", cur, "Shock", when, map[string]any{"type": "Multiplier", "var": "ShockStacks", "limit": limit})
+				out["CurrentShock"] = cur * math.Min(enemy.Sum("BASE", "Multiplier:ShockStacks"), limit)
+			} else {
+				enemy.NewMod("DamageTaken", "INC", cur, "Shock", when)
+			}
+		case "Scorch":
+			if db.Flag("ScorchCanStack") {
+				limit, ok := db.Override("ScorchStacksMax")
+				if !ok {
+					limit = db.Sum("BASE", "ScorchStacksMax")
+				}
+				enemy.NewMod("ElementalResist", "BASE", -cur, "Scorch", when, map[string]any{"type": "Multiplier", "var": "ScorchStacks", "limit": limit})
+				out["CurrentScorch"] = cur * math.Min(enemy.Sum("BASE", "Multiplier:ScorchStacks"), limit)
+			} else {
+				enemy.NewMod("ElementalResist", "BASE", -cur, "Scorch", when)
+			}
+		case "Brittle":
+			enemy.NewMod("SelfCritChance", "BASE", cur, "Brittle", when)
+		case "Sap":
+			enemy.NewMod("Damage", "MORE", -cur, "Sap", when)
+		}
+		enemy.Add(Mod{Name: "Condition:Already" + a.condition, Type: "FLAG", Value: true, Tags: []map[string]any{when}})
+	}
+}
+
+const (
+	stNonHitChill = 67 // SkillType.NonHitChill
+	stChillArea   = 68 // SkillType.ChillingArea
+)
+
+// sumSkillSource is skillModList:Sum("INC", { source = "Skill" }, name):
+// only mods whose source kind is "Skill".
+func sumSkillSource(db *ModDB, name string) float64 {
+	total := 0.0
+	for d := db; d != nil; d = d.parent {
+		for i := range d.mods[name] {
+			m := &d.mods[name][i]
+			if m.Type != "INC" || m.Flags != 0 || m.KeywordFlags != 0 || strings.SplitN(m.Source, ":", 2)[0] != "Skill" {
+				continue
+			}
+			if v, ok := db.eval(m, nil); ok {
+				f, _ := num(v)
+				total += f
+			}
+		}
+	}
+	return total
+}
+
+// chillSkills is the chill part of calcs.perform's active skill loop:
+// Skitterbots' ailments and the skills that always chill, returned for
+// guaranteedChills.
+func chillSkills(db *ModDB, skills []*activeSkill) []*activeSkill {
+	out := db.output
+	var guaranteed []*activeSkill
+	for _, s := range skills {
+		if s.mods == nil {
+			continue
+		}
+		bonechill := truthy(s.data["supportBonechill"])
+		if bonechill && (s.types[stChillArea] || s.types[stNonHitChill] || !s.mods.Flag("CannotChill")) {
+			out["HasBonechill"] = 1
+		}
+		name := s.active.ge.Name
+		if name == "Summon Skitterbots" {
+			ailmentEffect := s.mods.Sum("INC", "SkitterbotAilmentEffect")
+			for _, a := range []struct{ name, cond, cannot string }{
+				{"Shock", "Shocked", "SkitterbotsCannotShock"}, {"Chill", "Chilled", "SkitterbotsCannotChill"},
+			} {
+				if s.mods.Flag(a.cannot) {
+					continue
+				}
+				def := nonDamagingAilment[a.name].def
+				effect := def * (1 + (sumSkillSource(s.mods, "Enemy"+a.name+"Effect")+ailmentEffect)/100)
+				db.NewMod(a.name+"Override", "BASE", effect, name)
+				db.enemy.Add(Mod{Name: "Condition:" + a.cond, Type: "FLAG", Value: true, Source: name})
+				if s.mods.Flag("SkitterbotAffectPlayer") {
+					db.Add(Mod{Name: a.name, Type: "FLAG", Value: true, Source: name})
+					db.NewMod("Self"+a.name+"Override", "BASE", effect, name)
+				}
+				if a.name == "Chill" && bonechill {
+					db.Add(Mod{Name: "SkitterbotBonechill", Type: "FLAG", Value: true, Source: name})
+				}
+			}
+			if s.mods.Flag("ScorchingSkitterbot") {
+				effect := nonDamagingAilment["Scorch"].def * (1 + (sumSkillSource(s.mods, "EnemyScorchEffect")+ailmentEffect)/100)
+				db.NewMod("ScorchOverride", "BASE", effect, name)
+				db.enemy.Add(Mod{Name: "Condition:Scorched", Type: "FLAG", Value: true, Source: name})
+				if s.mods.Flag("SkitterbotAffectPlayer") {
+					db.Add(Mod{Name: "Scorch", Type: "FLAG", Value: true, Source: name})
+					db.NewMod("SelfScorchOverride", "BASE", effect, name)
+				}
+			}
+		} else if s.flags["guaranteedChill"] || s.types[stChillArea] || (s.types[stNonHitChill] && !s.mods.Flag("CannotChill")) {
+			guaranteed = append(guaranteed, s)
+			db.enemy.Add(Mod{Name: "Condition:Chilled", Type: "FLAG", Value: true, Source: name})
+		}
+	}
+	return guaranteed
+}
+
+// guaranteedChills is "Calculate guaranteed chills after buffs".
+func guaranteedChills(db *ModDB, skills []*activeSkill) {
+	for _, s := range skills {
+		effect := nonDamagingAilment["Chill"].def * calcMod(s.mods, s.cfg, "EnemyChillEffect")
+		db.NewMod("ChillOverride", "BASE", effect, s.active.ge.Name)
+	}
 }

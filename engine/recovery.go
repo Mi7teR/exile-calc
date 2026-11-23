@@ -309,6 +309,67 @@ func luckyRolls(db *ModDB, chance, rolls float64) float64 {
 	return math.Pow(p, -rolls) * chance
 }
 
+// recoup is the recoup part of calcs.defence: the Recoup outputs and
+// anyRecoup, which the EHP estimation reads.
+func recoup(db *ModDB) {
+	out := db.output
+	out["anyRecoup"] = 0
+	types := []string{"Life", "Mana", "EnergyShield"}
+	inc := 1 + db.Sum("INC", "RecoupRecoveryAmount")/100
+	more := db.More("RecoupRecoveryAmount")
+	for _, a := range types {
+		for _, b := range types {
+			if a == b {
+				continue
+			}
+			if flag := "Add" + a + "RecoupTo" + b + "Recoup"; db.Flag(flag) {
+				source := ""
+				for _, r := range db.tabulateType(flag, "FLAG") {
+					source = r.Source
+					break
+				}
+				db.NewMod(b+"Recoup", "BASE", db.Sum("BASE", a+"Recoup"), source)
+			}
+		}
+	}
+	lifeBlocked := func(t string) bool {
+		return t == "Life" && (db.Flag("CannotRecoupLife") || db.Flag("EnergyShieldRecoupInsteadOfLife"))
+	}
+	for _, t := range types {
+		switch {
+		case t == "Life" && db.Flag("CannotRecoupLife"):
+			out["LifeRecoup"] = 0
+		case t == "Life" && db.Flag("EnergyShieldRecoupInsteadOfLife"):
+			out["LifeRecoup"] = 0
+			db.NewMod("EnergyShieldRecoup", "BASE", db.Sum("BASE", "LifeRecoup"), "Life Recoup Conversion")
+		default:
+			out[t+"Recoup"] = db.Sum("BASE", t+"Recoup") * out[t+"RecoveryRateMod"] * inc * more
+			out["anyRecoup"] += out[t+"Recoup"]
+		}
+	}
+	if db.Flag("UsePowerCharges") && db.Flag("PowerChargesConvertToAbsorptionCharges") {
+		v := db.Sum("BASE", "PerAbsorptionElementalEnergyShieldRecoup")
+		for _, e := range []string{"Cold", "Fire", "Lightning"} {
+			db.NewMod(e+"EnergyShieldRecoup", "BASE", v, "Absorption Charges", map[string]any{"type": "Multiplier", "var": "AbsorptionCharge"})
+		}
+	}
+	for _, t := range types {
+		for _, d := range dmgTypes {
+			name := d + t + "Recoup"
+			v := db.Sum("BASE", name)
+			if lifeBlocked(t) {
+				out[name] = 0
+				if db.Flag("EnergyShieldRecoupInsteadOfLife") && !db.Flag("CannotRecoupLife") {
+					db.NewMod(d+"EnergyShieldRecoup", "BASE", v, "Life Recoup Conversion")
+				}
+				continue
+			}
+			out[name] = v * out[t+"RecoveryRateMod"] * inc * more
+			out["anyRecoup"] += out[name]
+		}
+	}
+}
+
 var dmgTypes = []string{"Physical", "Lightning", "Cold", "Fire", "Chaos"} // CalcDefence.lua dmgTypeList
 
 // actionSpeedMod is calcs.actionSpeedMod (CalcPerform.lua).
