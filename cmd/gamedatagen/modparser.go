@@ -138,7 +138,15 @@ func listMod(args ...luadata.Value) *luadata.Table {
 	return &luadata.Table{List: []luadata.Value{m}}
 }
 
+// ailmentDefaults are Data.lua's data.nonDamagingAilment[...].default, which
+// ModParser.lua reads in a few mod tables; they are substituted into the
+// source so the rest of data stays unresolved.
+var ailmentDefaults = map[string]string{"Chill": "10", "Shock": "15", "Scorch": "10", "Brittle": "2", "Sap": "6"}
+
 func convertParserTables(modParserSrc, globalSrc, clusterSrc string, tree *gamedata.Tree) (map[string]any, []string, error) {
+	for name, v := range ailmentDefaults {
+		modParserSrc = strings.ReplaceAll(modParserSrc, `data.nonDamagingAilment["`+name+`"].default`, v)
+	}
 	env, err := parserEnv(globalSrc)
 	if err != nil {
 		return nil, nil, err

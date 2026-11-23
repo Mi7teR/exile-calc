@@ -17,27 +17,26 @@ import (
 // headless PoB v2.68.1 computed for them. These are the stats the engine
 // covers so far, with the tolerance from the spec: 0.5% for defence.
 var goldenStats = []string{
-	"Str", "Dex", "Int", "Life", "Mana",
-	"FireResist", "ColdResist", "LightningResist", "ChaosResist",
-	"Armour", "Evasion", "EnergyShield", "Ward", "BlockChance", "SpellBlockChance",
-	"SpellSuppressionChance", "AttackDodgeChance", "SpellDodgeChance",
-	"LifeRegenRecovery", "EnergyShieldRegenRecovery", "EnergyShieldRecharge",
+	"Str", "Dex", "Int", "Life", "Mana", "FireResist", "ColdResist", "LightningResist", "ChaosResist", "Armour",
+	"Evasion", "EnergyShield", "Ward", "BlockChance", "SpellBlockChance", "SpellSuppressionChance",
+	"AttackDodgeChance", "SpellDodgeChance", "LifeRegenRecovery", "EnergyShieldRegenRecovery",
+	"EnergyShieldRecharge", "ActionSpeedMod", "AvoidAllDamageFromHitsChance", "IgniteAvoidChance",
+	"ChillAvoidChance", "FreezeAvoidChance", "ShockAvoidChance", "BleedAvoidChance", "PoisonAvoidChance",
+	"CritExtraDamageReduction", "EffectiveBlockChance", "EffectiveSpellBlockChance", "FireTakenDotMult",
+	"ColdTakenHit", "LifeHitPool", "PhysicalTotalPool", "ChaosTotalPool",
 }
 
 const tolerance = 0.005
 
 // reportStats are compared and logged but not part of the ratchet yet.
-var reportStats = []string{"ManaRegenRecovery", "MovementSpeedMod",
-	"ActionSpeedMod", "BasePhysicalDamageReduction", "BasePhysicalDamageReductionWhenHit", "AvoidAllDamageFromHitsChance",
-	"IgniteAvoidChance", "ChillAvoidChance", "FreezeAvoidChance", "ShockAvoidChance", "BleedAvoidChance", "PoisonAvoidChance",
-	"CritExtraDamageReduction", "CurseEffectOnSelf",
-	"EvadeChance", "MeleeEvadeChance", "ProjectileEvadeChance",
-	"EffectiveBlockChance", "EffectiveSpellBlockChance", "AverageNotHitChance", "EnemyCritChance",
-	"PhysicalEnemyDamage", "FireEnemyDamage", "ChaosEnemyDamage", "totalTakenDamage",
-	"PhysicalTakenDotMult", "FireTakenDotMult", "PhysicalTakenHit", "FireTakenHit", "ColdTakenHit", "ChaosTakenHit", "totalTakenHit",
-	"LifeHitPool", "PhysicalTotalPool", "ChaosTotalPool", "FireTotalHitPool",
-	"PhysicalMaximumHitTaken", "FireMaximumHitTaken", "ColdMaximumHitTaken", "LightningMaximumHitTaken", "ChaosMaximumHitTaken",
-	"NumberOfDamagingHits", "NumberOfMitigatedDamagingHits", "TotalEHP", "EHPSurvivalTime",
+var reportStats = []string{
+	"ManaRegenRecovery", "MovementSpeedMod", "BasePhysicalDamageReduction",
+	"BasePhysicalDamageReductionWhenHit", "CurseEffectOnSelf", "EvadeChance", "MeleeEvadeChance",
+	"ProjectileEvadeChance", "AverageNotHitChance", "EnemyCritChance", "PhysicalEnemyDamage", "FireEnemyDamage",
+	"ChaosEnemyDamage", "totalTakenDamage", "PhysicalTakenDotMult", "PhysicalTakenHit", "FireTakenHit",
+	"ChaosTakenHit", "totalTakenHit", "FireTotalHitPool", "PhysicalMaximumHitTaken", "FireMaximumHitTaken",
+	"ColdMaximumHitTaken", "LightningMaximumHitTaken", "ChaosMaximumHitTaken", "NumberOfDamagingHits",
+	"NumberOfMitigatedDamagingHits", "TotalEHP", "EHPSurvivalTime",
 }
 
 // Ratchet: builds where every stat above is within tolerance. Raise it as
