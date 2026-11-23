@@ -365,6 +365,7 @@ func (c *Calculator) Calc(b *pobcode.Build) (*Result, error) {
 	keystones := map[string]bool{}
 	c.applyFlasks(db, res, flasks)
 	c.mergeKeystones(db, keystones, res)
+	banners(db)
 	// CalcPerform.lua: "gain maximum life instead of maximum energy shield
 	// from equipped armour items".
 	if db.Flag("ConvertArmourESToLife") {

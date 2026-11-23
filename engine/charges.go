@@ -20,6 +20,15 @@ func chargeBaseMods(db *ModDB) {
 	db.NewMod("InspirationChargesMax", "BASE", maxRighteousCharges, "Base")
 	db.NewMod("BloodChargesMax", "BASE", maxBloodCharges, "Base")
 	db.NewMod("MaximumRage", "BASE", 30, "Base") // characterConstants maximum_rage
+	db.NewMod("MaximumValour", "BASE", 50, "Base")
+}
+
+// banners is the "Banners" block of calcs.perform: a planted banner uses
+// the configured valour up to the maximum.
+func banners(db *ModDB) {
+	if db.Flag("Condition:BannerPlanted") {
+		db.NewMod("Multiplier:BannerValour", "BASE", math.Min(db.Sum("BASE", "Multiplier:ValourStacks"), db.Sum("BASE", "MaximumValour")), "Base")
+	}
 }
 
 func overrideOr(db *ModDB, name string, def float64) float64 {
