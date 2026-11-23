@@ -53,6 +53,13 @@ func convertMinion(t *luadata.Table) (*gamedata.Minion, error) {
 		EnergyShield: f("energyShield"), Armour: f("armour"), Evasion: f("evasion"),
 		FireResist: f("fireResist"), ColdResist: f("coldResist"), LightningResist: f("lightningResist"),
 		ChaosResist: f("chaosResist"), Limit: str("limit"), Hostile: bool(b),
+		Damage: f("damage"), DamageSpread: f("damageSpread"), AttackTime: f("attackTime"),
+		AttackRange: f("attackRange"), Accuracy: f("accuracy"), WeaponType1: str("weaponType1"),
+	}
+	ign, _ := t.Get("baseDamageIgnoresAttackSpeed").(luadata.Bool)
+	m.BaseDamageIgnoresAttackSpeed = bool(ign)
+	if err := luadata.Decode(t.Get("skillList"), &m.SkillList); err != nil {
+		return nil, fmt.Errorf("skillList: %w", err)
 	}
 	if ml, ok := t.Get("modList").(*luadata.Table); ok {
 		for _, v := range ml.List {

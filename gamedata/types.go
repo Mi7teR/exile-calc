@@ -215,6 +215,7 @@ type MonsterTables struct {
 	Evasion             []float64 `json:"evasion"`
 	Accuracy            []float64 `json:"accuracy"`
 	Damage              []float64 `json:"damage"`
+	AllyDamage          []float64 `json:"allyDamage"` // monsterAllyDamageTable
 	Armour              []float64 `json:"armour"`
 	PhysConversionMulti []float64 `json:"physConversionMulti"`
 	AllyLife            []float64 `json:"allyLife"`
@@ -418,4 +419,14 @@ type Minion struct {
 	Limit           string           `json:"limit,omitempty"`
 	Hostile         bool             `json:"hostile,omitempty"`
 	ModList         []map[string]any `json:"modList,omitempty"`
+	// Offence: base damage multiplier and spread, attack time, range and
+	// accuracy multiplier, the minion's skills and weapon type.
+	Damage                       float64  `json:"damage,omitempty"`
+	DamageSpread                 float64  `json:"damageSpread,omitempty"`
+	AttackTime                   float64  `json:"attackTime,omitempty"`
+	AttackRange                  float64  `json:"attackRange,omitempty"`
+	Accuracy                     float64  `json:"accuracy,omitempty"`
+	WeaponType1                  string   `json:"weaponType1,omitempty"`
+	BaseDamageIgnoresAttackSpeed bool     `json:"baseDamageIgnoresAttackSpeed,omitempty"`
+	SkillList                    []string `json:"skillList,omitempty"`
 }
