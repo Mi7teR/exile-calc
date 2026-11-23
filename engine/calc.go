@@ -3,6 +3,7 @@ package engine
 import (
 	"fmt"
 	"math"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -613,9 +614,16 @@ func (c *Calculator) itemLines(item *pobcode.Item, res *Result) (*itemtext.Item,
 	for _, mr := range item.ModRanges {
 		ranges[mr.ID] = mr.Range
 	}
-	var lines []string
+	type entry struct {
+		kind   string // enchant, scourge, implicit, explicit, crucible
+		line   itemtext.ModLine
+		r      float64
+		scalar float64
+	}
+	var entries []entry
 	id := 0
-	for _, group := range [][]itemtext.ModLine{it.Enchants, it.Scourge, it.Implicits, it.Explicits, it.Crucible} {
+	for gi, group := range [][]itemtext.ModLine{it.Enchants, it.Scourge, it.Implicits, it.Explicits, it.Crucible} {
+		kind := []string{"enchant", "scourge", "implicit", "explicit", "crucible"}[gi]
 		for _, l := range group {
 			id++
 			if !it.LineActive(l) {
@@ -628,11 +636,142 @@ func (c *Calculator) itemLines(item *pobcode.Item, res *Result) (*itemtext.Item,
 			if v, ok := ranges[id]; ok {
 				r = v
 			}
-			lines = append(lines, applyRange(l.Text, r, catalystScalar(it, l)))
+			entries = append(entries, entry{kind, l, r, catalystScalar(it, l)})
 		}
+	}
+	// Item.lua modMagnitudeMods: "N% increased <tags> modifier magnitudes"
+	// lines scale the matching lines of crafted or advanced-copy items.
+	if it.CraftedItem || it.AdvancedCopy {
+		ml := make([]magnitudeLine, len(entries))
+		for i, e := range entries {
+			ml[i] = magnitudeLine{applyRange(e.line.Text, e.r, e.scalar), e.line.Disabled}
+		}
+		for _, mm := range magnitudeMods(ml) {
+			for i := range entries {
+				e := &entries[i]
+				if mm.modType != "" && mm.modType != e.kind || mm.modType == "" && e.kind != "implicit" && e.kind != "explicit" && e.kind != "enchant" {
+					continue
+				}
+				if e.line.Unscalable || c.grantsSkill(e.line.Text) || !magnitudeMatch(mm, e.line) {
+					continue
+				}
+				if mm.multiplier != 0 {
+					e.scalar *= mm.multiplier
+				} else {
+					e.scalar += mm.quality / 100
+				}
+			}
+		}
+	}
+	lines := make([]string, len(entries))
+	for i, e := range entries {
+		lines[i] = applyRange(e.line.Text, e.r, e.scalar)
 	}
 	return it, lines
 }
+
+type magnitudeLine struct {
+	text     string
+	disabled bool
+}
+
+type magnitudeMod struct {
+	tags, anyTags []string
+	quality       float64
+	multiplier    float64
+	modType       string
+}
+
+var (
+	magnitudeRes = []*regexp.Regexp{
+		regexp.MustCompile(`(\d+)% ([ir][ne][cd][ru][ec][ae][sd]e?d?) ?([a-z\s]*) modifier magnitudes`),
+		regexp.MustCompile(`(\d+)% ([ir][ne][cd][ru][ec][ae][sd]e?d?) effect of ([sp][ur][fe]fix)es`),
+		regexp.MustCompile(`([a-z\s]*) modifier magnitudes are doubled`),
+	}
+	magnitudeTagMap = map[string]string{"defence": "defences", "enchantment": "enchant"}
+)
+
+// magnitudeMods reads the modifier magnitude lines of an item.
+func magnitudeMods(lines []magnitudeLine) []magnitudeMod {
+	var out []magnitudeMod
+	for _, l := range lines {
+		if l.disabled {
+			continue
+		}
+		low := strings.ToLower(l.text)
+		for pi, re := range magnitudeRes {
+			m := re.FindStringSubmatch(low)
+			if m == nil {
+				continue
+			}
+			amount, dir, tagsText, mult := m[1], "", "", 0.0
+			if pi == 2 {
+				tagsText, amount, dir, mult = m[1], "100", "increased", 2
+			} else {
+				dir, tagsText = m[2], m[3]
+			}
+			if dir != "increased" && dir != "reduced" {
+				continue
+			}
+			q, _ := strconv.ParseFloat(amount, 64)
+			if dir == "reduced" {
+				q = -q
+			}
+			if tagsText == "explicit physical and chaos damage" {
+				out = append(out, magnitudeMod{tags: []string{"damage"}, anyTags: []string{"physical", "chaos"}, quality: q, modType: "explicit"})
+				break
+			}
+			mm := magnitudeMod{quality: q, multiplier: mult}
+			for _, w := range strings.Fields(tagsText) {
+				if t, ok := magnitudeTagMap[w]; ok {
+					w = t
+				}
+				switch w {
+				case "implicit", "explicit", "enchant":
+					mm.modType = w
+				default:
+					mm.tags = append(mm.tags, w)
+				}
+			}
+			out = append(out, mm)
+			break
+		}
+	}
+	return out
+}
+
+func magnitudeMatch(mm magnitudeMod, l itemtext.ModLine) bool {
+	has := map[string]bool{"prefix": l.Prefix, "suffix": l.Suffix, "unveiled": l.Unveiled}
+	for _, t := range l.Tags {
+		has[t] = true
+	}
+	for _, t := range mm.tags {
+		if !has[t] {
+			return false
+		}
+	}
+	return mm.anyTags == nil || has[mm.anyTags[0]] || has[mm.anyTags[1]]
+}
+
+// grantsSkill: modifiers that grant skills are not affected by magnitudes.
+func (c *Calculator) grantsSkill(text string) bool {
+	r := c.parser.Parse(text)
+	for _, m := range r.Mods {
+		if m.Name == "ExtraSkill" {
+			return true
+		}
+	}
+	if r.Extra != "" {
+		l := strings.ToLower(text)
+		return grantsLevelRe.MatchString(l) || grantsNameRe.MatchString(l)
+	}
+	return false
+}
+
+var (
+	grantsLevelRe = regexp.MustCompile(`^grants level \d+ `)
+	grantsNameRe  = regexp.MustCompile(`^grants \D+$`)
+)
 
 // itemMods parses an item's active mod lines.
 func (c *Calculator) itemMods(item *pobcode.Item, res *Result) (*itemtext.Item, []modparser.Mod) {

@@ -56,6 +56,7 @@ type ModLine struct {
 
 	Crafted, Implicit, Enchant, Fractured, Scourge, Crucible, Custom,
 	Mutated, Synthesis, Eater, Exarch, Unscalable, Disabled bool
+	Prefix, Suffix, Unveiled, Vestigial bool
 }
 
 type Item struct {
@@ -87,6 +88,10 @@ type Item struct {
 
 	// Radius is a jewel's radius label ("Large", "Variable", ...).
 	Radius string
+
+	// CraftedItem and AdvancedCopy are Item.lua's self.crafted and
+	// self.advancedCopy: modifier magnitudes apply only to such items.
+	CraftedItem, AdvancedCopy bool
 
 	// ArmourData holds the defence spec lines (Item.lua armourData): the
 	// values "Armour", "Evasion", "EnergyShield", "Ward" and their
@@ -275,6 +280,7 @@ var lineFlags = map[string]bool{
 	"crafted": true, "crucible": true, "custom": true, "disabled": true, "eater": true,
 	"enchant": true, "exarch": true, "fractured": true, "implicit": true, "scourge": true,
 	"synthesis": true, "mutated": true, "unscalable": true,
+	"prefix": true, "suffix": true, "unveiled": true, "vestigial": true,
 }
 
 // ItemTools.lua: itemLib.influenceInfo.all, as "<display> Item" lines.
@@ -286,6 +292,8 @@ var influenceLines = map[string]string{
 
 // Spec lines ParseRaw reads or ignores; any other "Name: value" line is a mod
 // with a colon in it (Item.lua: "Anything else is an explicit with a colon").
+var rangeTextRe = regexp.MustCompile(`\((-?\d+\.?\d*)-(-?\d+\.?\d*)\)`)
+
 var variantGroupRe = regexp.MustCompile(`^(\d+)\s*=\s*(\d+)$`)
 
 // altIndex maps "Has Alt Variant[ Two..Five]" and "Selected Alt Variant[ ...]" to 0-4.
@@ -480,6 +488,7 @@ func (p *Parser) Parse(text string) (*Item, error) {
 			continue
 		case strings.HasPrefix(line, "{ "):
 			// Advanced copy header: flags and tags apply to the lines below it.
+			it.AdvancedCopy, it.CraftedItem = true, true
 			linePrefix, linePostfix = "", ""
 			var fullName, tags string
 			for _, re := range headerRe {
@@ -576,6 +585,8 @@ func (p *Parser) Parse(text string) (*Item, error) {
 				it.Variants = append(it.Variants, specVal)
 			case "Selected Variant":
 				it.Variant = specNumber(specVal)
+			case "Crafted":
+				it.CraftedItem = true
 			case "Selected Version":
 				it.SelectedVersion, it.UsesVariantGroups = specNumber(specVal), true
 			case "Version":
@@ -669,6 +680,7 @@ func (p *Parser) Parse(text string) (*Item, error) {
 			case k == "tags":
 				mod.Tags = append(mod.Tags, tagRe.FindAllString(val, -1)...)
 			case k == "range":
+				it.AdvancedCopy = true
 				if f, err := strconv.ParseFloat(val, 64); err == nil {
 					mod.Range, mod.HasRange = f, true
 				}
@@ -717,6 +729,9 @@ func (p *Parser) Parse(text string) (*Item, error) {
 		}
 		if strings.HasSuffix(line, " - Unscalable Value") {
 			line, mod.Unscalable = strings.TrimSuffix(line, " - Unscalable Value"), true
+		}
+		if rangeTextRe.MatchString(line) {
+			it.AdvancedCopy = true // "(#-#)" lines keep their unapplied range
 		}
 		line = advancedValues(line, &mod)
 
@@ -841,6 +856,14 @@ func escapeGGG(s string) string {
 
 func setFlag(m *ModLine, k string) {
 	switch k {
+	case "prefix":
+		m.Prefix = true
+	case "suffix":
+		m.Suffix = true
+	case "unveiled":
+		m.Unveiled = true
+	case "vestigial":
+		m.Vestigial = true
 	case "crafted":
 		m.Crafted = true
 	case "implicit":
