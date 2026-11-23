@@ -438,6 +438,7 @@ func (c *Calculator) Calc(b *pobcode.Build) (*Result, error) {
 	shrineBuffs(db)
 	c.lifeMana(db)
 	reservations(db, skills, res)
+	c.applyTinctures(db, res, flasks)
 	totemCounts(db, skills)
 	c.minionCounts(db, skills)
 	heraldAuraCounts(db, skills)

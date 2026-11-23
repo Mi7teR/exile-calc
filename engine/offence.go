@@ -99,17 +99,26 @@ type hitSource struct {
 	critChance float64
 }
 
+type passShared struct {
+	mainAcc, mainAccVsEnemy float64
+	hasMainAcc              bool
+}
+
 type hitPass struct {
 	// repeats, cooldown: the skill's Repeats and cooldown (if any).
 	repeats, cooldown float64
 	hasCooldown       bool
 	// mainHandCrit is the main hand weapon's crit chance (BaseCritFromMainHand).
 	mainHandCrit float64
-	src          hitSource
-	cfg          *Cfg
-	conv         map[string]*convEntry
-	out          map[string]float64
-	base         map[string][2]float64 // <Type>MinBase, <Type>MaxBase
+	// label is the pass label ("Main Hand", "Off Hand", "Skill").
+	label string
+	// shared holds the main hand's accuracy for the off hand pass.
+	shared *passShared
+	src    hitSource
+	cfg    *Cfg
+	conv   map[string]*convEntry
+	out    map[string]float64
+	base   map[string][2]float64 // <Type>MinBase, <Type>MaxBase
 }
 
 // calcDamage is CalcOffence.lua calcDamage.
@@ -249,7 +258,7 @@ func (c *Calculator) offence(actor *ModDB, s *activeSkill, w1 hitSource, w2 *hit
 	var passes []*hitPass
 	if isAttack {
 		if s.flags["weapon1Attack"] {
-			passes = append(passes, &hitPass{src: w1, cfg: s.weapon1Cfg, out: map[string]float64{}})
+			passes = append(passes, &hitPass{src: w1, cfg: s.weapon1Cfg, out: map[string]float64{}, label: "Main Hand"})
 		}
 		if s.flags["weapon2Attack"] && w2 != nil {
 			src := *w2
@@ -259,7 +268,7 @@ func (c *Calculator) offence(actor *ModDB, s *activeSkill, w1 hitSource, w2 *hit
 			if at, ok := num(data["attackTime"]); ok && at != 0 {
 				src.attackRate = 1000 / at
 			}
-			passes = append(passes, &hitPass{src: src, cfg: s.weapon2Cfg, out: map[string]float64{}})
+			passes = append(passes, &hitPass{src: src, cfg: s.weapon2Cfg, out: map[string]float64{}, label: "Off Hand"})
 		}
 		if len(passes) == 0 {
 			return out
@@ -278,7 +287,7 @@ func (c *Calculator) offence(actor *ModDB, s *activeSkill, w1 hitSource, w2 *hit
 		if cc, ok := num(data["CritChance"]); ok {
 			src.critChance = cc
 		}
-		passes = append(passes, &hitPass{src: src, cfg: cfg, out: out})
+		passes = append(passes, &hitPass{src: src, cfg: cfg, out: out, label: "Skill"})
 	}
 	both := len(passes) == 2
 	// combineStat: AVERAGE, HARMONICMEAN and DPS modes.
@@ -311,10 +320,12 @@ func (c *Calculator) offence(actor *ModDB, s *activeSkill, w1 hitSource, w2 *hit
 	if hasCooldown {
 		out["Cooldown"] = cooldown
 	}
+	shared := &passShared{}
 	for _, p := range passes {
 		p.conv = conversionTable(list, p.cfg)
 		p.repeats, p.cooldown, p.hasCooldown = out["Repeats"], cooldown, hasCooldown && cooldown > 0
 		p.mainHandCrit = w1.critChance
+		p.shared = shared
 		c.hitAndSpeed(actor, s, p)
 	}
 	combine("AccuracyHitChance", "AVERAGE")
@@ -393,8 +404,25 @@ func (c *Calculator) hitAndSpeed(actor *ModDB, s *activeSkill, p *hitPass) {
 	list, cfg, data, out := s.mods, s.cfg, s.data, p.out
 	enemy := actor.enemy
 	isAttack := s.flags["attack"]
+	// PoB calls skillModList:More("MORE", cfg, ...): the cfg is the string
+	// "MORE", so only mods without flags count.
+	out["Accuracy"] = math.Max(0, math.Floor(list.SumCfg(p.cfg, "BASE", "Accuracy")*
+		(1+list.SumCfg(p.cfg, "INC", "Accuracy")/100)*list.MoreCfg(nil, "Accuracy")))
 	accVsEnemy := math.Max(0, math.Floor(list.SumCfg(p.cfg, "BASE", "Accuracy", "AccuracyVsEnemy")*
-		(1+list.SumCfg(p.cfg, "INC", "Accuracy", "AccuracyVsEnemy")/100)*list.MoreCfg(p.cfg, "Accuracy", "AccuracyVsEnemy")))
+		(1+list.SumCfg(p.cfg, "INC", "Accuracy", "AccuracyVsEnemy")/100)*list.MoreCfg(nil, "Accuracy", "AccuracyVsEnemy")))
+	// Precise Technique: this pass's accuracy against the player's life.
+	player := actor
+	if actor.owner != nil {
+		player = actor.owner
+	}
+	list.conditions[strings.ReplaceAll(p.label, " ", "")+"AccRatingHigherThanMaxLife"] = out["Accuracy"] > player.output["Life"]
+	if list.Flag("Condition:OffHandAccuracyIsMainHandAccuracy") {
+		if p.label == "Main Hand" {
+			p.shared.mainAcc, p.shared.mainAccVsEnemy, p.shared.hasMainAcc = out["Accuracy"], accVsEnemy, true
+		} else if p.label == "Off Hand" && p.shared.hasMainAcc {
+			out["Accuracy"], accVsEnemy = p.shared.mainAcc, p.shared.mainAccVsEnemy
+		}
+	}
 	if !isAttack || list.FlagCfg(p.cfg, "CannotBeEvaded") || truthy(data["cannotBeEvaded"]) || enemy.Flag("CannotEvade") {
 		out["AccuracyHitChance"] = 100
 	} else {

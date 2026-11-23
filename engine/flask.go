@@ -379,3 +379,77 @@ func sameParams(a, b Mod) bool {
 	}
 	return fmt.Sprint(a.Tags) == fmt.Sprint(b.Tags)
 }
+
+// applyTinctures is mergeTinctures of calcs.perform (mode_combat): the
+// active tinctures, up to TinctureLimit in slot order, scaled by tincture
+// effect and quality.
+func (c *Calculator) applyTinctures(db *ModDB, res *Result, slots []flaskSlot) {
+	notBurn := math.Min(db.Sum("BASE", "TincturesNotInflictManaBurn"), 100)
+	if !db.Flag("Condition:WeepingWoundsInsteadOfManaBurn") && !(notBurn < 100 && db.output["ManaUnreserved"] > 0) {
+		return
+	}
+	player := &Cfg{Actor: "player"}
+	effectInc := db.SumCfg(player, "INC", "TinctureEffect")
+	effectIncMagic := db.SumCfg(player, "INC", "MagicTinctureEffect")
+	limit := db.Sum("BASE", "TinctureLimit")
+	sort.SliceStable(slots, func(i, j int) bool { return slots[i].num < slots[j].num })
+	merged := map[string][]Mod{}
+	var keys []string
+	for _, sl := range slots {
+		if !sl.active {
+			continue
+		}
+		it, mods := c.itemMods(sl.item, res)
+		if it == nil || it.Base == nil || it.Base.Tincture == nil {
+			continue
+		}
+		if limit <= 0 {
+			break
+		}
+		limit--
+		db.conditions["UsingTincture"] = true
+		db.conditions["Using"+strings.ReplaceAll(it.BaseName, " ", "")] = true
+		inc := effectInc + calcLocal(mods, "TinctureEffect", "INC") + calcLocal(mods, "LocalEffect", "INC")
+		if it.Rarity == "MAGIC" {
+			inc += effectIncMagic
+		}
+		scale := math.Floor((1+inc/100)*(1+float64(it.Quality)/100)*100) / 100
+		key := it.Name
+		if it.Rarity != "UNIQUE" && it.Rarity != "RELIC" {
+			var b strings.Builder
+			for _, m := range mods {
+				fmt.Fprintf(&b, "%s|%s|%v&", m.Name, m.Type, m.Value)
+			}
+			key = b.String()
+		}
+		if _, ok := merged[key]; !ok {
+			keys = append(keys, key)
+		}
+		source := itemSource(sl.item, it)
+	next:
+		for _, pm := range mods {
+			m := scaleMod(fromParsed(pm, source), scale)
+			for i, d := range merged[key] {
+				if m.Type != "LIST" && sameParams(m, d) {
+					if a, ok := num(m.Value); ok {
+						if b, ok := num(d.Value); ok && a > b {
+							merged[key][i] = m
+						}
+					}
+					continue next
+				}
+			}
+			merged[key] = append(merged[key], m)
+		}
+	}
+	ranged := db.Flag("TinctureRangedWeapons")
+	for _, k := range keys {
+		for _, m := range merged[k] {
+			db.Add(m)
+			if ranged && m.Flags&mfWeaponMelee == mfWeaponMelee {
+				m.Flags = m.Flags&^mfWeaponMelee | mfWeaponRanged
+				db.Add(m)
+			}
+		}
+	}
+}
