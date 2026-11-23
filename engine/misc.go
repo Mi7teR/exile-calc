@@ -350,6 +350,13 @@ func initConditionMods(db *ModDB) {
 	db.NewMod("ActionSpeed", "MORE", -10, "Base", when("MalignantMadness"), madness)
 	db.NewMod("PhysicalDamageReduction", "BASE", -15, "Base", when("Crushed"))
 	db.NewMod("CritChanceCap", "BASE", 100, "Base")
+	// Skill use times and stack limits of calcs.initModDB.
+	db.NewMod("TrapThrowingTime", "BASE", 0.6, "Base")
+	db.NewMod("MineLayingTime", "BASE", 0.3, "Base")
+	db.NewMod("WarcryCastTime", "BASE", 0.8, "Base")
+	db.NewMod("TotemPlacementTime", "BASE", 0.6, "Base")
+	db.NewMod("BallistaPlacementTime", "BASE", 0.5, "Base")
+	db.NewMod("BleedStacksMax", "BASE", 1, "Base")
 	// IgnoreCond only hides these from the config tab's condition list.
 	ignore := map[string]any{"type": "IgnoreCond"}
 	db.Add(Mod{Name: "Condition:Burning", Type: "FLAG", Value: true, Source: "Base", Tags: []map[string]any{ignore, when("Ignited")}})

@@ -441,15 +441,16 @@ func (c *Calculator) Calc(b *pobcode.Build) (*Result, error) {
 	c.applyTinctures(db, res, flasks)
 	totemCounts(db, skills)
 	c.minionCounts(db, skills)
+	warcryExertMods(db, skills)
 	heraldAuraCounts(db, skills)
 	chilling := chillSkills(db, skills)
 	charges(db) // early, for stats that depend on charges
 	curses, buffs := c.applyBuffs(db, skills, res)
 	curses = c.extraCurses(db, curses, res)
 	c.applyCurses(db, skills, curses, res)
+	impaleStacks(db) // before ExtraAura, as in calcs.perform
 	extraAuras(db)
 	guaranteedChills(db, chilling)
-	impaleStacks(db)
 	c.mergeKeystones(db, keystones, res)
 	defenceForConditionals(db, gearMods)
 	charges(db)

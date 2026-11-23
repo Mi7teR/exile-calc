@@ -114,6 +114,8 @@ type hitPass struct {
 	label string
 	// shared holds the main hand's accuracy for the off hand pass.
 	shared *passShared
+	// global is the skill's output (globalOutput).
+	global map[string]float64
 	src    hitSource
 	cfg    *Cfg
 	conv   map[string]*convEntry
@@ -211,6 +213,7 @@ func (c *Calculator) offence(actor *ModDB, s *activeSkill, w1 hitSource, w2 *hit
 		}
 	}
 	c.offenceStatConversions(actor, s, w1, w2, out)
+	preSkillTypeFunc(s)
 	costs := map[string]float64{}
 	skillCosts(actor, s, costs)
 	for k, v := range costs {
@@ -353,8 +356,11 @@ func (c *Calculator) offence(actor *ModDB, s *activeSkill, w1 hitSource, w2 *hit
 	}
 	dpsMult *= (1 + list.SumCfg(cfg, "INC", "DPS")/100) * list.MoreCfg(cfg, "DPS")
 	quantity := math.Max(list.SumCfg(cfg, "BASE", "QuantityMultiplier"), 1)
+	warcries(actor, s, passes[0].cfg, out)
 	pacts(actor, s, out)
 	for _, p := range passes {
+		ruthlessAndFistOfWar(s, p, out)
+		p.global = out
 		c.hitDamage(actor, s, p)
 		speed := out["Speed"]
 		if hs, ok := out["HitSpeed"]; ok {
@@ -564,10 +570,26 @@ func (c *Calculator) hitDamage(actor *ModDB, s *activeSkill, p *hitPass) {
 		math.Min(list.SumCfg(p.cfg, "BASE", "TripleDamageChanceOnCrit"), 100)*out["CritChance"]/100, 100)
 	double := math.Min(list.SumCfg(p.cfg, "BASE", "DoubleDamageChance")+enemy.SumCfg(p.cfg, "BASE", "SelfDoubleDamageChance")+
 		math.Min(list.SumCfg(p.cfg, "BASE", "DoubleDamageChanceOnCrit"), 100)*out["CritChance"]/100, 100)
+	if r, ok := p.global["IntimidatingUpTimeRatio"]; ok {
+		if list.Flag("Condition:WarcryMaxHit") {
+			double = 100
+		} else {
+			double = math.Min(double+r, 100)
+		}
+	}
 	if triple > 0 {
 		double = math.Max(double-triple*double/100, 0)
 	}
+	out["DoubleDamageChance"], out["TripleDamageChance"] = double, triple
 	scaled := 1 + double/100 + 2*triple/100
+	warcry := p.global["OffensiveWarcryEffect"]
+	if list.Flag("Condition:WarcryMaxHit") {
+		warcry = p.global["MaxOffensiveWarcryEffect"]
+	}
+	if warcry == 0 {
+		warcry = 1
+	}
+	scaled *= out["RuthlessBlowHitEffect"] * out["FistOfWarDamageEffect"] * warcry
 
 	// Base hit damage.
 	baseMult, eff := 1.0, 1.0
@@ -974,5 +996,174 @@ func pacts(actor *ModDB, s *activeSkill, out map[string]float64) {
 			}
 		}
 		done[key] = true
+	}
+}
+
+// warcryCastTime is calcWarcryCastTime (CalcOffence.lua).
+func warcryCastTime(actor *ModDB, v *activeSkill) float64 {
+	if v.mods.FlagCfg(v.cfg, "InstantWarcry") || truthy(v.data["triggeredByAutoexertion"]) {
+		return 0
+	}
+	base := v.mods.SumCfg(v.cfg, "BASE", "WarcryCastTime")
+	if base == 0 {
+		return 0
+	}
+	speed := 1 / base * calcMod(v.mods, v.cfg, "WarcrySpeed") * actionSpeedMod(actor)
+	return 1 / math.Min(speed, serverTickRate)
+}
+
+// warcries is the exerted attack part of calcs.offence's damage pass
+// (mode_buffs): each warcry's exert uptime, the offensive warcry effect
+// (Rallying Cry), Intimidating Cry's double damage and the exert damage
+// mods scaled by uptime. Seismic Cry's area and Ancestral Cry's extra
+// strikes are not ported.
+func warcries(actor *ModDB, s *activeSkill, cfg *Cfg, out map[string]float64) {
+	const stMelee, stMeleeSingleTarget, stSummonsTotem, stSlam, stOtherThingUsesSkill, stNeverExertable, stRetaliation = 20, 21, 26, 92, 95, 122, 121
+	out["OffensiveWarcryEffect"], out["MaxOffensiveWarcryEffect"] = 1, 1
+	out["GlobalWarcryUptimeRatio"] = 0
+	for _, t := range []int{stNeverExertable, stTriggered, stChannel, stOtherThingUsesSkill, stRetaliation, stSummonsTotem} {
+		if s.types[t] {
+			return
+		}
+	}
+	list := s.mods
+	player := actor
+	if actor.owner != nil {
+		player = actor.owner
+	}
+	speed := out["Speed"]
+	exertDD := player.SumCfg(cfg, "BASE", "ExertDoubleDamageChance")
+	maxHit := list.Flag("Condition:WarcryMaxHit")
+	ratios := map[string]float64{}
+	uptime := func(v *activeSkill, count float64) float64 {
+		cd, _ := skillCooldown(v.mods, v.cfg, v.data)
+		r := 100.0
+		if speed != 0 {
+			r = math.Min((count/speed)/(cd+warcryCastTime(actor, v)), 1) * 100
+		}
+		stored := numOr(v.data["storedUses"], 0) + v.mods.SumCfg(v.cfg, "BASE", "AdditionalCooldownUses")
+		return math.Min(100, r*stored)
+	}
+	done := map[string]bool{}
+	for _, v := range actor.activeSkills {
+		name := v.active.ge.Name
+		if v.disabled || done[name] {
+			continue
+		}
+		var key, exerts string
+		switch name {
+		case "Ancestral Cry":
+			if s.types[stMeleeSingleTarget] {
+				key, exerts = "Ancestral", "NumAncestralExerts"
+			}
+		case "Infernal Cry":
+			if s.types[stMelee] {
+				key, exerts = "Infernal", "NumInfernalExerts"
+			}
+		case "Intimidating Cry":
+			if s.types[stMelee] {
+				key, exerts = "Intimidating", "NumIntimidatingExerts"
+			}
+		case "Rallying Cry":
+			if s.types[stMelee] {
+				key, exerts = "Rallying", "NumRallyingExerts"
+			}
+		case "Seismic Cry":
+			if s.types[stSlam] {
+				key, exerts = "Seismic", "NumSeismicExerts"
+			}
+		case "Battlemage's Cry":
+			if s.types[stMelee] {
+				key, exerts = "Battlemage", "NumBattlemageExerts"
+			}
+		}
+		if key == "" {
+			continue
+		}
+		done[name] = true
+		r := uptime(v, player.Sum("BASE", exerts))
+		ratios[key] = r
+		out[key+"UpTimeRatio"] = r
+		out["GlobalWarcryUptimeRatio"] += r
+		switch key {
+		case "Intimidating":
+			dd := math.Min(list.SumCfg(cfg, "BASE", "DoubleDamageChance")+actor.enemy.SumCfg(cfg, "BASE", "SelfDoubleDamageChance")+exertDD, 100)
+			out["IntimidatingAvgDmg"] = 2 * (1 - dd/100)
+		case "Rallying":
+			avg := math.Min(player.SumCfg(cfg, "BASE", "Multiplier:NearbyAlly"), 5) * player.Sum("BASE", "RallyingExertMoreDamagePerAlly") / 100
+			out["OffensiveWarcryEffect"] *= 1 + avg*r/100
+			out["MaxOffensiveWarcryEffect"] *= 1 + avg
+		}
+	}
+	exerted := 0.0
+	for _, r := range ratios {
+		exerted = math.Max(exerted, r)
+	}
+	out["ExertedAttackUptimeRatio"] = exerted
+	if exerted <= 0 {
+		return
+	}
+	inc := list.SumCfg(cfg, "INC", "ExertIncrease")
+	more := list.SumCfg(cfg, "MORE", "ExertIncrease")
+	moreAttack := list.SumCfg(cfg, "MORE", "ExertAttackIncrease")
+	overexertion := list.SumCfg(cfg, "MORE", "OverexertionExertAverageIncrease")
+	echoes := list.SumCfg(cfg, "MORE", "EchoesExertAverageIncrease")
+	if maxHit {
+		count := player.Sum("BASE", "Multiplier:ExertingWarcryCount")
+		list.NewMod("Damage", "INC", inc, "Exerted Attacks")
+		list.NewMod("Damage", "MORE", more, "Exerted Attacks")
+		list.Add(Mod{Name: "Damage", Type: "MORE", Value: moreAttack, Flags: mfAttack, Source: "Exerted Attack Damage"})
+		list.NewMod("Damage", "MORE", overexertion*count, "Max Autoexertion Support")
+		list.NewMod("Damage", "MORE", echoes*count, "Max Echoes of Creation")
+	} else {
+		global := out["GlobalWarcryUptimeRatio"]
+		list.NewMod("Damage", "INC", inc*exerted/100, "Uptime Scaled Exerted Attacks")
+		list.NewMod("Damage", "MORE", more*exerted/100, "Uptime Scaled Exerted Attacks")
+		list.Add(Mod{Name: "Damage", Type: "MORE", Value: moreAttack * exerted / 100, Flags: mfAttack, Source: "Uptime Scaled Exerted Attack Damage"})
+		list.NewMod("Damage", "MORE", overexertion*global/100, "Uptime Scaled Autoexertion Support")
+		list.NewMod("Damage", "MORE", echoes*global/100, "Uptime Scaled Echoes of Creation")
+	}
+}
+
+// ruthlessAndFistOfWar is the Ruthless and Fist of War part of the damage
+// pass (mode_combat), ruthlessSupportMode AVERAGE: the hit effects.
+func ruthlessAndFistOfWar(s *activeSkill, p *hitPass, global map[string]float64) {
+	const stSlam, stOtherThingUsesSkill = 92, 95
+	list, cfg, out := s.mods, p.cfg, p.out
+	out["RuthlessBlowHitEffect"], out["FistOfWarDamageEffect"] = 1, 1
+	chance := 0.0
+	if n := list.SumCfg(cfg, "BASE", "RuthlessBlowMaxCount"); n > 0 && !cfg.SkillCond["usedByMirage"] {
+		chance = round(100/n, 0)
+	}
+	hitMult := 1 + list.SumCfg(cfg, "BASE", "RuthlessBlowHitMultiplier")/100
+	out["RuthlessBlowHitEffect"] = 1 - chance/100 + chance/100*hitMult
+	cd := list.SumCfg(cfg, "BASE", "FistOfWarCooldown")
+	if cd != 0 && s.types[stSlam] && !s.types[stVaal] && !s.types[stOtherThingUsesSkill] && global["Speed"] != 0 {
+		mult := list.Sum("BASE", "FistOfWarDamageMultiplier") / 100
+		up := math.Min((1/global["Speed"])/cd, 1) * 100
+		if list.Flag("Condition:WarcryMaxHit") {
+			out["FistOfWarDamageEffect"] = 1 + mult
+		} else {
+			out["FistOfWarDamageEffect"] = 1 + mult*up/100
+		}
+	}
+}
+
+// preSkillTypeFunc ports the skills' preSkillTypeFunc (Data/Skills/*.lua).
+func preSkillTypeFunc(s *activeSkill) {
+	list, cfg, data := s.mods, s.cfg, s.data
+	switch s.active.ge.Name {
+	case "Rage Vortex":
+		if s.part == 2 {
+			maxRage := list.SumCfg(cfg, "BASE", "MaximumRage")
+			pct := numOr(data["MaxRageVortexSacrificePercentage"], 0) / 100
+			override := list.SumCfg(cfg, "BASE", "Multiplier:RageSacrificedStacks")
+			maxSac := math.Floor(pct * maxRage)
+			stacks := maxSac
+			if override > 0 {
+				stacks = math.Min(override, maxSac)
+			}
+			list.NewMod("Multiplier:RageSacrificed", "BASE", stacks, "Skill:RageVortex")
+		}
 	}
 }
