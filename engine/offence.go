@@ -219,6 +219,7 @@ func (c *Calculator) offence(actor *ModDB, s *activeSkill, w1 hitSource, w2 *hit
 	}
 	c.offenceStatConversions(actor, s, w1, w2, out)
 	preSkillTypeFunc(s)
+	chainStats(actor, s, out)
 	projectileStats(s, out)
 	trapMineStats(actor, s, out)
 	offenceDuration(actor, s, out)
@@ -1318,6 +1319,31 @@ func projectileStats(s *activeSkill, out map[string]float64) {
 	}
 	proj := math.Floor(list.SumCfg(cfg, "BASE", "ProjectileCount") * list.MoreCfg(cfg, "ProjectileCount"))
 	out["ProjectileCount"] = math.Max(math.Min(proj, projMax), projMin)
+}
+
+// chainStats is the chaining part of calcs.offence's skill type stats:
+// ChainMax and Chain (actor output too, for StatThreshold tags).
+func chainStats(actor *ModDB, s *activeSkill, out map[string]float64) {
+	if !s.flags["chaining"] {
+		return
+	}
+	list, cfg := s.mods, s.cfg
+	if list.FlagCfg(cfg, "CannotChain") || list.FlagCfg(cfg, "NoAdditionalChains") {
+		return
+	}
+	names := []string{"ChainCountMax"}
+	if !s.flags["projectile"] {
+		names = append(names, "BeamChainCountMax")
+	}
+	chainMax := list.SumCfg(cfg, "BASE", names...)
+	if list.FlagCfg(cfg, "AdditionalProjectilesAddChainsInstead") && !list.FlagCfg(cfg, "SingleProjectile") {
+		chainMax += math.Floor((list.SumCfg(cfg, "BASE", "ProjectileCount") - 1) * list.MoreCfg(cfg, "ProjectileCount"))
+	}
+	chainMax *= list.MoreCfg(cfg, "ChainCountMax")
+	chain := math.Min(chainMax, list.SumCfg(cfg, "BASE", "ChainCount"))
+	for _, o := range []map[string]float64{out, actor.output} {
+		o["ChainMax"], o["Chain"], o["ChainRemaining"] = chainMax, chain, math.Max(0, chainMax-chain)
+	}
 }
 
 // valCfg is calcLib.val with a cfg: BASE * (1 + INC) * MORE.

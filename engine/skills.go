@@ -1225,6 +1225,7 @@ func (c *Calculator) buildSkillMods(db *ModDB, s *activeSkill, res *Result) {
 		modFlags |= mfMelee
 	} else if flags["projectile"] {
 		modFlags |= mfProjectile
+		flags["chaining"] = true
 	}
 	if flags["area"] {
 		modFlags |= mfArea
