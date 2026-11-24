@@ -165,7 +165,7 @@ func (c *Calculator) applyFlasks(db *ModDB, res *Result, slots []flaskSlot) *fla
 		if it.Rarity != "UNIQUE" && it.Rarity != "RELIC" {
 			var b strings.Builder
 			for _, m := range kept {
-				fmt.Fprintf(&b, "%s|%s|%v&", m.Name, m.Type, m.Value)
+				b.WriteString(formatModParams(m) + "&")
 			}
 			key = b.String()
 		}
@@ -432,7 +432,7 @@ func (c *Calculator) applyTinctures(db *ModDB, res *Result, slots []flaskSlot) {
 		if it.Rarity != "UNIQUE" && it.Rarity != "RELIC" {
 			var b strings.Builder
 			for _, m := range mods {
-				fmt.Fprintf(&b, "%s|%s|%v&", m.Name, m.Type, m.Value)
+				b.WriteString(formatModParams(m) + "&")
 			}
 			key = b.String()
 		}
@@ -485,4 +485,11 @@ next:
 		out = append(out, m)
 	}
 	return out
+}
+
+// formatModParams is ModTools.lua modLib.formatModParams: a mod's name, type,
+// flags and tags without its value, the key that groups magic flasks and
+// tinctures whose mods differ only in value.
+func formatModParams(m modparser.Mod) string {
+	return fmt.Sprintf("%s|%s|%d|%d|%v", m.Name, m.Type, m.Flags, m.KeywordFlags, m.Tags)
 }

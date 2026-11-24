@@ -29,15 +29,13 @@ var goldenStats = []string{
 	"BasePhysicalDamageReductionWhenHit", "PhysicalTakenDotMult", "PhysicalTakenHit", "totalTakenHit",
 	"FireTotalHitPool", "PhysicalMaximumHitTaken", "FireMaximumHitTaken", "ColdMaximumHitTaken",
 	"LightningMaximumHitTaken", "ChaosMaximumHitTaken", "NumberOfDamagingHits", "NumberOfMitigatedDamagingHits",
-	"TotalEHP", "EHPSurvivalTime",
+	"TotalEHP", "EHPSurvivalTime", "ManaRegenRecovery", "MovementSpeedMod", "CurseEffectOnSelf",
 }
 
 const tolerance = 0.005
 
 // reportStats are compared and logged but not part of the ratchet yet.
-var reportStats = []string{
-	"ManaRegenRecovery", "MovementSpeedMod", "CurseEffectOnSelf",
-}
+var reportStats = []string{}
 
 // Ratchet: builds where every stat above is within tolerance. Raise it as
 // the engine improves; never lower it.
