@@ -184,7 +184,7 @@ func (c *Calculator) conquests(spec *pobcode.Spec, b *pobcode.Build, alloc map[i
 				}
 				var path []int
 				if cq.jewelType == 11 {
-					path = pathToClassStart(c.data.Tree, alloc, s.NodeID, spec.ClassID)
+					path = pathToClassStart(c.data.Tree, alloc, s.NodeID, spec.ClassID, nil)
 				}
 				for id, mod := range lut.read(cq.seed, s.NodeID, path) {
 					a := cq

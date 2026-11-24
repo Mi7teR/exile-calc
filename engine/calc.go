@@ -173,7 +173,7 @@ func (c *Calculator) Calc(b *pobcode.Build) (*Result, error) {
 	for _, m := range spec.MasteryEffects {
 		mastery[m.Node] = m.Effect
 	}
-	cluster := c.clusterGraph(spec, b, res)
+	cluster, clusterLinks := c.clusterGraph(spec, b, res)
 	treeCounts(db, tree, spec.Nodes, cluster)
 	conquered := c.conquests(spec, b, allocated, res)
 	radiusFuncs := c.radiusFuncs(spec, b, allocated, res)
@@ -354,6 +354,7 @@ func (c *Calculator) Calc(b *pobcode.Build) (*Result, error) {
 				it.Base.Type == "Jewel" && it.Base.SubType != "Charm" {
 				scale += corruptedEffect[it.Rarity]
 			}
+			scale += c.classStartJewelEffect(b.Item(s.ItemID), s.NodeID, allocated, spec.ClassID, clusterLinks, res)
 			if it, _ := c.addItem(db, res, b.Item(s.ItemID), scale, ""); it != nil {
 				db.items["Jewel "+strconv.Itoa(s.NodeID)] = it
 				abyssCounts(db, it, "")
@@ -564,6 +565,30 @@ func (c *Calculator) equipmentBonusScale(db *ModDB, b *pobcode.Build, set *pobco
 		}
 		return 1
 	}
+}
+
+// classStartJewelEffect is the jewelIncEffectFromClassStart part of the
+// CalcSetup.lua item loop (Split Personality): the socket's effect grows by
+// the jewel's percentage per allocated passive between it and the class
+// start (PassiveSpec:SetNodeDistanceToClassStart).
+func (c *Calculator) classStartJewelEffect(item *pobcode.Item, node int, alloc map[int]bool, classID int, links map[int][]int, res *Result) float64 {
+	_, mods := c.itemMods(item, res)
+	inc := 0.0
+	for _, m := range mods {
+		if v, ok := m.Value.(map[string]any); ok && m.Name == "JewelData" && v["key"] == "jewelIncEffectFromClassStart" {
+			inc, _ = num(v["value"])
+		}
+	}
+	if inc == 0 {
+		return 0
+	}
+	// pathToClassStart is the socket, the class start, then the nodes back
+	// to the socket.
+	path := pathToClassStart(c.data.Tree, alloc, node, classID, links)
+	if len(path) < 3 {
+		return 0
+	}
+	return float64(len(path)-3) * inc / 100
 }
 
 // skipSlot leaves out swap weapons (unless the swap set is active) and

@@ -84,13 +84,18 @@ func readJewelData(mods []modparser.Mod, cj *gamedata.ClusterJewel) (jewelData, 
 
 // clusterGraph ports PassiveSpecClass:BuildClusterJewelGraphs and
 // BuildSubgraph (Classes/PassiveSpec.lua) as far as stats go: it returns
-// the generated nodes by id. Positions and links are not needed: the
-// build lists the allocated ids itself.
-func (c *Calculator) clusterGraph(spec *pobcode.Spec, b *pobcode.Build, res *Result) map[int]clusterNode {
+// the generated nodes by id and the subgraphs' links (both directions).
+// Positions are not needed: the build lists the allocated ids itself.
+func (c *Calculator) clusterGraph(spec *pobcode.Spec, b *pobcode.Build, res *Result) (map[int]clusterNode, map[int][]int) {
 	tree, data := c.data.Tree, c.data.Cluster
 	out := map[int]clusterNode{}
+	links := map[int][]int{}
 	if data == nil {
-		return out
+		return out, links
+	}
+	linkNodes := func(a, b int) {
+		links[a] = append(links[a], b)
+		links[b] = append(links[b], a)
 	}
 	allocated := map[int]bool{}
 	for _, id := range spec.Nodes {
@@ -111,8 +116,8 @@ func (c *Calculator) clusterGraph(spec *pobcode.Spec, b *pobcode.Build, res *Res
 		}
 	}
 
-	var build func(jewel *pobcode.Item, exp *gamedata.ExpansionJewel, id int)
-	build = func(jewel *pobcode.Item, exp *gamedata.ExpansionJewel, id int) {
+	var build func(jewel *pobcode.Item, exp *gamedata.ExpansionJewel, id, parent int)
+	build = func(jewel *pobcode.Item, exp *gamedata.ExpansionJewel, id, parent int) {
 		it, mods := c.itemMods(jewel, res)
 		if it == nil {
 			return
@@ -136,6 +141,7 @@ func (c *Calculator) clusterGraph(spec *pobcode.Spec, b *pobcode.Build, res *Res
 		if d.keystone != "" {
 			if n := notableByName[d.keystone]; n != nil {
 				out[nodeID] = clusterNode{stats: n.Stats, keystone: true}
+				linkNodes(nodeID, parent)
 			}
 			return
 		}
@@ -161,6 +167,7 @@ func (c *Calculator) clusterGraph(spec *pobcode.Spec, b *pobcode.Build, res *Res
 		}
 		smallCount := nodeCount - socketCount - len(notables)
 		used := map[int]bool{}
+		byIndex := map[int]int{} // BuildSubgraph's indicies: node index -> node id
 
 		// Sockets: they are real tree nodes of the proxy group.
 		proxy := tree.Nodes[exp.Proxy]
@@ -180,6 +187,7 @@ func (c *Calculator) clusterGraph(spec *pobcode.Spec, b *pobcode.Build, res *Res
 		makeJewel := func(nodeIndex, jewelIndex int) {
 			if s := findSocket(jewelIndex); s != nil {
 				used[nodeIndex] = true
+				byIndex[nodeIndex] = s.ID
 				sockets = append(sockets, s)
 			}
 		}
@@ -197,6 +205,7 @@ func (c *Calculator) clusterGraph(spec *pobcode.Spec, b *pobcode.Build, res *Res
 				break
 			}
 			out[nodeID+idx] = clusterNode{stats: notables[i].Stats, notable: true}
+			byIndex[idx] = nodeID + idx
 			used[idx] = true
 		}
 
@@ -226,12 +235,35 @@ func (c *Calculator) clusterGraph(spec *pobcode.Spec, b *pobcode.Build, res *Res
 				stats = append(append(stats, skill.Stats...), d.addedMods...)
 			}
 			out[nodeID+idx] = clusterNode{stats: stats, incEffect: d.incEffect}
+			byIndex[idx] = nodeID + idx
+		}
+		// Connectors: a ring in index order (closed unless Small), and the
+		// entrance (index 0) to the parent socket.
+		first, last := -1, -1
+		for i := 0; i < cj.TotalIndicies; i++ {
+			n, ok := byIndex[i]
+			if !ok {
+				continue
+			}
+			if first < 0 {
+				first = n
+			}
+			if last >= 0 {
+				linkNodes(n, last)
+			}
+			last = n
+		}
+		if first != last && cj.Size != "Small" {
+			linkNodes(first, last)
+		}
+		if entrance, ok := byIndex[0]; ok {
+			linkNodes(entrance, parent)
 		}
 
 		// Recurse into allocated sockets holding a valid cluster jewel.
 		for _, s := range sockets {
 			if allocated[s.ID] && socketed[s.ID] != nil && s.ExpansionJewel != nil {
-				build(socketed[s.ID], s.ExpansionJewel, id)
+				build(socketed[s.ID], s.ExpansionJewel, id, s.ID)
 			}
 		}
 	}
@@ -242,10 +274,10 @@ func (c *Calculator) clusterGraph(spec *pobcode.Spec, b *pobcode.Build, res *Res
 			continue
 		}
 		if jewel := socketed[id]; jewel != nil {
-			build(jewel, n.ExpansionJewel, 0x10000)
+			build(jewel, n.ExpansionJewel, 0x10000, id)
 		}
 	}
-	return out
+	return out, links
 }
 
 // notableIndices ports itemLib.getClusterJewelNotableIndices (ItemTools.lua).

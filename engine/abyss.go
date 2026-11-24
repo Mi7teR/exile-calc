@@ -266,8 +266,9 @@ func (l *abyssLUT) read(seed, socket int, path []int) map[int][]abyssComponent {
 
 // pathToClassStart is PassiveSpecClass:GetShortestPathToClassStart: a
 // breadth-first search from the socket through allocated nodes. Links are
-// a node's out then in ids, as PassiveTree.lua builds linkedId.
-func pathToClassStart(tree *gamedata.Tree, alloc map[int]bool, root, classID int) []int {
+// a node's out then in ids, as PassiveTree.lua builds linkedId, then the
+// cluster subgraph links (extra).
+func pathToClassStart(tree *gamedata.Tree, alloc map[int]bool, root, classID int, extra map[int][]int) []int {
 	if !alloc[root] {
 		return nil
 	}
@@ -279,6 +280,8 @@ func pathToClassStart(tree *gamedata.Tree, alloc map[int]bool, root, classID int
 	}
 	nodeType := func(n *gamedata.Node) string {
 		switch {
+		case n == nil:
+			return "" // a cluster subgraph node
 		case n.ClassStartIndex != nil:
 			return "ClassStart"
 		case n.IsAscendancyStart:
@@ -294,10 +297,11 @@ func pathToClassStart(tree *gamedata.Tree, alloc map[int]bool, root, classID int
 		id := queue[0]
 		queue = queue[1:]
 		node := tree.Nodes[id]
-		if node == nil {
-			continue
+		var linked []int
+		if node != nil {
+			linked = append(append(linked, node.Out...), node.In...)
 		}
-		for _, other := range append(append([]int(nil), node.Out...), node.In...) {
+		for _, other := range append(linked, extra[id]...) {
 			if other == target {
 				path := []int{root, other}
 				for cur, ok := id, true; ok; cur, ok = parent[cur] {
@@ -306,9 +310,6 @@ func pathToClassStart(tree *gamedata.Tree, alloc map[int]bool, root, classID int
 				return path
 			}
 			on := tree.Nodes[other]
-			if on == nil {
-				continue
-			}
 			_, seen := parent[other]
 			if alloc[other] && nodeType(node) != "Mastery" && nodeType(on) != "ClassStart" &&
 				nodeType(on) != "AscendClassStart" && !seen && other != root {
