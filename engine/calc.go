@@ -509,7 +509,7 @@ func (c *Calculator) Calc(b *pobcode.Build) (*Result, error) {
 		if truthy(s.data["triggeredByGeneralsCry"]) && !s.disabled {
 			c.generalsCry(db, s, w1, w2)
 		}
-		c.mirages(db, s, w1, w2)
+		c.mirages(db, s, w1, w2, res)
 		for k, v := range c.offence(db, s, w1, w2) {
 			db.output[k] = v
 		}

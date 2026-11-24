@@ -141,14 +141,14 @@ type mirageResult struct {
 
 // mirages is the Mirage Archer and Sacred Wisps branches of calcs.mirages
 // (CalcMirages.lua): the main skill recalculated as used by its mirages.
-// PoB runs calcs.perform in a new environment; the mirage skill is the same
-// skill, so the offence of a copy is used.
-func (c *Calculator) mirages(db *ModDB, s *activeSkill, w1 hitSource, w2 *hitSource) {
+// PoB runs calcs.perform in a new environment; here the copy's offence runs
+// on the player's actor.
+func (c *Calculator) mirages(db *ModDB, s *activeSkill, w1 hitSource, w2 *hitSource, res *Result) {
 	if s.disabled || s.cfg == nil || s.cfg.SkillCond["usedByMirage"] {
 		return
 	}
 	const stOtherThingUsesSkill = 95
-	m := cloneSkill(s)
+	m := c.copyActiveSkill(db, s, res)
 	setSkillCond(m, "usedByMirage")
 	delete(m.flags, "multiPart")
 	m.data["mirageUses"] = s.data["storedUses"]
@@ -227,4 +227,23 @@ func addMirageDPS(s *activeSkill, out map[string]float64) float64 {
 		out["CombinedDPS"] += v
 	}
 	return max(1, mo["CullMultiplier"])
+}
+
+// copyActiveSkill is calcs.copyActiveSkill: a new skill from the same
+// effects. PoB quirk: the active effect takes the gem's own level and
+// quality (srcInstance), so +level and +quality from items (GemProperty)
+// are lost; supports keep theirs.
+func (c *Calculator) copyActiveSkill(db *ModDB, s *activeSkill, res *Result) *activeSkill {
+	if !s.active.hasSrc {
+		return cloneSkill(s)
+	}
+	eff := *s.active
+	eff.level, eff.quality, eff.props = eff.srcLevel, eff.srcQuality, nil
+	m := c.createActiveSkill(&eff, s.supportList, s.group, s.weapons, s.summon)
+	m.cfg, m.gem, m.main = &Cfg{SlotName: s.cfg.SlotName}, s.gem, s.main
+	c.buildSkillMods(db, m, res)
+	if m.mods != nil {
+		m.mods = m.mods.child()
+	}
+	return m
 }
