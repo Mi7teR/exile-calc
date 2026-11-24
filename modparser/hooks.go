@@ -363,6 +363,20 @@ var hooks = map[string]Hook{
 		return []any{withTags(newMod("GemProperty", "LIST", map[string]any{"keyword": typ, "key": argS(a, 2), "value": arg(a, 0)}, 0, 0),
 			map[string]any{"type": "SocketedIn", "slotName": "{SlotName}"})}
 	},
+	// ["([%a%s]+) reserves no mana"], ["([%a%s]+) has no reservation"] and
+	// ["([%a%s]+) has no reservation if cast as an aura"] = function(_, name) return {
+	//   mod("SkillData", "LIST", { key = "manaReservationFlat", value = 0 }, { type = "SkillId", skillId = gemIdLookup[name] },
+	//     [{ type = "SkillType", skillType = SkillType.Aura },] { type = "SkillType", skillType = SkillType.Blessing, neg = true }),
+	//   ... the same for lifeReservationFlat, manaReservationPercent, lifeReservationPercent } end,
+	"specialModList[^([%a%s]+) reserves no mana$]": func(p *Parser, a []any) any {
+		return noReservation(p, argS(a, 1), false)
+	},
+	"specialModList[^([%a%s]+) has no reservation$]": func(p *Parser, a []any) any {
+		return noReservation(p, argS(a, 1), false)
+	},
+	"specialModList[^([%a%s]+) has no reservation if cast as an aura$]": func(p *Parser, a []any) any {
+		return noReservation(p, argS(a, 1), true)
+	},
 	// ["([%a%s]+) has (%d+)%% increased effect"] = function(_, skill, num)
 	//   return { mod("BuffEffect", "INC", num, { type = "SkillId", skillId = gemIdLookup[skill]}) } end
 	"specialModList[^([%a%s]+) has (%d+)%% increased effect$]": func(p *Parser, a []any) any {
@@ -994,4 +1008,25 @@ func init() {
 func equippedBonus(a []any, sign float64) any {
 	n, _ := toNumber(argS(a, 1)).(float64)
 	return []any{newMod("EffectOfBonusesFrom"+firstToUpper(argS(a, 2)), "INC", sign*n, 0, 0)}
+}
+
+// noReservation is the SkillData list of the "<skill> has no reservation"
+// lines: zero flat and percent reservation of both pools for that skill,
+// except blessings (and only as an aura when aura is set).
+func noReservation(p *Parser, name string, aura bool) any {
+	const stAura, stBlessing = 39, 108
+	skill := map[string]any{"type": "SkillId"}
+	if id, ok := p.t.exact["gemIdLookup"][name]; ok {
+		skill["skillId"] = id
+	}
+	tags := []any{skill}
+	if aura {
+		tags = append(tags, map[string]any{"type": "SkillType", "skillType": float64(stAura)})
+	}
+	tags = append(tags, map[string]any{"type": "SkillType", "skillType": float64(stBlessing), "neg": true})
+	var out []any
+	for _, key := range []string{"manaReservationFlat", "lifeReservationFlat", "manaReservationPercent", "lifeReservationPercent"} {
+		out = append(out, withTags(newMod("SkillData", "LIST", map[string]any{"key": key, "value": 0.0}, 0, 0), tags...))
+	}
+	return out
 }
