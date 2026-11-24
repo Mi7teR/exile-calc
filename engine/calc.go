@@ -98,6 +98,7 @@ func (c *Calculator) Calc(b *pobcode.Build) (*Result, error) {
 	db.build = b
 	db.enemy = NewModDB()
 	db.enemy.enemy = db
+	db.player, db.enemy.player = db, db
 	db.gameIDs = c.gemIdx.gameID
 	res := &Result{Stats: db.output, DB: db}
 	config := b.ActiveConfig()

@@ -51,12 +51,18 @@ const minMinionsWithinTolerance = 49
 // Minion offence ratchet: oracle minions whose TotalDPS is within tolerance.
 const minMinionDPSWithinTolerance = 49
 
-// Player offence ratchet: builds whose main skill TotalDPS is within
-// tolerance.
+// Player offence ratchet: builds whose main skill playerRatchetStats are
+// each within tolerance.
 const minPlayerDPSWithinTolerance = 44
 
-// playerOffenceStats are the main skill's hit stats.
-var playerOffenceStats = []string{"Speed", "HitChance", "CritChance", "CritMultiplier", "AverageDamage", "TotalDPS"}
+// playerOffenceStats are the main skill's hit, ignite and skill DoT stats.
+var playerOffenceStats = []string{"Speed", "HitChance", "CritChance", "CritMultiplier", "AverageDamage", "TotalDPS",
+	"IgniteChance", "IgniteDPS", "TotalDot", "WithIgniteDPS", "TotalDotDPS", "CombinedDPS"}
+
+// playerRatchetStats are the playerOffenceStats each held at
+// minPlayerDPSWithinTolerance; TotalDotDPS and CombinedDPS wait for bleed,
+// poison and impale.
+var playerRatchetStats = []string{"TotalDPS", "IgniteChance", "IgniteDPS", "TotalDot", "WithIgniteDPS"}
 
 // goldenMinion is one entry of the oracle's "Minions" list.
 type goldenMinion struct {
@@ -267,8 +273,10 @@ func TestGoldenCorpus(t *testing.T) {
 	if ratchet == minBuildsWithinTolerance && minionPerStat["Offence:TotalDPS"] < minMinionDPSWithinTolerance {
 		t.Errorf("minion TotalDPS within tolerance %d < ratchet %d", minionPerStat["Offence:TotalDPS"], minMinionDPSWithinTolerance)
 	}
-	if ratchet == minBuildsWithinTolerance && perStat["Offence:TotalDPS"] < minPlayerDPSWithinTolerance {
-		t.Errorf("player TotalDPS within tolerance %d < ratchet %d", perStat["Offence:TotalDPS"], minPlayerDPSWithinTolerance)
+	for _, st := range playerRatchetStats {
+		if ratchet == minBuildsWithinTolerance && perStat["Offence:"+st] < minPlayerDPSWithinTolerance {
+			t.Errorf("player %s within tolerance %d < ratchet %d", st, perStat["Offence:"+st], minPlayerDPSWithinTolerance)
+		}
 	}
 	if ratchet == minBuildsWithinTolerance && minionsOK < minMinionsWithinTolerance {
 		t.Errorf("minions within tolerance %d < ratchet %d", minionsOK, minMinionsWithinTolerance)

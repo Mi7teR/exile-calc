@@ -176,6 +176,20 @@ func calcResistForType(enemy *ModDB, cfg *Cfg, t string, configMax float64) floa
 	return math.Max(math.Min(r, enemyMaxResistFor(configMax)), resistFloor)
 }
 
+// enemyResist is calcs.offence's calcResistForType: the enemy's resist of
+// type t, or the actor's own with "resist equal to yours".
+func enemyResist(actor *ModDB, cfg *Cfg, t string) float64 {
+	enemy := actor.enemy
+	cm := 0.0
+	if actor.enemyEnv != nil {
+		cm, _ = actor.enemyEnv.num("enemy" + t + "Resist")
+	}
+	if _, ok := enemy.OverrideCfg(cfg, t+"Resist"); !ok && actor.Flag("Enemy"+t+"ResistEqualToYours") {
+		return math.Max(math.Min(actor.output[t+"Resist"], enemyMaxResistFor(cm)), resistFloor)
+	}
+	return calcResistForType(enemy, cfg, t, cm)
+}
+
 func enemyMaxResistFor(configMax float64) float64 {
 	if configMax == 0 {
 		return enemyMaxResist
@@ -405,6 +419,7 @@ func (c *Calculator) offence(actor *ModDB, s *activeSkill, w1 hitSource, w2 *hit
 			speed = hs
 		}
 		p.out["TotalDPS"] = p.out["AverageDamage"] * speed * dpsMult * quantity
+		cullAndReservation(actor, s, p, out, dpsMult)
 	}
 	if debugPasses != nil {
 		debugPasses(passes)
@@ -413,6 +428,13 @@ func (c *Calculator) offence(actor *ModDB, s *activeSkill, w1 hitSource, w2 *hit
 	combine("CritMultiplier", "AVERAGE")
 	combine("AverageDamage", "DPS")
 	combine("TotalDPS", "DPS")
+	// Ailments and debuffs, per pass.
+	s.flags["igniteCanStack"] = list.FlagCfg(cfg, "IgniteCanStack")
+	for _, p := range passes {
+		ailmentChances(actor, s, p)
+		ignite(actor, s, p, out, dpsMult)
+	}
+	combineAilments(s, out, passes)
 	if isAttack {
 		out["AverageHit"] = passes[0].out["AverageHit"]
 		for k, v := range passes[0].out {
@@ -421,7 +443,8 @@ func (c *Calculator) offence(actor *ModDB, s *activeSkill, w1 hitSource, w2 *hit
 			}
 		}
 	}
-	out["CombinedDPS"] = out["TotalDPS"]
+	skillDot(actor, s, out, dpsMult, quantity)
+	combinedDPS(s, out)
 	return out
 }
 
@@ -512,6 +535,7 @@ func (c *Calculator) hitAndSpeed(actor *ModDB, s *activeSkill, p *hitPass) {
 	case data["triggerRate"] != nil && triggered:
 		r, _ := num(data["triggerRate"])
 		out["Time"], out["TriggerTime"], out["Speed"] = 1/r, 1/r, r
+		data["showAverage"] = false
 		return
 	}
 	var baseTime float64
@@ -559,6 +583,9 @@ func (c *Calculator) hitAndSpeed(actor *ModDB, s *activeSkill, p *hitPass) {
 	if p.hasCooldown {
 		out["Cooldown"] = p.cooldown
 		out["Speed"] = math.Min(out["Speed"], 1/p.cooldown*repeats)
+		if s.flags["selfCast"] {
+			data["showAverage"] = false
+		}
 	}
 	if !s.types[stChannel] {
 		out["Speed"] = math.Min(out["Speed"], serverTickRate*repeats)
@@ -894,16 +921,7 @@ func (c *Calculator) enemyEffMult(actor, list *ModDB, cfg *Cfg, s *activeSkill, 
 			}
 		}
 	} else {
-		resistOf := func(t string) float64 {
-			cm := 0.0
-			if actor.enemyEnv != nil {
-				cm, _ = actor.enemyEnv.num("enemy" + t + "Resist")
-			}
-			if _, ok := enemy.OverrideCfg(cfg, t+"Resist"); !ok && actor.Flag("Enemy"+t+"ResistEqualToYours") {
-				return math.Max(math.Min(actor.output[t+"Resist"], enemyMaxResistFor(cm)), resistFloor)
-			}
-			return calcResistForType(enemy, cfg, t, cm)
-		}
+		resistOf := func(t string) float64 { return enemyResist(actor, cfg, t) }
 		resist = resistOf(t)
 		ignores := func(e string) bool {
 			names := []string{"Ignore" + e + "Resistance"}
@@ -1091,7 +1109,7 @@ func numOr(v any, def float64) float64 {
 // the spells it empowers. Pact of Beidat's extra projectiles, chains and
 // cascades are not ported.
 func pacts(actor *ModDB, s *activeSkill, out map[string]float64) {
-	const stDamageOverTime, stCascadable, stBrand = 35, 56, 65
+	const stDamageOverTime, stCascadable = 35, 56
 	if !s.types[stSpell] || s.types[stBrand] {
 		return
 	}
@@ -1171,7 +1189,7 @@ func warcryCastTime(actor *ModDB, v *activeSkill) float64 {
 // strikes are not ported.
 func warcries(actor *ModDB, s *activeSkill, cfg *Cfg, out map[string]float64) {
 	const stMelee, stMeleeSingleTarget, stSummonsTotem, stSlam, stOtherThingUsesSkill, stNeverExertable, stRetaliation = 20, 21, 26, 92, 95, 122, 121
-	out["OffensiveWarcryEffect"], out["MaxOffensiveWarcryEffect"] = 1, 1
+	out["OffensiveWarcryEffect"], out["MaxOffensiveWarcryEffect"], out["AilmentWarcryEffect"] = 1, 1, 1
 	out["GlobalWarcryUptimeRatio"] = 0
 	for _, t := range []int{stNeverExertable, stTriggered, stChannel, stOtherThingUsesSkill, stRetaliation, stSummonsTotem} {
 		if s.types[t] {
@@ -1252,6 +1270,10 @@ func warcries(actor *ModDB, s *activeSkill, cfg *Cfg, out map[string]float64) {
 		exerted = math.Max(exerted, r)
 	}
 	out["ExertedAttackUptimeRatio"] = exerted
+	out["AilmentWarcryEffect"] = out["OffensiveWarcryEffect"]
+	if maxHit {
+		out["AilmentWarcryEffect"] = out["MaxOffensiveWarcryEffect"]
+	}
 	if exerted <= 0 {
 		return
 	}
@@ -1289,6 +1311,8 @@ func ruthlessAndFistOfWar(s *activeSkill, p *hitPass, global map[string]float64)
 	}
 	hitMult := 1 + list.SumCfg(cfg, "BASE", "RuthlessBlowHitMultiplier")/100
 	out["RuthlessBlowHitEffect"] = 1 - chance/100 + chance/100*hitMult
+	ailmentMult := 1 + list.SumCfg(cfg, "BASE", "RuthlessBlowAilmentMultiplier")/100
+	out["RuthlessBlowAilmentEffect"] = 1 - chance/100 + chance/100*ailmentMult
 	cd := list.SumCfg(cfg, "BASE", "FistOfWarCooldown")
 	if cd != 0 && s.types[stSlam] && !s.types[stVaal] && !s.types[stOtherThingUsesSkill] && global["Speed"] != 0 {
 		mult := list.Sum("BASE", "FistOfWarDamageMultiplier") / 100
@@ -1389,6 +1413,9 @@ func trapMineStats(actor *ModDB, s *activeSkill, out map[string]float64) {
 	list, cfg, data := s.mods, s.cfg, s.data
 	_, hasCD := data["cooldown"]
 	_, hasTrapCD := data["trapCooldown"]
+	if (s.flags["trap"] || s.flags["mine"]) && !hasCD && !hasTrapCD {
+		data["showAverage"] = false
+	}
 	action := actor.output["ActionSpeedMod"]
 	if s.flags["trap"] {
 		base := 1 / list.SumCfg(cfg, "BASE", "TrapThrowingTime")
