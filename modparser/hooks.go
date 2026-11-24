@@ -18,6 +18,22 @@ type Hook func(p *Parser, args []any) any
 // table and the key in ModParser.lua; each port quotes its Lua source.
 // Unported hooks make a line unsupported, never wrong.
 var hooks = map[string]Hook{
+	// ["(%d+)%% increased chaos damage per (%d+) maximum mana, up to a maximum of (%d+)%%"] = function(num, _, div, limit) return {
+	//   mod("ChaosDamage", "INC", num, { type = "PerStat", stat = "Mana", div = tonumber(div), globalLimit = tonumber(limit), globalLimitKey = "DarkIdeation" }) } end,
+	"specialModList[^(%d+)%% increased chaos damage per (%d+) maximum mana, up to a maximum of (%d+)%%$]": func(p *Parser, a []any) any {
+		n, _ := toNumber(arg(a, 0)).(float64)
+		div, _ := toNumber(argS(a, 2)).(float64)
+		limit, _ := toNumber(argS(a, 3)).(float64)
+		return []any{withTags(newMod("ChaosDamage", "INC", n, 0, 0),
+			map[string]any{"type": "PerStat", "stat": "Mana", "div": div, "globalLimit": limit, "globalLimitKey": "DarkIdeation"})}
+	},
+	// ["(%d+)%% increased attack and cast speed for each corpse consumed recently, up to a maximum of (%d+)%%"] = function(num, _, limit) return {
+	//   mod("Speed", "INC", num, { type = "Multiplier", var = "CorpseConsumedRecently", limit = tonumber(limit / num) }) } end,
+	"specialModList[^(%d+)%% increased attack and cast speed for each corpse consumed recently, up to a maximum of (%d+)%%$]": func(p *Parser, a []any) any {
+		n, _ := toNumber(arg(a, 0)).(float64)
+		limit, _ := toNumber(argS(a, 2)).(float64)
+		return []any{withTags(newMod("Speed", "INC", n, 0, 0), map[string]any{"type": "Multiplier", "var": "CorpseConsumedRecently", "limit": limit / n})}
+	},
 	// ["every (%d+) seconds, gain (%d+)%% of physical damage as extra fire damage for (%d+) seconds"] = function(frequency, _, num, duration) return {
 	//   mod("PhysicalDamageGainAsFire", "BASE", tonumber(num), { type = "Condition", var = "NgamahuFlamesAdvance" }) } end,
 	"specialModList[^every (%d+) seconds, gain (%d+)%% of physical damage as extra fire damage for (%d+) seconds$]": func(p *Parser, a []any) any {

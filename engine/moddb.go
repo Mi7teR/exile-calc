@@ -45,6 +45,7 @@ type ModDB struct {
 	strDmgBonus float64                    // actor.strDmgBonus
 	gearMods    map[string][]modparser.Mod // the player's parsed gear mods per slot (weaponData)
 	parent      *ModDB                     // a skill's mod list reads through to the actor's ModDB
+	isList      bool                       // a ModList (child): EvalMod without global limits
 	owner       *ModDB                     // a minion's parent actor (tag actor "parent")
 	// activeSkills is actor.activeSkillList.
 	activeSkills []*activeSkill
@@ -100,6 +101,7 @@ func (db *ModDB) Enemy() *ModDB { return db.enemy }
 // as a skill's skillModList does (CalcActiveSkill.lua).
 func (db *ModDB) child() *ModDB {
 	c := NewModDB()
+	c.isList = true
 	c.parent, c.enemy, c.output, c.owner, c.build, c.enemyEnv = db, db.enemy, db.output, db.owner, db.build, db.enemyEnv
 	c.items, c.tags, c.classConds, c.UnsupportedTags, c.gameIDs = db.items, db.tags, db.classConds, db.UnsupportedTags, db.gameIDs
 	return c
@@ -159,6 +161,7 @@ func (db *ModDB) SumCfg(cfg *Cfg, typ string, names ...string) float64 {
 
 func (db *ModDB) sumInternal(ctx *ModDB, cfg *Cfg, typ string, names []string) float64 {
 	total := 0.0
+	var limits map[string]float64
 	for _, name := range names {
 		for i := range db.mods[name] {
 			m := &db.mods[name][i]
@@ -167,6 +170,9 @@ func (db *ModDB) sumInternal(ctx *ModDB, cfg *Cfg, typ string, names []string) f
 			}
 			v, ok := ctx.eval(m, cfg)
 			if f, isNum := num(v); ok && isNum {
+				if !db.isList {
+					f = globalLimit(m, f, &limits)
+				}
 				total += f
 			}
 		}
@@ -188,6 +194,7 @@ func (db *ModDB) MoreCfg(cfg *Cfg, names ...string) float64 {
 
 func (db *ModDB) moreInternal(ctx *ModDB, cfg *Cfg, names []string) float64 {
 	result := 1.0
+	var limits map[string]float64
 	for _, name := range names {
 		mod := 1.0
 		for i := range db.mods[name] {
@@ -197,6 +204,9 @@ func (db *ModDB) moreInternal(ctx *ModDB, cfg *Cfg, names []string) float64 {
 			}
 			v, ok := ctx.eval(m, cfg)
 			if f, isNum := num(v); ok && isNum {
+				if !db.isList {
+					f = globalLimit(m, f, &limits)
+				}
 				mod *= 1 + f/100
 			}
 		}
@@ -983,4 +993,25 @@ func (db *ModDB) root() *ModDB {
 		db = db.parent
 	}
 	return db
+}
+
+// globalLimit is the "Apply global limits" end of ModStore:EvalMod: tags
+// with globalLimit and globalLimitKey share one cap across the mods of a
+// single ModDB Sum/More call (limits is that call's table).
+func globalLimit(m *Mod, v float64, limits *map[string]float64) float64 {
+	for _, t := range m.Tags {
+		limit, ok := tagNum(t, "globalLimit")
+		key, _ := t["globalLimitKey"].(string)
+		if !ok || key == "" {
+			continue
+		}
+		if *limits == nil {
+			*limits = map[string]float64{}
+		}
+		if (*limits)[key]+v > limit {
+			v = limit - (*limits)[key]
+		}
+		(*limits)[key] += v
+	}
+	return v
 }
