@@ -695,6 +695,13 @@ func (c *Calculator) setupSkills(db *ModDB, b *pobcode.Build, useSwap bool, res 
 	}
 	if len(inMain) > 0 {
 		inMain[min(len(inMain), max(set.Groups[mainGroup-1].MainActiveSkill, 1))-1].main = true
+	} else if ge := skills["Melee"]; ge != nil {
+		// Add a default main skill if none are specified (CalcSetup.lua):
+		// level 1 Default Attack with no supports.
+		s := c.createActiveSkill(&skillEffect{id: "Melee", ge: ge, level: 1}, nil, nil, weapons, nil)
+		s.cfg = &Cfg{}
+		s.main = true
+		out = append(out, s)
 	}
 	return out
 }
