@@ -18,6 +18,24 @@ type Hook func(p *Parser, args []any) any
 // table and the key in ModParser.lua; each port quotes its Lua source.
 // Unported hooks make a line unsupported, never wrong.
 var hooks = map[string]Hook{
+	// ["^enemies (%a+) by you take "] = function(cond)
+	//   return { tag = { type = "Condition", var = cond:gsub("^%a", string.upper) }, applyToEnemy = true, modSuffix = "Taken" } end,
+	"preFlagList[^enemies (%a+) by you take ]": enemiesByYouHook("Taken"),
+	// ["^enemies (%a+) by "] and ["^enemies (%a+) by you have "] = function(cond)
+	//   return { tag = { type = "Condition", var = cond:gsub("^%a", string.upper) }, applyToEnemy = true } end,
+	"preFlagList[^enemies (%a+) by ]":          enemiesByYouHook(""),
+	"preFlagList[^enemies (%a+) by you have ]": enemiesByYouHook(""),
+	// ["you and allies within ([%d%.]+) metres deal (%d+) to (%d+) additional cold damage"] = function(_, _, min, max) return {
+	//   mod("ExtraAura", "LIST", { mod = mod("ColdMin", "BASE", tonumber(min)) }),
+	//   mod("ExtraAura", "LIST", { mod = mod("ColdMax", "BASE", tonumber(max)) }) } end,
+	"specialModList[^you and allies within ([%d%.]+) metres deal (%d+) to (%d+) additional cold damage$]": func(p *Parser, a []any) any {
+		mn, _ := toNumber(argS(a, 2)).(float64)
+		mx, _ := toNumber(argS(a, 3)).(float64)
+		return []any{
+			newMod("ExtraAura", "LIST", map[string]any{"mod": newMod("ColdMin", "BASE", mn, 0, 0)}, 0, 0),
+			newMod("ExtraAura", "LIST", map[string]any{"mod": newMod("ColdMax", "BASE", mx, 0, 0)}, 0, 0),
+		}
+	},
 	// ["deal no non%-(%a+) damage"] = function(_, dmgType) return dealNoNonDamageType(dmgType) end,
 	// ["cannot deal non%-(%a+) damage"] = function(_, dmgType) return dealNoNonDamageType(dmgType) end,
 	"specialModList[^deal no non%-(%a+) damage$]":     dealNoNonDamageType,
@@ -823,4 +841,19 @@ func dealNoNonDamageType(p *Parser, a []any) any {
 		}
 	}
 	return mods
+}
+
+// enemiesByYouHook returns the "enemies <cond> by you ..." preFlagList
+// functions: a Condition tag on the enemy, optionally with a mod suffix.
+func enemiesByYouHook(suffix string) Hook {
+	return func(p *Parser, a []any) any {
+		out := map[string]any{
+			"tag":          map[string]any{"type": "Condition", "var": firstToUpper(argS(a, 0))},
+			"applyToEnemy": true,
+		}
+		if suffix != "" {
+			out["modSuffix"] = suffix
+		}
+		return out
+	}
 }

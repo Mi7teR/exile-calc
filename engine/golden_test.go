@@ -55,7 +55,7 @@ const minMinionDPSWithinTolerance = 48
 
 // Player offence ratchet: builds whose main skill TotalDPS is within
 // tolerance.
-const minPlayerDPSWithinTolerance = 31
+const minPlayerDPSWithinTolerance = 34
 
 // playerOffenceStats are the main skill's hit stats.
 var playerOffenceStats = []string{"Speed", "HitChance", "CritChance", "CritMultiplier", "AverageDamage", "TotalDPS"}
