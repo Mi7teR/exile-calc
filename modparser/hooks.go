@@ -3,6 +3,7 @@ package modparser
 import (
 	"math"
 	"regexp"
+	"slices"
 	"strings"
 )
 
@@ -17,6 +18,25 @@ type Hook func(p *Parser, args []any) any
 // table and the key in ModParser.lua; each port quotes its Lua source.
 // Unported hooks make a line unsupported, never wrong.
 var hooks = map[string]Hook{
+	// ["deal no non%-(%a+) damage"] = function(_, dmgType) return dealNoNonDamageType(dmgType) end,
+	// ["cannot deal non%-(%a+) damage"] = function(_, dmgType) return dealNoNonDamageType(dmgType) end,
+	"specialModList[^deal no non%-(%a+) damage$]":     dealNoNonDamageType,
+	"specialModList[^cannot deal non%-(%a+) damage$]": dealNoNonDamageType,
+	// ["hits have (%d+)%% chance to deal (%d+)%% more area damage"] = function (num, _, more) return {
+	//   mod("Damage", "MORE", (num*more/100), nil, bor(ModFlag.Area, ModFlag.Hit)) } end,
+	"specialModList[^hits have (%d+)%% chance to deal (%d+)%% more area damage$]": func(p *Parser, a []any) any {
+		const mfHit, mfArea = 0x4, 0x200
+		n, _ := toNumber(arg(a, 0)).(float64)
+		more, _ := toNumber(argS(a, 2)).(float64)
+		return []any{newMod("Damage", "MORE", n*more/100, mfArea|mfHit, 0)}
+	},
+	// ["your hits treat cold resistance as (%d+)%% higher than actual value"] = function(num) return {
+	//   mod("ColdPenetration", "BASE", -num, nil, 0, KeywordFlag.Hit) } end,
+	"specialModList[^your hits treat cold resistance as (%d+)%% higher than actual value$]": func(p *Parser, a []any) any {
+		const kfHit = 0x40000
+		n, _ := toNumber(arg(a, 0)).(float64)
+		return []any{newMod("ColdPenetration", "BASE", -n, 0, kfHit)}
+	},
 	// ["hits have (%d+)%% chance to treat enemy monster elemental resistance values as inverted"] = function(num) return {
 	//   mod("HitsInvertEleResChance", "CHANCE", num / 100, nil) } end
 	// and the cold, fire and lightning variants (HitsInvert<Type>ResChance).
@@ -782,4 +802,25 @@ func invertResHook(name string) Hook {
 		n, _ := toNumber(arg(a, 0)).(float64)
 		return []any{newMod(name, "CHANCE", n/100, 0, 0)}
 	}
+}
+
+// dealNoNonDamageType is ModParser.lua's dealNoNonDamageType (player only):
+// a DealNo<Type> flag for every other damage type, nil for unknown types.
+func dealNoNonDamageType(p *Parser, a []any) any {
+	t := argS(a, 1)
+	if t == "" {
+		return nil
+	}
+	t = firstToUpper(t)
+	types := []string{"Physical", "Lightning", "Cold", "Fire", "Chaos"}
+	if !slices.Contains(types, t) {
+		return nil
+	}
+	var mods []any
+	for _, d := range types {
+		if d != t {
+			mods = append(mods, newMod("DealNo"+d, "FLAG", true, 0, 0))
+		}
+	}
+	return mods
 }

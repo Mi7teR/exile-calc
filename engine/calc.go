@@ -1159,6 +1159,12 @@ func (c *Calculator) attributes(db *ModDB) {
 		}
 		str, dex, int_ := out["Str"], out["Dex"], out["Int"]
 		cond := db.conditions
+		stats := []float64{str, dex, int_}
+		sort.Float64s(stats)
+		out["LowestAttribute"] = stats[0]
+		cond["TwoHighestAttributesEqual"] = stats[1] == stats[2]
+		cond["IntSingleHighestAttribute"] = int_ > str && int_ > dex
+		cond["DexSingleHighestAttribute"] = dex > str && dex > int_
 		cond["StrHigherThanInt"] = str > int_
 		cond["StrHigherThanDex"] = str > dex
 		cond["IntHigherThanStr"] = int_ > str

@@ -213,6 +213,10 @@ func (c *Calculator) offence(actor *ModDB, s *activeSkill, w1 hitSource, w2 *hit
 			list.Add(Mod{Name: "Damage", Type: "INC", Value: math.Floor(list.Sum("INC", x.stat) * transfiguration), Flags: x.flags, Source: x.source})
 		}
 	}
+	if actor.Flag("Elusive") && list.Flag("SupportedByNightblade") {
+		effect := actor.output["ElusiveEffectMod"] / 100
+		list.Add(Mod{Name: "CritMultiplier", Type: "BASE", Value: math.Floor(list.Sum("BASE", "NightbladeElusiveCritMultiplier") * effect), Source: "Nightblade"})
+	}
 	c.offenceStatConversions(actor, s, w1, w2, out)
 	preSkillTypeFunc(s)
 	projectileStats(s, out)
