@@ -51,8 +51,13 @@ func reservations(db *ModDB, skills []*activeSkill, res *Result) {
 			"Mana": {base("manaReservationFlat", level.ManaReservationFlat), base("manaReservationPercent", level.ManaReservationPercent)},
 			"Life": {base("lifeReservationFlat", level.LifeReservationFlat), base("lifeReservationPercent", level.LifeReservationPercent)},
 		}
-		if list.FlagCfg(cfg, "ManaCostGainAsReservation") || list.FlagCfg(cfg, "LifeCostGainAsReservation") {
-			res.Incomplete = append(res.Incomplete, "reservation from skill cost: "+s.active.ge.Name)
+		// Skills whose cost becomes a reservation (Minefield-like supports).
+		if level.Cost != nil {
+			for _, name := range []string{"Mana", "Life"} {
+				if list.FlagCfg(cfg, name+"CostGainAsReservation") {
+					pools[name].flat = list.SumCfg(cfg, "BASE", name+"CostBase") + level.Cost[name]
+				}
+			}
 		}
 		forced := map[string]any{}
 		for _, k := range []string{"ManaReservationFlatForced", "ManaReservationPercentForced", "LifeReservationFlatForced", "LifeReservationPercentForced"} {
@@ -91,6 +96,10 @@ func reservations(db *ModDB, skills []*activeSkill, res *Result) {
 				pct = f
 			} else if b := modfInt(p.percent * 100 * mult); b != 0 {
 				pct = math.Max(round(stage(b)/(1+eff/100)/effMore, 0)/100, 0)
+			}
+			if s.mineCount > 0 {
+				flat *= s.mineCount
+				pct *= s.mineCount
 			}
 			// CalcPerform.lua: the skill's own reservation, for GetStat
 			// ManaReservedPercent and LifeReservedPercent.

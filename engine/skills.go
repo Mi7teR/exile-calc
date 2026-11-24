@@ -255,6 +255,8 @@ type activeSkill struct {
 	part int
 	// mirage is activeSkill.mirage: the Mirage Archer copy's output.
 	mirage *mirageResult
+	// mineCount is activeSkill.activeMineCount (0 when unset).
+	mineCount float64
 }
 
 // modFlagByName is the weapon part of Data/Global.lua ModFlag.
@@ -1433,6 +1435,15 @@ func (c *Calculator) buildSkillMods(db *ModDB, s *activeSkill, res *Result) {
 	player := db
 	if db.owner != nil {
 		player = db.owner
+	}
+	// Active mine multiplier (activeMineCount, the gem's skillMineCount).
+	if flags["mine"] && s.gem != nil && s.gem.SkillMineCount > 0 {
+		n := float64(s.gem.SkillMineCount)
+		s.mineCount = n
+		list.NewMod("Multiplier:ActiveMineCount", "BASE", n, "Base")
+		if e := player.enemy; e != nil {
+			e.multipliers["ActiveMineCount"] = math.Max(n, e.multipliers["ActiveMineCount"])
+		}
 	}
 	for _, e := range player.List(s.cfg, "SkillData") {
 		skillData(s.data, e.Value)
