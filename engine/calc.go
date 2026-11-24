@@ -359,6 +359,10 @@ func (c *Calculator) Calc(b *pobcode.Build) (*Result, error) {
 		}
 	}
 
+	// The config tab's mod list (custom modifiers) joins env.modDB before
+	// the granted passives are added (CalcSetup.lua), so "Allocates X"
+	// custom lines grant their node.
+	c.customMods(db, res, config)
 	granted := grantedNodes(db, tree, class.Name, allocated)
 	for _, id := range granted {
 		addTreeNode(id, true)
@@ -408,7 +412,6 @@ func (c *Calculator) Calc(b *pobcode.Build) (*Result, error) {
 	c.applyConfig(db, res, config)
 	db.enemyEnv = newEnemyEnv(config, c.data.Config, b.Level, c.data.Monster, res)
 	db.enemy.NewMod("Accuracy", "BASE", enemyAccuracy(c.data.Monster, db.enemyEnv.level), "Base")
-	c.customMods(db, res, config)
 	shrineBaseMods(db)
 	skills := c.setupSkills(db, b, useSwap, res)
 	db.activeSkills = skills
