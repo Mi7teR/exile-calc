@@ -58,12 +58,18 @@ const minPlayerDPSWithinTolerance = 44
 // playerOffenceStats are the main skill's hit, ignite and skill DoT stats.
 var playerOffenceStats = []string{"Speed", "HitChance", "CritChance", "CritMultiplier", "AverageDamage", "TotalDPS",
 	"IgniteChance", "IgniteDPS", "TotalDot", "WithIgniteDPS", "TotalDotDPS", "CombinedDPS",
-	"BleedChance", "BleedDPS", "WithBleedDPS", "PoisonChance", "PoisonDPS", "TotalPoisonDPS", "WithPoisonDPS"}
+	"BleedChance", "BleedDPS", "WithBleedDPS", "PoisonChance", "PoisonDPS", "TotalPoisonDPS", "WithPoisonDPS",
+	"ImpaleChance", "ImpaleModifier", "ImpaleDPS", "WithImpaleDPS", "ImpaleDuration"}
 
 // playerRatchetStats are the playerOffenceStats each held at
-// minPlayerDPSWithinTolerance; CombinedDPS waits for impale.
+// minPlayerDPSWithinTolerance; CombinedDPS has its own ratchet.
 var playerRatchetStats = []string{"TotalDPS", "IgniteChance", "IgniteDPS", "TotalDot", "WithIgniteDPS", "TotalDotDPS",
-	"BleedChance", "BleedDPS", "WithBleedDPS", "PoisonChance", "PoisonDPS", "TotalPoisonDPS", "WithPoisonDPS"}
+	"BleedChance", "BleedDPS", "WithBleedDPS", "PoisonChance", "PoisonDPS", "TotalPoisonDPS", "WithPoisonDPS",
+	"ImpaleChance", "ImpaleModifier", "ImpaleDPS", "WithImpaleDPS", "ImpaleDuration"}
+
+// minPlayerCombinedDPSWithinTolerance: builds whose CombinedDPS is within
+// tolerance (mirages are not ported).
+const minPlayerCombinedDPSWithinTolerance = 43
 
 // goldenMinion is one entry of the oracle's "Minions" list.
 type goldenMinion struct {
@@ -273,6 +279,9 @@ func TestGoldenCorpus(t *testing.T) {
 	}
 	if ratchet == minBuildsWithinTolerance && minionPerStat["Offence:TotalDPS"] < minMinionDPSWithinTolerance {
 		t.Errorf("minion TotalDPS within tolerance %d < ratchet %d", minionPerStat["Offence:TotalDPS"], minMinionDPSWithinTolerance)
+	}
+	if ratchet == minBuildsWithinTolerance && perStat["Offence:CombinedDPS"] < minPlayerCombinedDPSWithinTolerance {
+		t.Errorf("player CombinedDPS within tolerance %d < ratchet %d", perStat["Offence:CombinedDPS"], minPlayerCombinedDPSWithinTolerance)
 	}
 	for _, st := range playerRatchetStats {
 		if ratchet == minBuildsWithinTolerance && perStat["Offence:"+st] < minPlayerDPSWithinTolerance {

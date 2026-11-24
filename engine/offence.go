@@ -241,6 +241,7 @@ func (c *Calculator) offence(actor *ModDB, s *activeSkill, w1 hitSource, w2 *hit
 	projectileStats(s, out)
 	trapMineStats(actor, s, out)
 	offenceDuration(actor, s, out)
+	impaleDuration(actor, s, out)
 	costs := map[string]float64{}
 	skillCosts(actor, s, costs)
 	for k, v := range costs {
@@ -435,6 +436,7 @@ func (c *Calculator) offence(actor *ModDB, s *activeSkill, w1 hitSource, w2 *hit
 		bleed(actor, s, p, out, dpsMult)
 		poison(actor, s, p, out, dpsMult, quantity)
 		ignite(actor, s, p, out, dpsMult)
+		impale(actor, s, p, out)
 	}
 	combineAilments(s, out, passes)
 	if isAttack {
@@ -446,7 +448,7 @@ func (c *Calculator) offence(actor *ModDB, s *activeSkill, w1 hitSource, w2 *hit
 		}
 	}
 	skillDot(actor, s, out, dpsMult, quantity)
-	combinedDPS(s, out, quantity)
+	combinedDPS(s, out, passes, dpsMult, quantity)
 	return out
 }
 
@@ -690,6 +692,7 @@ func (c *Calculator) hitDamage(actor *ModDB, s *activeSkill, p *hitPass) {
 
 	// Hit damage per type: pass 1 crits, pass 2 non-crits.
 	var totalHitAvg, totalCritAvg float64
+	out["impaleStoredHitAvg"] = 0
 	skillCond := p.cfg.SkillCond
 	for pass := 1; pass <= 2; pass++ {
 		cond := map[string]bool{}
@@ -734,6 +737,14 @@ func (c *Calculator) hitDamage(actor *ModDB, s *activeSkill, p *hitPass) {
 				avg = avg*(1+lucky) + ((rolls-1)*mn+mx)/rolls*(-lucky)
 			}
 			if mn != 0 || mx != 0 {
+				if t == "Physical" {
+					// Pre-armour physical damage for impale.
+					if pass == 1 {
+						out["impaleStoredHitAvg"] += avg * out["CritChance"] / 100
+					} else {
+						out["impaleStoredHitAvg"] += avg * (1 - out["CritChance"]/100)
+					}
+				}
 				effMult := c.enemyEffMult(actor, list, p.cfg, s, t, avg)
 				if pass == 2 {
 					out[t+"EffMult"] = effMult
@@ -1497,6 +1508,15 @@ func offenceDuration(actor *ModDB, s *activeSkill, out map[string]float64) {
 		d /= math.Max(0.25, calcMod(actor.enemy, cfg, "BuffExpireFaster")) // BuffExpirationSlowCap
 	}
 	out["Duration"] = math.Ceil(d*serverTickRate) / serverTickRate
+}
+
+// impaleDuration is ImpaleDurationMod and ImpaleDuration of the "Skill
+// duration" part of calcs.offence.
+func impaleDuration(actor *ModDB, s *activeSkill, out map[string]float64) {
+	const impaledDebuffBaseDuration = 8 // characterConstants impaled_debuff_base_duration_ms / 1000
+	out["ImpaleDurationMod"] = math.Max(calcMod(s.mods, s.cfg, "ImpaleDuration"), 0)
+	debuffDurationMult := 1 / math.Max(buffExpirationSlowCap, calcMod(actor.enemy, s.cfg, "BuffExpireFaster"))
+	out["ImpaleDuration"] = math.Ceil(impaledDebuffBaseDuration*out["ImpaleDurationMod"]*serverTickRate*debuffDurationMult) / serverTickRate
 }
 
 // enemyExplode is EnemyExplode's preDamageFunc (Data/Skills/other.lua): the

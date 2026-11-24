@@ -442,6 +442,9 @@ func combineAilments(s *activeSkill, out map[string]float64, passes []*hitPass) 
 		sum("TotalIgniteDPS")
 	}
 	avg("ImpaleChance")
+	avg("ImpaleStoredDamage")
+	combineAilment(out, passes, "ImpaleModifier", "ImpaleChance", false, double)
+	sum("impaleStoredHitAvg")
 }
 
 // skillDot is "Calculate skill DOT components": the skill's own damage
@@ -585,7 +588,7 @@ func cullAndReservation(actor *ModDB, s *activeSkill, p *hitPass, global map[str
 
 // combinedDPS is "Calculate combined DPS estimate, including DoTs" without
 // mirages.
-func combinedDPS(s *activeSkill, out map[string]float64, quantity float64) {
+func combinedDPS(s *activeSkill, out map[string]float64, passes []*hitPass, dpsMult, quantity float64) {
 	baseDPS := out["TotalDPS"]
 	showAverage := truthy(s.data["showAverage"])
 	if showAverage {
@@ -620,6 +623,34 @@ func combinedDPS(s *activeSkill, out map[string]float64, quantity float64) {
 		default:
 			out["WithIgniteDPS"] = baseDPS + out["IgniteDPS"]
 		}
+	}
+	if s.flags["impale"] {
+		impaleDPS := func(o map[string]float64) float64 {
+			mod, ok := o["ImpaleModifier"]
+			if !ok {
+				mod = 1
+			}
+			return o["impaleStoredHitAvg"] * (mod - 1) * o["HitChance"] / 100 * dpsMult
+		}
+		if s.flags["attack"] && truthy(s.data["doubleHitsWhenDualWielding"]) && len(passes) == 2 {
+			out["ImpaleDPS"] = impaleDPS(passes[0].out) + impaleDPS(passes[1].out)
+		} else {
+			out["ImpaleDPS"] = impaleDPS(out)
+		}
+		if out["ImpaleDuration"] <= 0 {
+			out["ImpaleDPS"] = 0
+		}
+		if showAverage {
+			out["WithImpaleDPS"] = out["AverageDamage"] + out["ImpaleDPS"]
+			out["CombinedAvg"] += out["ImpaleDPS"]
+		} else {
+			out["ImpaleDPS"] *= hitSpeed(out)
+			out["WithImpaleDPS"] = out["TotalDPS"] + out["ImpaleDPS"]
+		}
+		if quantity > 1 {
+			out["ImpaleDPS"] *= quantity
+		}
+		out["CombinedDPS"] += out["ImpaleDPS"]
 	}
 	out["WithBleedDPS"] = baseDPS
 	if s.flags["bleed"] {
@@ -941,4 +972,37 @@ func poison(actor *ModDB, s *activeSkill, p *hitPass, global map[string]float64,
 	} else {
 		out["TotalPoisonDPS"] = math.Min(single*stacks, dotDpsCap)
 	}
+}
+
+// impale is the "Calculate impale chance and modifiers" part of the
+// ailment loop for one pass.
+func impale(actor *ModDB, s *activeSkill, p *hitPass, global map[string]float64) {
+	list, cfg, out, enemy := s.mods, p.cfg, p.out, actor.enemy
+	if !canDeal(s, "Physical") || out["ImpaleChance"]+out["ImpaleChanceOnCrit"] <= 0 {
+		return
+	}
+	s.flags["impale"] = true
+	crit := out["CritChance"] / 100
+	chance := math.Min(out["ImpaleChance"]/100, 1)*(1-crit) + math.Min(out["ImpaleChanceOnCrit"]/100, 1)*crit
+	maxStacks := list.SumCfg(cfg, "BASE", "ImpaleStacksMax") * (1 + list.SumCfg(cfg, "BASE", "ImpaleAdditionalDurationChance")/100)
+	stacks := math.Min(maxStacks, enemy.SumCfg(cfg, "BASE", "Multiplier:ImpaleStacks"))
+	const impaleStoredDamageBase = 0.1
+	onBleed := list.SumCfg(cfg, "INC", "ImpaleEffectOnBleed") * math.Min(list.SumCfg(cfg, "BASE", "BleedChance")/100, 1)
+	inc := (list.SumCfg(cfg, "INC", "ImpaleEffect") + onBleed) / 100
+	more := round(list.MoreCfg(cfg, "ImpaleEffect"), 2)
+	stored := impaleStoredDamageBase * (1 + inc) * more
+	hitMod := stored * stacks
+	armour := math.Max(val(enemy, "Armour"), 0)
+	resist := math.Min(math.Max(0, enemy.Sum("BASE", "PhysicalDamageReduction")+list.SumCfg(cfg, "BASE", "EnemyImpalePhysicalDamageReduction")+
+		armourReductionF(armour, hitMod*out["impaleStoredHitAvg"])), enemyPhysicalDamageReductionCap)
+	if list.FlagCfg(cfg, "IgnoreEnemyImpalePhysicalDamageReduction") {
+		resist = 0
+	}
+	takenCfg := &Cfg{Flags: mfHit}
+	names := []string{"DamageTaken", "PhysicalDamageTaken", "ReflectedDamageTaken"}
+	taken := (1 + enemy.SumCfg(takenCfg, "INC", names...)/100) * enemy.MoreCfg(takenCfg, names...)
+	global["ImpaleStacksMax"] = maxStacks
+	global["ImpaleStacks"] = stacks
+	out["ImpaleStoredDamage"] = stored * 100
+	out["ImpaleModifier"] = 1 + hitMod*(1-resist/100)*chance*taken
 }
