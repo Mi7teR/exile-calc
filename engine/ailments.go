@@ -11,8 +11,7 @@ import (
 // calcs.offence (Modules/CalcOffence.lua): ailment chances, bleed, poison,
 // ignite, impale, skill DoT, culling and combined DPS. Not ported yet:
 // decay, non-damaging ailment effects, knockback, preDotFunc, the legacy
-// Perfect Agony (CritMultiplierAppliesToDegen), ailmentMode CRIT and
-// mirages.
+// Perfect Agony (CritMultiplierAppliesToDegen) and ailmentMode CRIT.
 
 // Data/Global.lua ModFlag and KeywordFlag bits for ailments.
 const (
@@ -586,8 +585,7 @@ func cullAndReservation(actor *ModDB, s *activeSkill, p *hitPass, global map[str
 	global["ReservationDpsMultiplier"] = 100 / (100 - actor.enemy.Sum("BASE", "LifeReservationPercent"))
 }
 
-// combinedDPS is "Calculate combined DPS estimate, including DoTs" without
-// mirages.
+// combinedDPS is "Calculate combined DPS estimate, including DoTs".
 func combinedDPS(s *activeSkill, out map[string]float64, passes []*hitPass, dpsMult, quantity float64) {
 	baseDPS := out["TotalDPS"]
 	showAverage := truthy(s.data["showAverage"])
@@ -661,17 +659,19 @@ func combinedDPS(s *activeSkill, out map[string]float64, passes []*hitPass, dpsM
 			out["WithBleedDPS"] = baseDPS + out["BleedDPS"]
 		}
 	}
+	bestCull := addMirageDPS(s, out)
 	ignite, ok := out["TotalIgniteDPS"]
 	if !ok {
 		ignite = out["IgniteDPS"]
 	}
-	total := out["TotalDot"] + out["TotalPoisonDPS"] + out["CausticGroundDPS"] + ignite + out["BurningGroundDPS"] +
+	total := out["TotalDot"] + out["TotalPoisonDPS"] + math.Max(out["CausticGroundDPS"], out["MirageCausticGroundDPS"]) + ignite +
+		math.Max(out["BurningGroundDPS"], out["MirageBurningGroundDPS"]) +
 		out["BleedDPS"] + out["CorruptingBloodDPS"] + out["DecayDPS"]
 	out["TotalDotDPS"] = math.Min(total, dotDpsCap)
 	if !showAverage {
 		out["CombinedDPS"] += out["TotalDotDPS"]
 	}
-	cull := math.Max(1, out["CullMultiplier"])
+	cull := math.Max(bestCull, out["CullMultiplier"])
 	resMult, ok := out["ReservationDpsMultiplier"]
 	if !ok {
 		resMult = 1

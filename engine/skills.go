@@ -253,6 +253,8 @@ type activeSkill struct {
 	weapon1Cfg, weapon2Cfg *Cfg
 	// part is activeSkill.skillPart (1-based, 0 for single part skills).
 	part int
+	// mirage is activeSkill.mirage: the Mirage Archer copy's output.
+	mirage *mirageResult
 }
 
 // modFlagByName is the weapon part of Data/Global.lua ModFlag.
