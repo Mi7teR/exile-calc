@@ -432,6 +432,8 @@ func (c *Calculator) offence(actor *ModDB, s *activeSkill, w1 hitSource, w2 *hit
 	s.flags["igniteCanStack"] = list.FlagCfg(cfg, "IgniteCanStack")
 	for _, p := range passes {
 		ailmentChances(actor, s, p)
+		bleed(actor, s, p, out, dpsMult)
+		poison(actor, s, p, out, dpsMult, quantity)
 		ignite(actor, s, p, out, dpsMult)
 	}
 	combineAilments(s, out, passes)
@@ -444,7 +446,7 @@ func (c *Calculator) offence(actor *ModDB, s *activeSkill, w1 hitSource, w2 *hit
 		}
 	}
 	skillDot(actor, s, out, dpsMult, quantity)
-	combinedDPS(s, out)
+	combinedDPS(s, out, quantity)
 	return out
 }
 

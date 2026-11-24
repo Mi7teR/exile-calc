@@ -57,12 +57,13 @@ const minPlayerDPSWithinTolerance = 44
 
 // playerOffenceStats are the main skill's hit, ignite and skill DoT stats.
 var playerOffenceStats = []string{"Speed", "HitChance", "CritChance", "CritMultiplier", "AverageDamage", "TotalDPS",
-	"IgniteChance", "IgniteDPS", "TotalDot", "WithIgniteDPS", "TotalDotDPS", "CombinedDPS"}
+	"IgniteChance", "IgniteDPS", "TotalDot", "WithIgniteDPS", "TotalDotDPS", "CombinedDPS",
+	"BleedChance", "BleedDPS", "WithBleedDPS", "PoisonChance", "PoisonDPS", "TotalPoisonDPS", "WithPoisonDPS"}
 
 // playerRatchetStats are the playerOffenceStats each held at
-// minPlayerDPSWithinTolerance; TotalDotDPS and CombinedDPS wait for bleed,
-// poison and impale.
-var playerRatchetStats = []string{"TotalDPS", "IgniteChance", "IgniteDPS", "TotalDot", "WithIgniteDPS"}
+// minPlayerDPSWithinTolerance; CombinedDPS waits for impale.
+var playerRatchetStats = []string{"TotalDPS", "IgniteChance", "IgniteDPS", "TotalDot", "WithIgniteDPS", "TotalDotDPS",
+	"BleedChance", "BleedDPS", "WithBleedDPS", "PoisonChance", "PoisonDPS", "TotalPoisonDPS", "WithPoisonDPS"}
 
 // goldenMinion is one entry of the oracle's "Minions" list.
 type goldenMinion struct {

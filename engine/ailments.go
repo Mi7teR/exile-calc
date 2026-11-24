@@ -3,6 +3,8 @@ package engine
 import (
 	"maps"
 	"math"
+
+	"github.com/Mi7teR/poe-lib/pobcode"
 )
 
 // The ailment, skill damage over time and combined DPS parts of
@@ -45,6 +47,9 @@ var (
 
 // debugAilmentCfg is a test hook: the ailment cfg of each ignite.
 var debugAilmentCfg func(actor *ModDB, s *activeSkill, cfg *Cfg)
+
+// debugCombine is a test hook for combineAilment.
+var debugCombine func(stat string, mh, oh, mc, oc float64, double bool)
 
 // canDeal is calcs.offence's canDeal: damage types the skill deals.
 func canDeal(s *activeSkill, t string) bool {
@@ -364,6 +369,9 @@ func combineAilment(out map[string]float64, passes []*hitPass, stat, chanceStat 
 		}
 		return
 	}
+	if debugCombine != nil {
+		debugCombine(stat, mh, oh, passes[0].out[chanceStat], passes[1].out[chanceStat], doubleHits)
+	}
 	mc := passes[0].out[chanceStat] * passes[0].out["HitChance"]
 	oc := passes[1].out[chanceStat] * passes[1].out["HitChance"]
 	if ailmentMode {
@@ -402,25 +410,38 @@ func combineAilments(s *activeSkill, out map[string]float64, passes []*hitPass) 
 		out[stat] = (passes[0].out[stat] + passes[1].out[stat]) / 2
 	}
 	double := truthy(s.data["doubleHitsWhenDualWielding"])
+	sum := func(stat string) {
+		if len(passes) < 2 {
+			if v, ok := passes[0].out[stat]; ok {
+				out[stat] = v
+			}
+			return
+		}
+		out[stat] = passes[0].out[stat] + passes[1].out[stat]
+		if !double {
+			out[stat] /= 2
+		}
+	}
+	avg("BleedChance")
+	combineAilment(out, passes, "BleedDPS", "BleedChance", true, double)
+	avg("PoisonChance")
+	combineAilment(out, passes, "PoisonDPS", "PoisonChance", false, double)
+	combineAilment(out, passes, "CausticGroundDPS", "PoisonChance", false, double)
+	sum("TotalPoisonDPS")
+	combineAilment(out, passes, "PoisonDamage", "PoisonChance", false, double)
+	if truthy(s.data["showAverage"]) {
+		sum("TotalPoisonAverageDamage")
+	} else {
+		sum("TotalPoisonStacks")
+	}
 	avg("IgniteChance")
 	combineAilment(out, passes, "IgniteDPS", "IgniteChance", true, double)
 	if s.flags["igniteCanStack"] {
 		combineAilment(out, passes, "IgniteDamage", "IgniteChance", false, double)
-		if len(passes) < 2 {
-			out["IgniteStacksMax"] = passes[0].out["IgniteStacksMax"]
-			out["TotalIgniteDPS"] = passes[0].out["TotalIgniteDPS"]
-		} else {
-			out["IgniteStacksMax"] = passes[0].out["IgniteStacksMax"] + passes[1].out["IgniteStacksMax"]
-			out["TotalIgniteDPS"] = passes[0].out["TotalIgniteDPS"] + passes[1].out["TotalIgniteDPS"]
-			if !double {
-				out["IgniteStacksMax"] /= 2
-				out["TotalIgniteDPS"] /= 2
-			}
-		}
+		sum("IgniteStacksMax")
+		sum("TotalIgniteDPS")
 	}
-	for _, a := range []string{"Bleed", "Poison", "Impale"} {
-		avg(a + "Chance")
-	}
+	avg("ImpaleChance")
 }
 
 // skillDot is "Calculate skill DOT components": the skill's own damage
@@ -564,7 +585,7 @@ func cullAndReservation(actor *ModDB, s *activeSkill, p *hitPass, global map[str
 
 // combinedDPS is "Calculate combined DPS estimate, including DoTs" without
 // mirages.
-func combinedDPS(s *activeSkill, out map[string]float64) {
+func combinedDPS(s *activeSkill, out map[string]float64, quantity float64) {
 	baseDPS := out["TotalDPS"]
 	showAverage := truthy(s.data["showAverage"])
 	if showAverage {
@@ -573,6 +594,11 @@ func combinedDPS(s *activeSkill, out map[string]float64) {
 	out["CombinedDPS"], out["CombinedAvg"] = baseDPS, baseDPS
 	if s.flags["dot"] {
 		out["WithDotDPS"] = baseDPS + out["TotalDot"]
+	}
+	if quantity > 1 {
+		if v, ok := out["TotalPoisonDPS"]; ok {
+			out["TotalPoisonDPS"] = math.Min(v*quantity, dotDpsCap)
+		}
 	}
 	if showAverage {
 		out["WithPoisonDPS"] = baseDPS + out["TotalPoisonAverageDamage"]
@@ -596,6 +622,14 @@ func combinedDPS(s *activeSkill, out map[string]float64) {
 		}
 	}
 	out["WithBleedDPS"] = baseDPS
+	if s.flags["bleed"] {
+		if showAverage {
+			out["WithBleedDPS"] = baseDPS + out["BleedDamage"]
+			out["CombinedAvg"] += out["BleedDamage"]
+		} else {
+			out["WithBleedDPS"] = baseDPS + out["BleedDPS"]
+		}
+	}
 	ignite, ok := out["TotalIgniteDPS"]
 	if !ok {
 		ignite = out["IgniteDPS"]
@@ -614,4 +648,297 @@ func combinedDPS(s *activeSkill, out map[string]float64) {
 	out["CullingDPS"] = out["CombinedDPS"] * (cull - 1)
 	out["ReservationDPS"] = out["CombinedDPS"] * (resMult - 1)
 	out["CombinedDPS"] *= cull * resMult
+}
+
+// Data/Misc.lua data.misc bleed and poison numbers.
+const (
+	bleedPercentBase   = 70
+	bleedDurationBase  = 5
+	poisonPercentBase  = 0.30
+	poisonDurationBase = 2
+)
+
+// configNum is env.configInput[name] as a number (0 when unset).
+func configNum(actor *ModDB, name string) float64 {
+	if actor.build == nil {
+		return 0
+	}
+	if in, ok := configInput(actor.build.ActiveConfig(), name); ok && in.Kind == pobcode.KindNumber {
+		return in.Number
+	}
+	return 0
+}
+
+// minCfg is ModStore:Min: the smallest MIN mod value (ok false without one).
+func minCfg(db *ModDB, cfg *Cfg, name string) (float64, bool) {
+	v, found := 0.0, false
+	for _, r := range db.TabulateCfg(cfg, "MIN", name) {
+		if f, ok := num(r.Value); ok && (!found || f < v) {
+			v, found = f, true
+		}
+	}
+	return v, found
+}
+
+// dotMultiFor is 1 + DotMultiplier (or its override) + <typ>DotMultiplier.
+func dotMultiFor(list *ModDB, cfg *Cfg, typ string) float64 {
+	if v, ok := list.OverrideCfg(cfg, "DotMultiplier"); ok {
+		return 1 + v/100
+	}
+	return 1 + (list.SumCfg(cfg, "BASE", "DotMultiplier")+list.SumCfg(cfg, "BASE", typ+"DotMultiplier"))/100
+}
+
+// hitSpeed is globalOutput.HitSpeed or globalOutput.Speed.
+func hitSpeed(global map[string]float64) float64 {
+	if v, ok := global["HitSpeed"]; ok {
+		return v
+	}
+	return global["Speed"]
+}
+
+// dotTakenMult is the effective DoT multiplier of type t on the enemy
+// (resist or, for physical, damage reduction; damage taken).
+func dotTakenMult(actor *ModDB, cfg *Cfg, t string) float64 {
+	enemy := actor.enemy
+	var resist float64
+	if t == "Physical" {
+		resist = math.Min(math.Max(0, enemy.Sum("BASE", "PhysicalDamageReduction")), enemyPhysicalDamageReductionCap)
+	} else {
+		resist = enemyResist(actor, cfg, t)
+	}
+	names := []string{"DamageTaken", "DamageTakenOverTime", t + "DamageTaken", t + "DamageTakenOverTime"}
+	return (1 - resist/100) * (1 + enemy.SumCfg(cfg, "INC", names...)/100) * enemy.MoreCfg(cfg, names...)
+}
+
+// bleed is the "Calculate bleeding chance and damage" part of the ailment
+// loop for one pass.
+func bleed(actor *ModDB, s *activeSkill, p *hitPass, global map[string]float64, dpsMult float64) {
+	list, cfg, out, enemy, data := s.mods, p.cfg, p.out, actor.enemy, s.data
+	if !canDeal(s, "Physical") || out["BleedChanceOnHit"]+out["BleedChanceOnCrit"] <= 0 {
+		return
+	}
+	dotCfg := ailmentDotCfg(s, p, kfBleed|kfDot["Physical"])
+	configStacks := enemy.Sum("BASE", "Multiplier:BleedStacks")
+	maxStacks, ok := list.OverrideCfg(cfg, "BleedStacksMax")
+	if !ok {
+		maxStacks = list.SumCfg(cfg, "BASE", "BleedStacksMax")
+	}
+	override, hasOverride := list.OverrideCfg(nil, "BleedStackPotentialOverride")
+	if hasOverride {
+		override /= maxStacks
+	}
+	global["BleedStacksMax"] = maxStacks
+	durationBase := float64(bleedDurationBase)
+	if v, ok := list.OverrideCfg(dotCfg, "BleedDurationBase"); ok {
+		durationBase = v
+	} else if d, ok := num(data["duration"]); ok && truthy(data["bleedDurationIsSkillDuration"]) {
+		durationBase = d
+	}
+	durNames := []string{"EnemyBleedDuration", "EnemyAilmentDuration", "DamagingAilmentDuration"}
+	if truthy(data["bleedIsSkillEffect"]) {
+		durNames = append(durNames, "Duration")
+	}
+	durationMod := math.Max(calcMod(list, dotCfg, durNames...)*calcMod(enemy, nil, "SelfBleedDuration", "SelfAilmentDuration")/calcMod(enemy, dotCfg, "BleedExpireRate"), 0)
+	rateMod := calcMod(list, cfg, "BleedFaster") + enemy.Sum("INC", "SelfBleedFaster")/100
+	debuffDurationMult := 1 / math.Max(buffExpirationSlowCap, calcMod(enemy, s.cfg, "BuffExpireFaster"))
+	global["BleedDuration"] = durationBase * durationMod / rateMod * debuffDurationMult
+	critChance := out["CritChance"]
+	chance := out["BleedChanceOnHit"]/100*(1-critChance/100) + out["BleedChanceOnCrit"]/100*critChance/100
+	stacks := out["HitChance"] / 100 * chance * dpsMult
+	if speed := hitSpeed(global); speed > 0 {
+		stacks *= global["BleedDuration"] * speed
+	}
+	if s.flags["totem"] {
+		totems, ok := actor.Override("TotemsSummoned")
+		if !ok {
+			totems = list.SumCfg(s.cfg, "BASE", "ActiveTotemLimit", "ActiveBallistaLimit")
+		}
+		stacks *= totems
+	}
+	if configStacks > 0 {
+		stacks = configStacks
+	}
+	if stacks < 1 && (!hasOverride || override <= 1) {
+		list.Add(Mod{Name: "Condition:SingleBleed", Type: "FLAG", Value: true, Source: "bleed"})
+	}
+	if hasOverride {
+		global["BleedStackPotential"] = override
+	} else {
+		global["BleedStackPotential"] = stacks / maxStacks
+	}
+	rollAvg := 50.0
+	if global["BleedStackPotential"] > 1 {
+		rollAvg = (stacks - (maxStacks-1)/2) / (stacks + 1) * 100
+	}
+	global["BleedRollAverage"] = rollAvg
+	var avgCrit, maxCrit, avgHit, minHit, maxHit float64
+	for sub := 1; sub <= 2; sub++ {
+		dotCfg.SkillCond["CriticalStrike"] = sub != 1
+		mn, mx := ailmentSourceDamage(list, p, dotCfg, "Physical", 0)
+		out["BleedPhysicalMin"], out["BleedPhysicalMax"] = mn, mx
+		if sub == 2 {
+			if actor.Flag("AilmentsAreNeverFromCrit") {
+				dotCfg.SkillCond["CriticalStrike"] = false
+				out["CritBleedDotMulti"] = dotMultiFor(list, dotCfg, "Physical")
+				dotCfg.SkillCond["CriticalStrike"] = true
+			} else {
+				out["CritBleedDotMulti"] = dotMultiFor(list, dotCfg, "Physical")
+			}
+			minCrit := mn * out["CritBleedDotMulti"]
+			maxCrit = mx * out["CritBleedDotMulti"]
+			avgCrit = minCrit + (maxCrit-minCrit)*rollAvg/100
+		} else {
+			out["BleedDotMulti"] = dotMultiFor(list, dotCfg, "Physical")
+			minHit = mn * out["BleedDotMulti"]
+			maxHit = mx * out["BleedDotMulti"]
+			avgHit = minHit + (maxHit-minHit)*rollAvg/100
+		}
+	}
+	basePercent := numOr(data["bleedBasePercent"], bleedPercentBase)
+	ailmentCrit := 100 * (1 - math.Pow(1-critChance/100, math.Max(global["BleedStackPotential"], 1)))
+	effects := out["RuthlessBlowAilmentEffect"] * out["FistOfWarDamageEffect"] * global["AilmentWarcryEffect"]
+	ailmentDamage(out, "Bleed", ailmentCrit, minHit, 0)
+	ailmentDamage(out, "Bleed", 100, maxHit, maxCrit)
+	baseDps := ailmentDamage(out, "Bleed", ailmentCrit, avgHit, avgCrit) * basePercent / 100 * effects
+	if !(baseDps > 0) {
+		return
+	}
+	s.flags["bleed"] = true
+	effMult := dotTakenMult(actor, dotCfg, "Physical")
+	global["BleedEffMult"] = effMult
+	effectMod := calcMod(list, dotCfg, "AilmentEffect")
+	out["BaseBleedDPS"] = baseDps * effectMod * rateMod * math.Min(stacks, maxStacks) * effMult
+	out["BleedDPS"] = math.Min(out["BaseBleedDPS"], dotDpsCap)
+	global["BleedStacks"] = stacks
+	global["BleedDamage"] = out["BaseBleedDPS"] * global["BleedDuration"]
+}
+
+// poison is the "Calculate poison chance and damage" part of the ailment
+// loop for one pass.
+func poison(actor *ModDB, s *activeSkill, p *hitPass, global map[string]float64, dpsMult, quantity float64) {
+	list, cfg, out, enemy, data := s.mods, p.cfg, p.out, actor.enemy, s.data
+	if !canDeal(s, "Chaos") || out["PoisonChanceOnHit"]+out["PoisonChanceOnCrit"]+out["ChaosPoisonChance"] <= 0 {
+		return
+	}
+	dotCfg := ailmentDotCfg(s, p, kfPoison|kfDot["Chaos"])
+	rateMod := calcMod(list, cfg, "PoisonFaster") + enemy.Sum("INC", "SelfPoisonFaster")/100
+	durationBase := float64(poisonDurationBase)
+	if v, ok := list.OverrideCfg(dotCfg, "PoisonDurationBase"); ok {
+		durationBase = v
+	} else if d, ok := num(data["duration"]); ok && truthy(data["poisonDurationIsSkillDuration"]) {
+		durationBase = d
+	}
+	durNames := []string{"EnemyPoisonDuration", "EnemyAilmentDuration", "DamagingAilmentDuration"}
+	if truthy(data["poisonIsSkillEffect"]) {
+		durNames = append(durNames, "Duration")
+	}
+	durationMod := math.Max(calcMod(list, dotCfg, durNames...)*calcMod(enemy, nil, "SelfPoisonDuration", "SelfAilmentDuration"), 0)
+	debuffDurationMult := 1 / math.Max(buffExpirationSlowCap, calcMod(enemy, s.cfg, "BuffExpireFaster"))
+	global["PoisonDuration"] = durationBase * durationMod / rateMod * debuffDurationMult
+	critChance := out["CritChance"]
+	chaosChance := 0.0
+	if out["ChaosHitAverage"] > 0 {
+		chaosChance = out["ChaosPoisonChance"]
+	}
+	onHit := math.Min(100, out["PoisonChanceOnHit"]+chaosChance)
+	onCrit := math.Min(100, out["PoisonChanceOnCrit"]+chaosChance)
+	chance := onHit/100*(1-critChance/100) + onCrit/100*critChance/100
+	additional := 1.0
+	if !list.Flag("CannotMultiplePoison") {
+		additional = 1 + math.Min(list.SumCfg(cfg, "BASE", "AdditionalPoisonChance")/100, 1) + list.SumCfg(cfg, "BASE", "AdditionalPoisonStacks")
+	}
+	limit, hasLimit := minCfg(list, cfg, "PoisonStackLimit")
+	stacks := out["HitChance"] / 100 * chance * additional * dpsMult * numOr(data["stackMultiplier"], 1) * quantity
+	if speed := hitSpeed(global); speed > 0 {
+		stacks *= global["PoisonDuration"] * speed
+		if hasLimit && limit > 0 && stacks > limit {
+			stacks = math.Min(stacks, math.Ceil(limit/additional)*additional)
+		}
+	}
+	if stacks < additional && configNum(actor, "multiplierPoisonOnEnemy") == 0 {
+		list.Add(Mod{Name: "Condition:NonPoisonedOnly", Type: "FLAG", Value: true, Source: "Calculation"})
+	}
+	var hitDmg, critDmg, maxCritDmg, minHitDmg, maxHitDmg float64
+	for sub := 1; sub <= 2; sub++ {
+		dotCfg.SkillCond["CriticalStrike"] = sub != 1
+		totalMin, totalMax := ailmentSourceDamage(list, p, dotCfg, "Chaos", 0)
+		out["PoisonChaosMin"], out["PoisonChaosMax"] = totalMin, totalMax
+		nonChaosMult := 1.0
+		if out["ChaosPoisonChance"] > 0 && out["PoisonChaosMax"] > 0 {
+			key := "PoisonChanceOnHit"
+			if sub == 2 {
+				key = "PoisonChanceOnCrit"
+			}
+			cc := math.Min(100, out[key]+out["ChaosPoisonChance"])
+			nonChaosMult = out[key] / cc
+			out[key] = cc
+		}
+		chaosFlag := dmgTypeFlags["Chaos"]
+		for _, x := range []struct {
+			t  string
+			ok bool
+		}{
+			{"Lightning", list.FlagCfg(cfg, "LightningCanPoison")},
+			{"Cold", list.FlagCfg(cfg, "ColdCanPoison")},
+			{"Fire", list.FlagCfg(cfg, "FireCanPoison")},
+			{"Physical", true},
+		} {
+			if !x.ok || !canDeal(s, x.t) {
+				continue
+			}
+			mn, mx := ailmentSourceDamage(list, p, dotCfg, x.t, chaosFlag)
+			out["Poison"+x.t+"Min"], out["Poison"+x.t+"Max"] = mn, mx
+			totalMin += mn * nonChaosMult
+			totalMax += mx * nonChaosMult
+		}
+		if sub == 2 {
+			if actor.Flag("AilmentsAreNeverFromCrit") {
+				dotCfg.SkillCond["CriticalStrike"] = false
+				out["CritPoisonDotMulti"] = dotMultiFor(list, dotCfg, "Chaos")
+				dotCfg.SkillCond["CriticalStrike"] = true
+			} else {
+				out["CritPoisonDotMulti"] = dotMultiFor(list, dotCfg, "Chaos")
+			}
+			critDmg = (totalMin + totalMax) / 2 * out["CritPoisonDotMulti"]
+			maxCritDmg = totalMax * out["CritPoisonDotMulti"]
+		} else {
+			out["PoisonDotMulti"] = dotMultiFor(list, dotCfg, "Chaos")
+			hitDmg = (totalMin + totalMax) / 2 * out["PoisonDotMulti"]
+			minHitDmg = totalMin * out["PoisonDotMulti"]
+			maxHitDmg = totalMax * out["PoisonDotMulti"]
+		}
+	}
+	effects := out["RuthlessBlowAilmentEffect"] * out["FistOfWarDamageEffect"] * global["AilmentWarcryEffect"]
+	ailmentDamage(out, "Poison", critChance, minHitDmg, 0)
+	ailmentDamage(out, "Poison", 100, maxHitDmg, maxCritDmg)
+	baseVal := ailmentDamage(out, "Poison", critChance, hitDmg, critDmg) * poisonPercentBase * effects
+	if !(baseVal > 0) {
+		return
+	}
+	s.flags["poison"] = true
+	if debugAilmentCfg != nil {
+		debugAilmentCfg(actor, s, dotCfg)
+	}
+	effMult := dotTakenMult(actor, dotCfg, "Chaos")
+	global["PoisonEffMult"] = effMult
+	if list.Flag("Condition:NonPoisonedOnly") {
+		stacks = math.Min(additional, stacks)
+	}
+	global["PoisonStacks"] = stacks
+	effectMod := calcMod(list, dotCfg, "AilmentEffect")
+	single := math.Min(baseVal*effectMod*rateMod*effMult, dotDpsCap)
+	out["PoisonDPS"] = single
+	out["PoisonDamage"] = single * global["PoisonDuration"]
+	g1, _ := list.MaxCfg(nil, "PoisonDpsAsCausticGround")
+	g2, _ := enemy.MaxCfg(nil, "PoisonDpsAsCausticGround")
+	if ground := math.Max(g1, g2); ground > 0 {
+		out["CausticGroundDPS"] = math.Min(baseVal*effectMod*rateMod*effMult*ground/100, dotDpsCap)
+		global["CausticGroundFromPoison"] = 1
+	}
+	if truthy(data["showAverage"]) {
+		out["TotalPoisonAverageDamage"] = out["PoisonDamage"]
+		out["TotalPoisonDPS"] = out["PoisonDPS"]
+	} else {
+		out["TotalPoisonDPS"] = math.Min(single*stacks, dotDpsCap)
+	}
 }

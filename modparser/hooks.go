@@ -77,6 +77,14 @@ var hooks = map[string]Hook{
 		more, _ := toNumber(argS(a, 2)).(float64)
 		return []any{newMod("Damage", "MORE", n*more/100, mfArea|mfHit, 0)}
 	},
+	// ["poisons you inflict during any flask effect have (%d+)%% chance to deal (%d+)%% more damage"] = function(num, _, more) return {
+	//   mod("Damage", "MORE", tonumber(more) * num / 100, nil, 0, KeywordFlag.Poison, { type = "Condition", var = "UsingFlask" }) } end,
+	"specialModList[^poisons you inflict during any flask effect have (%d+)%% chance to deal (%d+)%% more damage$]": func(p *Parser, a []any) any {
+		const kfPoison = 0x200000
+		n, _ := toNumber(arg(a, 0)).(float64)
+		more, _ := toNumber(argS(a, 2)).(float64)
+		return []any{withTags(newMod("Damage", "MORE", more*n/100, 0, kfPoison), map[string]any{"type": "Condition", "var": "UsingFlask"})}
+	},
 	// ["your hits treat cold resistance as (%d+)%% higher than actual value"] = function(num) return {
 	//   mod("ColdPenetration", "BASE", -num, nil, 0, KeywordFlag.Hit) } end,
 	"specialModList[^your hits treat cold resistance as (%d+)%% higher than actual value$]": func(p *Parser, a []any) any {

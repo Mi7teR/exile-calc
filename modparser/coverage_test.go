@@ -48,7 +48,7 @@ var knownDifferences = map[string]string{
 
 // Ratchet: raise these as hooks and fixes land; never lower them.
 const (
-	minMatched = 18757 // of 19265 lines PoB v2.68.1 parses fully (97.4%)
+	minMatched = 18758 // of 19265 lines PoB v2.68.1 parses fully (97.4%)
 	maxWrong   = 0
 )
 
