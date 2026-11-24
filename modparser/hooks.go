@@ -17,6 +17,13 @@ type Hook func(p *Parser, args []any) any
 // table and the key in ModParser.lua; each port quotes its Lua source.
 // Unported hooks make a line unsupported, never wrong.
 var hooks = map[string]Hook{
+	// ["hits have (%d+)%% chance to treat enemy monster elemental resistance values as inverted"] = function(num) return {
+	//   mod("HitsInvertEleResChance", "CHANCE", num / 100, nil) } end
+	// and the cold, fire and lightning variants (HitsInvert<Type>ResChance).
+	"specialModList[^hits have (%d+)%% chance to treat enemy monster elemental resistance values as inverted$]": invertResHook("HitsInvertEleResChance"),
+	"specialModList[^hits have (%d+)%% chance to treat enemy monster cold resistance values as inverted$]":      invertResHook("HitsInvertColdResChance"),
+	"specialModList[^hits have (%d+)%% chance to treat enemy monster fire resistance values as inverted$]":      invertResHook("HitsInvertFireResChance"),
+	"specialModList[^hits have (%d+)%% chance to treat enemy monster lightning resistance values as inverted$]": invertResHook("HitsInvertLightningResChance"),
 	// ["(%d+)%% chance to defend with (%d+)%% of armour"] = function(numChance, _, numArmourMultiplier) return {
 	//   mod("ArmourDefense", "MAX", tonumber(numArmourMultiplier) - 100, "Armour Mastery: Max Calc", { type = "Condition", var = "ArmourMax" }),
 	//   mod("ArmourDefense", "MAX", math.min(numChance / 100, 1.0) * (tonumber(numArmourMultiplier) - 100), "Armour Mastery: Average Calc", { type = "Condition", var = "ArmourAvg" }),
@@ -765,5 +772,14 @@ func globalLimitTag(typ, key, v, gk string, div bool) Hook {
 			t["globalLimit"] = toNumber(arg(a, 0))
 		}
 		return map[string]any{"tag": t}
+	}
+}
+
+// invertResHook returns the "chance to treat enemy monster <type> resistance
+// values as inverted" specialModList functions: a CHANCE mod of num / 100.
+func invertResHook(name string) Hook {
+	return func(p *Parser, a []any) any {
+		n, _ := toNumber(arg(a, 0)).(float64)
+		return []any{newMod(name, "CHANCE", n/100, 0, 0)}
 	}
 }

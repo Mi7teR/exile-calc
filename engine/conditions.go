@@ -3,6 +3,7 @@ package engine
 import (
 	"strings"
 
+	"github.com/Mi7teR/poe-lib/gamedata"
 	"github.com/Mi7teR/poe-lib/itemtext"
 )
 
@@ -136,6 +137,29 @@ func itemConditions(db *ModDB, gear []equipped) {
 	}
 	if w1 != nil && w2 != nil && w1.Base != nil && w2.Base != nil && w1.Base.Weapon != nil && w2.Base.Weapon != nil {
 		cond["DualWielding"] = true
+		t1, t2 := w1.Base.Type, w2.Base.Type
+		if t1 == "Claw" && t2 == "Claw" {
+			cond["DualWieldingClaws"] = true
+		}
+		if t1 == "Dagger" && t2 == "Dagger" {
+			cond["DualWieldingDaggers"] = true
+		}
+		// getWeaponType: thrusting swords count as one handed swords.
+		kind := func(b *gamedata.Base) string {
+			if b.Type == "One Handed Sword" && b.SubType == "Thrusting" || b.Type == "Thrusting One Handed Sword" {
+				return "One Handed Sword"
+			}
+			if b.Type == "Sceptre" {
+				return "Sceptre"
+			}
+			if b.SubType != "" {
+				return b.SubType
+			}
+			return b.Type
+		}
+		if kind(w1.Base) != kind(w2.Base) && weaponTypeInfo[t1].oneHand && weaponTypeInfo[t2].oneHand {
+			cond["WieldingDifferentWeaponTypes"] = true
+		}
 	}
 }
 

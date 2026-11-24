@@ -647,6 +647,9 @@ func (c *Calculator) hitDamage(actor *ModDB, s *activeSkill, p *hitPass) {
 			}
 			mn, mx := calcDamage(list, p, t, 0, false)
 			allMult := p.conv[t].mult * scaled
+			if pass == 2 {
+				out["allMult"] = allMult
+			}
 			if pass == 1 {
 				allMult *= out["CritMultiplier"]
 			}
@@ -989,6 +992,12 @@ func preDamageFunc(actor *ModDB, s *activeSkill, out map[string]float64) {
 		if s.part == 2 {
 			mulDPS(proj + 1)
 		}
+	case "Freezing Pulse":
+		r := 60 * out["ProjectileSpeedMod"]
+		s.mods.Add(Mod{Name: "Damage", Type: "MORE", Value: -50.0, Source: "Skill:FreezingPulse",
+			Tags: []map[string]any{{"type": "DistanceRamp", "ramp": []any{[]any{0.0, 0.0}, []any{r, 1.0}}}}})
+		s.mods.Add(Mod{Name: "EnemyFreezeChance", Type: "BASE", Value: 25.0, Source: "Skill:FreezingPulse",
+			Tags: []map[string]any{{"type": "DistanceRamp", "ramp": []any{[]any{0.0, 1.0}, []any{15 * out["ProjectileSpeedMod"], 0.0}}}}})
 	case "Spark", "Spark of the Nova":
 		if s.part == 2 {
 			mulDPS(1 + math.Floor(out["Duration"]/0.66))
@@ -1293,6 +1302,7 @@ func projectileStats(s *activeSkill, out map[string]float64) {
 		list.Add(Mod{Name: "Damage", Type: "MORE", Value: 100.0, Flags: mfAttack | mfProjectile, Source: "Far Shot",
 			Tags: []map[string]any{{"type": "DistanceRamp", "ramp": []any{[]any{10.0, -0.2}, []any{25.0, 0.0}, []any{70.0, 0.6}}}}})
 	}
+	out["ProjectileSpeedMod"] = calcMod(list, cfg, "ProjectileSpeed")
 	if list.FlagCfg(cfg, "NoAdditionalProjectiles") || list.FlagCfg(cfg, "SingleProjectile") {
 		out["ProjectileCount"] = 1
 		return
