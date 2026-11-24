@@ -265,7 +265,7 @@ func actorMisc(db *ModDB, main *activeSkill, silverFlask bool, silverFlaskInc fl
 
 // selfAilment is the effect of Chill, Shock or Scorch on the actor;
 // shockAvoid says whether ShockAvoidAppliesToElementalAilments counts.
-// PoB reads m_max(Sum(Self<X>Override), Override(<X>Val)) or default: with
+// PoB quirk: m_max(Sum(Self<X>Override), Override(<X>Val)) or default: with
 // no override the call returns no values, so m_max gets the sum alone, and
 // a number is never nil, so the default never applies.
 func selfAilment(db *ModDB, name string, shockAvoid bool) (float64, bool) {

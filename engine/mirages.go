@@ -153,7 +153,7 @@ func (c *Calculator) mirages(db *ModDB, s *activeSkill, w1 hitSource, w2 *hitSou
 	delete(m.flags, "multiPart")
 	m.data["mirageUses"] = s.data["storedUses"]
 	m.types[stOtherThingUsesSkill] = true
-	// mainSkill.ModFlags/KeywordFlags do not exist in PoB: the mods have no flags.
+	// PoB quirk: mainSkill.ModFlags/KeywordFlags do not exist, so the mods have no flags.
 	var count float64
 	switch {
 	case truthy(s.data["triggeredByMirageArcher"]):
@@ -201,6 +201,8 @@ func addMirageDPS(s *activeSkill, out map[string]float64) float64 {
 	if v, ok := mo["CausticGroundDPS"]; ok {
 		out["MirageCausticGroundDPS"] = v
 	}
+	// PoB quirk: a stronger mirage ignite/bleed zeroes the player's but is
+	// added to MirageDPS only, so CombinedDPS loses it.
 	for _, k := range []string{"IgniteDPS", "BleedDPS"} {
 		if v, ok := mo[k]; ok && v > out[k] {
 			out["MirageDPS"] += v
