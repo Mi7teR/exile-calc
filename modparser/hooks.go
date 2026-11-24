@@ -85,6 +85,14 @@ var hooks = map[string]Hook{
 		more, _ := toNumber(argS(a, 2)).(float64)
 		return []any{withTags(newMod("Damage", "MORE", more*n/100, 0, kfPoison), map[string]any{"type": "Condition", "var": "UsingFlask"})}
 	},
+	// ["(%d+)%% increased bonuses gained from equipped (.+)"] = function(_, num, slot) return {
+	//   mod("EffectOfBonusesFrom"..firstToUpper(argS(a, 2)), "INC", tonumber(num))} end,
+	"specialModList[^(%d+)%% increased bonuses gained from equipped (.+)$]": func(p *Parser, a []any) any {
+		return equippedBonus(a, 1)
+	},
+	"specialModList[^(%d+)%% reduced bonuses gained from equipped (.+)$]": func(p *Parser, a []any) any {
+		return equippedBonus(a, -1)
+	},
 	// ["your hits treat cold resistance as (%d+)%% higher than actual value"] = function(num) return {
 	//   mod("ColdPenetration", "BASE", -num, nil, 0, KeywordFlag.Hit) } end,
 	"specialModList[^your hits treat cold resistance as (%d+)%% higher than actual value$]": func(p *Parser, a []any) any {
@@ -964,4 +972,11 @@ func init() {
 		c, _ := toNumber(arg(a, 0)).(float64)
 		return explodeFunc(c, argS(a, 2), "randomElement", cond("UsingFlask"))
 	}
+}
+
+// equippedBonus is EffectOfBonusesFrom<Slot> for "bonuses gained from
+// equipped <slot>" lines.
+func equippedBonus(a []any, sign float64) any {
+	n, _ := toNumber(argS(a, 1)).(float64)
+	return []any{newMod("EffectOfBonusesFrom"+firstToUpper(argS(a, 2)), "INC", sign*n, 0, 0)}
 }

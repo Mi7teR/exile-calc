@@ -239,6 +239,7 @@ func (c *Calculator) Calc(b *pobcode.Build) (*Result, error) {
 			item         *pobcode.Item
 		}
 		var abyssal []abyss
+		bonusScale := c.equipmentBonusScale(db, b, set, res)
 		ringItems := map[string]*pobcode.Item{}
 		parents := map[string]*itemtext.Item{}
 		jewelEffect := map[string]float64{}
@@ -282,7 +283,7 @@ func (c *Calculator) Calc(b *pobcode.Build) (*Result, error) {
 				}
 				ringItems[slot.Name] = b.Item(slot.ItemID)
 			}
-			it, mods := c.addItem(db, res, b.Item(slot.ItemID), 1, slot.Name)
+			it, mods := c.addItem(db, res, b.Item(slot.ItemID), bonusScale(b.Item(slot.ItemID)), slot.Name)
 			if it != nil {
 				gearMods[slot.Name] = mods
 				gear = append(gear, equipped{slot.Name, it})
@@ -423,6 +424,12 @@ func (c *Calculator) Calc(b *pobcode.Build) (*Result, error) {
 		debugSkills(skills)
 	}
 	keystones := map[string]bool{}
+	// CalcPerform.lua: the Alchemist's Genius buff, before flasks are merged.
+	if db.Flag("AlchemistsGenius") {
+		effect := 1 + db.Sum("INC", "BuffEffectOnSelf")/100
+		db.NewMod("FlaskEffect", "INC", math.Floor(10*effect), "Alchemist's Genius")
+		db.NewMod("FlaskChargesGained", "INC", math.Floor(20*effect), "Alchemist's Genius")
+	}
 	flaskSt := c.applyFlasks(db, res, flasks)
 	c.mergeKeystones(db, keystones, res)
 	// CalcPerform.lua: skillModList = new("ModList", baseSkillModList), so
@@ -507,6 +514,56 @@ func (c *Calculator) Calc(b *pobcode.Build) (*Result, error) {
 		res.UnsupportedTags[k] = v
 	}
 	return res, nil
+}
+
+// equipmentBonusScale returns the scale of an equipped item's mods
+// (CalcSetup.lua): quivers with Widowhail or EffectOfBonusesFromQuiver on
+// passives, gloves and boots with EffectOfBonusesFromGloves/Boots (passives
+// and custom mods); 1 otherwise. PoB merges same mods before scaling; for
+// integer values the rounding is the same.
+func (c *Calculator) equipmentBonusScale(db *ModDB, b *pobcode.Build, set *pobcode.ItemSet, res *Result) func(*pobcode.Item) float64 {
+	gloves := (1 + db.Sum("INC", "EffectOfBonusesFromGloves")/100) * db.More("EffectOfBonusesFromGloves")
+	boots := (1 + db.Sum("INC", "EffectOfBonusesFromBoots")/100) * db.More("EffectOfBonusesFromBoots")
+	nodeQuiver := db.Sum("INC", "EffectOfBonusesFromQuiver")
+	quiver := 1.0
+	weapon1 := "Weapon 1"
+	if set.UseSecondWeaponSet {
+		weapon1 = "Weapon 1 Swap"
+	}
+	for _, slot := range set.Slots {
+		if slot.Name != weapon1 || slot.ItemID == 0 {
+			continue
+		}
+		if it, mods := c.itemMods(b.Item(slot.ItemID), res); it != nil {
+			sum := nodeQuiver
+			for _, m := range mods {
+				if f, ok := num(m.Value); ok && m.Name == "EffectOfBonusesFromQuiver" && m.Type == "INC" {
+					sum += f
+				}
+			}
+			if strings.Contains(it.Name, "Widowhail") || nodeQuiver > 0 {
+				quiver = 1 + sum/100
+			}
+		}
+	}
+	if quiver != 1 {
+		db.NewMod("WidowHailMultiplier", "BASE", quiver, "Widowhail")
+	}
+	return func(item *pobcode.Item) float64 {
+		it := c.peekItem(item)
+		if it == nil || it.Base == nil {
+			return 1
+		}
+		switch it.Base.Type {
+		case "Quiver":
+			return quiver
+		case "Gloves":
+			return gloves
+		case "Boots":
+			return boots
+		}
+		return 1
+	}
 }
 
 // skipSlot leaves out swap weapons (unless the swap set is active) and
