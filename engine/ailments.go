@@ -8,11 +8,11 @@ import (
 )
 
 // The ailment, skill damage over time and combined DPS parts of
-// calcs.offence (Modules/CalcOffence.lua). Ported so far: ailment chances,
-// ignite, skill DoT and TotalDotDPS. Not ported yet: bleed, poison,
-// impale, decay, non-damaging ailment effects, knockback, the legacy
-// Perfect Agony (CritMultiplierAppliesToDegen), ailmentMode CRIT, mirages,
-// culling and the reservation DPS multiplier.
+// calcs.offence (Modules/CalcOffence.lua): ailment chances, bleed, poison,
+// ignite, impale, skill DoT, culling and combined DPS. Not ported yet:
+// decay, non-damaging ailment effects, knockback, preDotFunc, the legacy
+// Perfect Agony (CritMultiplierAppliesToDegen), ailmentMode CRIT and
+// mirages.
 
 // Data/Global.lua ModFlag and KeywordFlag bits for ailments.
 const (
