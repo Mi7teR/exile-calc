@@ -3,7 +3,7 @@
 Real Path of Building builds on the 3.30 tree and the stats PoB computes for
 them; the engine's diff tests compare against `expected/`.
 
-44 builds: public pobb.in links listed on poebuilds.cc, level 85+, at most
+63 builds: public pobb.in links listed on poebuilds.cc, level 85+, at most
 two per ascendancy for the later additions. The engine matches PoB on all
 15 compared stats (attributes, life, mana, resistances, armour, evasion,
 energy shield, ward, block) within 0.5% for every build.
