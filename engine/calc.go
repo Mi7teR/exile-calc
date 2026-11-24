@@ -421,6 +421,14 @@ func (c *Calculator) Calc(b *pobcode.Build) (*Result, error) {
 	keystones := map[string]bool{}
 	flaskSt := c.applyFlasks(db, res, flasks)
 	c.mergeKeystones(db, keystones, res)
+	// CalcPerform.lua: skillModList = new("ModList", baseSkillModList), so
+	// mods added while calculating sit in their own layer (MORE rounds per
+	// layer).
+	for _, s := range skills {
+		if s.mods != nil {
+			s.mods = s.mods.child()
+		}
+	}
 	banners(db)
 	warcryPower(db)
 	playerEnemyMods := enemyModifiers{}
@@ -986,6 +994,9 @@ func (c *Calculator) addItem(db *ModDB, res *Result, item *pobcode.Item, scale f
 			continue // local weapon stats: part of the weapon's own data
 		}
 		if sm, ok := slotTags(fromParsed(m, source), slot, slotNumber(it, slot)); ok {
+			if isWeapon {
+				sm = weaponHandLocal(sm, m, slotNumber(it, slot))
+			}
 			db.Add(scaleMod(sm, scale))
 		}
 	}
@@ -1005,6 +1016,28 @@ func (c *Calculator) addItem(db *ModDB, res *Result, item *pobcode.Item, scale f
 		db.NewMod("Multiplier:QualityOn"+name, "BASE", float64(it.Quality), "Quality")
 	}
 	return it, mods
+}
+
+// weaponHandLocal is the end of Item.lua's weapon branch: accuracy, impale
+// chance, life/mana on hit and physical leech on a weapon only apply to
+// attacks with that hand; poison and bleed chance get the hand condition too.
+func weaponHandLocal(sm Mod, m modparser.Mod, slotNum int) Mod {
+	hand := map[string]any{"type": "Condition", "var": "OffHandAttack"}
+	if slotNum == 1 {
+		hand["var"] = "MainHandAttack"
+	}
+	kwOK := m.KeywordFlags == 0 || m.KeywordFlags == kfAttack
+	switch {
+	case ((m.Name == "Accuracy" && m.Flags == 0) || (m.Name == "ImpaleChance" && m.Flags != mfSpell) ||
+		((m.Name == "LifeOnHit" || m.Name == "ManaOnHit") && m.Flags == mfAttack) ||
+		((m.Name == "PhysicalDamageLifeLeech" || m.Name == "PhysicalDamageManaLeech") && m.Flags == mfAttack)) &&
+		kwOK && len(m.Tags) == 0:
+		sm.Tags = append([]map[string]any{hand}, sm.Tags...)
+	case (m.Name == "PoisonChance" || m.Name == "BleedChance") && m.Flags != mfSpell &&
+		(len(m.Tags) == 0 || (m.Tags[0]["type"] == "Condition" && m.Tags[0]["var"] == "CriticalStrike" && len(m.Tags) == 1)):
+		sm.Tags = append(append([]map[string]any(nil), sm.Tags...), hand)
+	}
+	return sm
 }
 
 // mergeKeystones is modLib.mergeKeystones: a Keystone mod (an item line

@@ -316,6 +316,8 @@ var (
 	debugEnemy         func(*ModDB)
 	debugSkills        func([]*activeSkill)
 	debugPlayerSkill   func(*activeSkill)
+	debugPasses        func([]*hitPass) // tests: per hand outputs
+	debugCalcDamage    func(list *ModDB, p *hitPass, t string, inc, more float64, names []string)
 )
 
 var minionOffenceStats = []string{"Speed", "HitChance", "CritChance", "CritMultiplier", "AverageDamage", "TotalDPS"}

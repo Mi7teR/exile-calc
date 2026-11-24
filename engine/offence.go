@@ -148,6 +148,9 @@ func calcDamage(list *ModDB, p *hitPass, t string, typeFlags int, convDst bool) 
 	names := damageStatsForTypes(typeFlags)
 	inc := 1 + list.SumCfg(p.cfg, "INC", names...)/100
 	more := list.MoreCfg(p.cfg, names...)
+	if debugCalcDamage != nil {
+		debugCalcDamage(list, p, t, inc, more, names)
+	}
 	mn := ((b[0]*inc*more)*list.MoreCfg(p.cfg, "MinDamage") + addMin) *
 		list.MoreCfg(p.cfg, "Min"+t+"Damage") * (1 + list.SumCfg(p.cfg, "INC", "Min"+t+"Damage")/100)
 	mx := ((b[1]*inc*more)*list.MoreCfg(p.cfg, "MaxDamage") + addMax) *
@@ -385,6 +388,9 @@ func (c *Calculator) offence(actor *ModDB, s *activeSkill, w1 hitSource, w2 *hit
 			speed = hs
 		}
 		p.out["TotalDPS"] = p.out["AverageDamage"] * speed * dpsMult * quantity
+	}
+	if debugPasses != nil {
+		debugPasses(passes)
 	}
 	combine("CritChance", "AVERAGE")
 	combine("CritMultiplier", "AVERAGE")
