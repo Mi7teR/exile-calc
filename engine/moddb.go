@@ -126,6 +126,7 @@ type Cfg struct {
 	SkillCond           map[string]bool // cfg.skillCond: conditions of this query (CriticalStrike, MainHandAttack)
 	SkillDist           float64         // cfg.skillDist: melee or projectile distance to the enemy
 	HasSkillDist        bool
+	SkillStats          map[string]float64 // cfg.skillStats: the hand pass output, read by GetStat when the actor has no such stat
 }
 
 const keywordMatchAll = 0x40000000 // KeywordFlag.MatchAll
@@ -357,7 +358,14 @@ func (db *ModDB) getStat(stat string, cfg *Cfg) float64 {
 		}
 		return math.Min(pct, 100)
 	}
-	return db.output[stat]
+	// (self.actor.output and self.actor.output[stat]) or (cfg and cfg.skillStats and cfg.skillStats[stat]) or 0
+	if v, ok := db.output[stat]; ok {
+		return v
+	}
+	if cfg != nil {
+		return cfg.SkillStats[stat]
+	}
+	return 0
 }
 
 func tagNum(t map[string]any, k string) (float64, bool) { return num(t[k]) }

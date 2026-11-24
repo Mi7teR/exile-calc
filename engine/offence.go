@@ -277,7 +277,9 @@ func (c *Calculator) offence(actor *ModDB, s *activeSkill, w1 hitSource, w2 *hit
 	var passes []*hitPass
 	if isAttack {
 		if s.flags["weapon1Attack"] {
-			passes = append(passes, &hitPass{src: w1, cfg: s.weapon1Cfg, out: map[string]float64{}, label: "Main Hand"})
+			p := &hitPass{src: w1, cfg: s.weapon1Cfg, out: map[string]float64{}, label: "Main Hand"}
+			s.weapon1Cfg.SkillStats = p.out // activeSkill.weapon1Cfg.skillStats = output.MainHand
+			passes = append(passes, p)
 		}
 		if s.flags["shieldAttack"] && w2 == nil {
 			// weaponData2 of a shield is empty: the skill sets its damage.
@@ -299,7 +301,9 @@ func (c *Calculator) offence(actor *ModDB, s *activeSkill, w1 hitSource, w2 *hit
 			if at, ok := num(data["attackTime"]); ok && at != 0 {
 				src.attackRate = 1000 / at
 			}
-			passes = append(passes, &hitPass{src: src, cfg: s.weapon2Cfg, out: map[string]float64{}, label: "Off Hand"})
+			p := &hitPass{src: src, cfg: s.weapon2Cfg, out: map[string]float64{}, label: "Off Hand"}
+			s.weapon2Cfg.SkillStats = p.out
+			passes = append(passes, p)
 		}
 		if len(passes) == 0 {
 			return out
