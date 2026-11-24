@@ -723,6 +723,9 @@ func (c *Calculator) hitDamage(actor *ModDB, s *activeSkill, p *hitPass) {
 	p.cfg.SkillCond = skillCond
 
 	out["AverageHit"] = totalHitAvg*(1-out["CritChance"]/100) + totalCritAvg*out["CritChance"]/100
+	if s.flags["monsterExplode"] && truthy(s.data["hitChanceIsExplodeChance"]) {
+		out["HitChance"] = out["ExplodeChance"]
+	}
 	out["AverageDamage"] = out["AverageHit"] * out["HitChance"] / 100
 }
 
@@ -1008,6 +1011,8 @@ func preDamageFunc(actor *ModDB, s *activeSkill, out map[string]float64) {
 	proj := out["ProjectileCount"]
 	mulDPS := func(m float64) { data["dpsMultiplier"] = numOr(data["dpsMultiplier"], 1) * m }
 	switch s.active.ge.Name {
+	case "On Kill Monster Explosion":
+		enemyExplode(s, out)
 	case "Barrage", "Barrage of Volley Fire", "Blast Rain", "Vaal Lightning Arrow":
 		if s.part == 2 {
 			data["dpsMultiplier"] = proj
@@ -1463,4 +1468,111 @@ func offenceDuration(actor *ModDB, s *activeSkill, out map[string]float64) {
 		d /= math.Max(0.25, calcMod(actor.enemy, cfg, "BuffExpireFaster")) // BuffExpirationSlowCap
 	}
 	out["Duration"] = math.Ceil(d*serverTickRate) / serverTickRate
+}
+
+// enemyExplode is EnemyExplode's preDamageFunc (Data/Skills/other.lua): the
+// explode chance and the <Type>EffectiveExplodePercentage of this skill's
+// source (parts 1 and 2) or of all sources (part 3).
+func enemyExplode(s *activeSkill, out map[string]float64) {
+	data := s.data
+	entries := s.mods.List(s.cfg, "ExplodeMod")
+	explodeVal := func(e ListEntry) (string, float64, float64) {
+		v, _ := e.Value.(map[string]any)
+		t, _ := v["type"].(string)
+		return t, numOr(v["amount"], 0), numOr(v["chance"], 0)
+	}
+	chance := 0.0
+	if s.part != 3 {
+		src := explodeSource(s, entries)
+		for _, e := range entries {
+			if e.Mod == nil || e.Mod.Source != src {
+				continue
+			}
+			t, amount, c := explodeVal(e)
+			if t == "RandomElement" {
+				for _, el := range []string{"Fire", "Cold", "Lightning"} {
+					data[el+"EffectiveExplodePercentage"] = amount / 3
+				}
+			} else {
+				data[t+"EffectiveExplodePercentage"] = amount
+			}
+			chance = c
+			if s.part == 2 {
+				chance = 1
+			}
+		}
+	} else {
+		// typeAmountChances[type][amount] = summed chance (Lua pairs order
+		// does not change the sums or the combined chance).
+		type key struct {
+			t      string
+			amount float64
+		}
+		sums := map[key]float64{}
+		var order []key
+		for _, e := range entries {
+			t, amount, c := explodeVal(e)
+			k := key{t, amount}
+			if _, ok := sums[k]; !ok {
+				order = append(order, k)
+			}
+			sums[k] += c
+		}
+		phys := 0.0
+		for _, k := range order {
+			c := sums[k]
+			ac := k.amount * c
+			if k.t == "RandomElement" {
+				for _, el := range []string{"Fire", "Cold", "Lightning"} {
+					data[el+"EffectiveExplodePercentage"] = numOr(data[el+"EffectiveExplodePercentage"], 0) + ac/3
+				}
+			} else {
+				data[k.t+"EffectiveExplodePercentage"] = numOr(data[k.t+"EffectiveExplodePercentage"], 0) + ac
+			}
+			if k.t == "Physical" {
+				phys = 1 - (1-phys)*(1-c)
+			}
+			chance = 1 - (1-chance)*(1-c)
+		}
+		if phys != 0 {
+			s.mods.NewMod("CalcArmourAsThoughDealing", "MORE", 100/math.Min(phys, 1)-100, "Skill:EnemyExplode")
+		}
+	}
+	out["ExplodeChance"] = math.Min(chance*100, 100)
+}
+
+// explodeSource is activeEffect.srcInstance.explodeSource's mod source: the
+// n-th of env.explodeSources (CalcSetup: allocated nodes, then items), n
+// being this gem's place among the group's EnemyExplode gems.
+func explodeSource(s *activeSkill, entries []ListEntry) string {
+	var tree, items []string
+	seen := map[string]bool{}
+	for _, e := range entries {
+		if e.Mod == nil || seen[e.Mod.Source] {
+			continue
+		}
+		seen[e.Mod.Source] = true
+		if strings.HasPrefix(e.Mod.Source, "Tree:") {
+			tree = append(tree, e.Mod.Source)
+		} else {
+			items = append(items, e.Mod.Source)
+		}
+	}
+	sources := append(tree, items...)
+	n := 0
+	if s.group != nil {
+		for i := range s.group.Gems {
+			g := &s.group.Gems[i]
+			if g == s.gem {
+				break
+			}
+			if g.SkillID == "EnemyExplode" {
+				n++
+			}
+		}
+	}
+	if n < len(sources) {
+		return sources[n]
+	}
+	return ""
 }

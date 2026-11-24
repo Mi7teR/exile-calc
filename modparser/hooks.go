@@ -886,3 +886,74 @@ func enemiesByYouHook(suffix string) Hook {
 		return out
 	}
 }
+
+// explodeFunc is ModParser.lua's explodeFunc: an ExplodeMod LIST entry and the
+// CanExplode flag; nil when the amount is not a number, "tenth" or "quarter".
+func explodeFunc(chance float64, amount, typ string, tags ...any) any {
+	n, ok := toNumber(amount).(float64)
+	if !ok {
+		switch amount {
+		case "tenth":
+			n = 10
+		case "quarter":
+			n = 25
+		default:
+			return nil
+		}
+	}
+	if typ != "" {
+		typ = strings.ToUpper(typ[:1]) + typ[1:]
+	}
+	return []any{
+		withTags(newMod("ExplodeMod", "LIST", map[string]any{"type": typ, "chance": chance / 100, "amount": n, "keyOfScaledMod": "chance"}, 0, 0), tags...),
+		newMod("CanExplode", "FLAG", true, 0, 0),
+	}
+}
+
+func init() {
+	cond := func(v string) map[string]any { return map[string]any{"type": "Condition", "var": v} }
+	enemy := func(v string) map[string]any {
+		return map[string]any{"type": "ActorCondition", "actor": "enemy", "var": v}
+	}
+	// function(chance, _, amount, type) return explodeFunc(chance, amount, type, tags...) end
+	chanceAmountType := func(tags ...any) Hook {
+		return func(p *Parser, a []any) any {
+			c, _ := toNumber(arg(a, 0)).(float64)
+			return explodeFunc(c, argS(a, 2), argS(a, 3), tags...)
+		}
+	}
+	// function(amount, _, type) return explodeFunc(100, amount, type, tags...) end
+	amountType := func(tags ...any) Hook {
+		return func(p *Parser, a []any) any {
+			return explodeFunc(100, argS(a, 1), argS(a, 2), tags...)
+		}
+	}
+	for k, h := range map[string]Hook{
+		"enemies you kill have a (%d+)%% chance to explode, dealing a (.+) of their maximum life as (.+) damage":                            chanceAmountType(),
+		"enemies you kill have ?a? ?(%d+)%% chance to explode, dealing (%d+)%% of their maximum life as (.+) damage":                        chanceAmountType(),
+		"enemies you or your totems kill have (%d+)%% chance to explode, dealing (%d+)%% of their maximum life as (.+) damage":              chanceAmountType(),
+		"enemies you kill while using pride have (%d+)%% chance to explode, dealing a (.+) of their maximum life as (.+) damage":            chanceAmountType(cond("AffectedByPride")),
+		"enemies you kill while affected by glorious madness have a (%d+)%% chance to explode, dealing a (.+) of their life as (.+) damage": chanceAmountType(cond("AffectedByGloriousMadness")),
+		"enemies killed with attack hits have a (%d+)%% chance to explode, dealing a (.+) of their life as (.+) damage":                     chanceAmountType(),
+		"enemies killed with wand hits have a (%d+)%% chance to explode, dealing a (.+) of their life as (.+) damage":                       chanceAmountType(cond("UsingWand")),
+		"cursed enemies you or your minions kill have a (%d+)%% chance to explode, dealing a (.+) of their maximum life as (.+) damage":     chanceAmountType(enemy("Cursed")),
+		"enemies you kill explode, dealing (%d+)%% of their life as (.+) damage":                                                            amountType(),
+		"enemies killed explode dealing (%d+)%% of their life as (.+) damage":                                                               amountType(),
+		"enemies on fungal ground you kill explode, dealing (%d+)%% of their life as (.+) damage":                                           amountType(enemy("OnFungalGround")),
+		"enemies killed with attack or spell hits explode, dealing (%d+)%% of their life as (.+) damage":                                    amountType(),
+		"shocked enemies you kill explode, dealing (%d+)%% of their life as (.+) damage which cannot shock":                                 amountType(enemy("Shocked")),
+		"ignited enemies you kill explode, dealing (%d+)%% of their life as (.+) damage which cannot ignite":                                amountType(enemy("Ignited")),
+		"bleeding enemies you kill explode, dealing (%d+)%% of their maximum life as (.+) damage":                                           amountType(enemy("Bleeding")),
+		// Haemophilia's Lua passes (chance, _, amount) as (amount, _, type).
+		"burning enemies you kill have a (%d+)%% chance to explode, dealing a (.+) of their maximum life as (.+) damage": amountType(enemy("Burning")),
+		"enemies killed near corpses affected by your curses explode, dealing (%d+)%% of their life as (.+) damage": amountType(
+			map[string]any{"type": "MultiplierThreshold", "var": "NearbyCorpse", "threshold": 1.0}, enemy("Cursed")),
+	} {
+		hooks["specialModList[^"+k+"$]"] = h
+	}
+	// Oriath's End: function(chance, _, amount) return explodeFunc(chance, amount, "randomElement", ...) end
+	hooks["specialModList[^enemies you kill during effect have a (%d+)%% chance to explode, dealing a (.+) of their maximum life as damage of a random element$]"] = func(p *Parser, a []any) any {
+		c, _ := toNumber(arg(a, 0)).(float64)
+		return explodeFunc(c, argS(a, 2), "randomElement", cond("UsingFlask"))
+	}
+}
