@@ -125,6 +125,36 @@ func newGemIndex(d *gamedata.Data) *gemIndex {
 			}
 		}
 	}
+	// Data.lua: a Vaal gem whose base skill has transfigured variants
+	// (AltX, AltY) gets a gem per variant, "Vaal <variant name>". The
+	// skill's baseTypeName is its name for these.
+	x.gems = make(map[string]*gamedata.Gem, len(d.Gems))
+	for id, g := range d.Gems {
+		x.gems[id] = g
+	}
+	for _, id := range ids {
+		g := d.Gems[id]
+		if !g.VaalGem {
+			continue
+		}
+		for _, alt := range []string{"AltX", "AltY"} {
+			sec := d.Skills.Effects[g.SecondaryGrantedEffectID+alt]
+			if sec == nil {
+				continue
+			}
+			n := *g
+			n.ID, n.Name = id+alt, "Vaal "+sec.Name
+			n.BaseTypeName = ""
+			n.VariantID = g.VariantID + alt
+			n.SecondaryGrantedEffectID = g.SecondaryGrantedEffectID + alt
+			x.gems[id+alt] = &n
+			x.byGameID[n.GameID][n.VariantID] = &n
+			x.forBaseName[strings.ToLower(n.Name)] = id + alt
+			if b, ok := x.vaalBase[id]; ok {
+				x.vaalBase[id+alt] = b + alt
+			}
+		}
+	}
 	return x
 }
 
