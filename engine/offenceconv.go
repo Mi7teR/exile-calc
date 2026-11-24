@@ -249,7 +249,41 @@ func (c *Calculator) offenceStatConversions(actor *ModDB, s *activeSkill, w1 hit
 			list.Add(Mod{Name: t + "Max", Type: "BASE", Value: math.Floor(mx * mult), Flags: mfSpell, Source: "Blade Blast of Dagger Detonation"})
 		}
 	}
+	unleashSeals(actor, s, out)
 	c.randomPhysConversions(s)
+}
+
+const stCanRapidFire = 70 // SkillType.CanRapidFire
+
+// unleashSeals is the "Applies DPS multiplier based on seals count" block
+// of calcs.offence (Unleash supports).
+func unleashSeals(actor *ModDB, s *activeSkill, out map[string]float64) {
+	list, cfg, data := s.mods, s.cfg, s.data
+	if !list.Flag("HasSeals") || !s.types[stCanRapidFire] || list.Flag("NoRepeatBonuses") {
+		return
+	}
+	cooldown := list.SumCfg(cfg, "BASE", "SealGainFrequency") / calcMod(list, cfg, "SealGainFrequency")
+	sealMax := list.SumCfg(cfg, "BASE", "SealCount")
+	out["SealCooldown"], out["SealMax"], out["AverageBurstHits"], out["TimeMaxSeals"] = cooldown, sealMax, sealMax, cooldown*sealMax
+	if _, ok := data["hitTimeOverride"]; ok {
+		return
+	}
+	castRate := 1 / s.active.ge.CastTime * 1.1 * calcMod(list, cfg, "Speed") * actor.output["ActionSpeedMod"]
+	if list.Flag("UseMaxUnleash") {
+		for _, m := range appliedMods(list, &Cfg{}, "INC", "MaxSealCrit") {
+			m.Name = "CritChance"
+			list.Add(m)
+		}
+		for _, m := range appliedMods(list, &Cfg{}, "MORE", "MaxSealDamage") {
+			v, _ := num(m.Value)
+			m.Name, m.Value = "Damage", v*sealMax
+			list.Add(m)
+		}
+		data["dpsMultiplier"] = 1 + sealMax*calcMod(list, cfg, "SealRepeatPenalty")
+		data["hitTimeOverride"] = math.Max(cooldown*sealMax, castRate)
+	} else {
+		data["dpsMultiplier"] = 1 + 1/cooldown/castRate*calcMod(list, cfg, "SealRepeatPenalty")
+	}
 }
 
 // randomPhysConversions is the random physical conversion block of
