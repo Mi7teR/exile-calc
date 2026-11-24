@@ -711,6 +711,8 @@ func mainSkill(skills []*activeSkill) *activeSkill {
 
 const stChannel = 48 // SkillType.Channel
 
+const stRequiresShield = 10 // SkillType.RequiresShield
+
 // combatConditions ports the mode_combat part of doActorAttribsConditions:
 // conditions that follow from using the main skill.
 func combatConditions(db *ModDB, s *activeSkill) {
@@ -1177,11 +1179,25 @@ func (c *Calculator) buildSkillMods(db *ModDB, s *activeSkill, res *Result) {
 		return f, true, true
 	}
 	attackLike := flags["attack"] || flags["dotFromAttack"]
+	// Skills that require a shield (or shield attacks) are disabled without one.
+	if (types[stRequiresShield] || flags["shieldAttack"]) && s.summon == nil {
+		if it := db.items["Weapon 2"]; it == nil || it.Base == nil || it.Base.Type != "Shield" {
+			s.disabled = true
+		}
+	}
+	if flags["shieldAttack"] {
+		// Shield attacks hit with the off hand only, without weapon flags.
+		w2Attack = true
+		flags["weapon2Attack"] = true
+	}
 	main := s.weapons[0]
 	if main == "" {
 		main = "None"
 	}
 	f, ok, known := handFlags(main)
+	if flags["shieldAttack"] {
+		ok, known = false, false
+	}
 	if !ok && s.summon != nil {
 		f, ok = weaponFlags("None")
 		main = "None"
@@ -1199,7 +1215,9 @@ func (c *Calculator) buildSkillMods(db *ModDB, s *activeSkill, res *Result) {
 	} else if (types[stDualWieldOnly] || known) && s.summon == nil {
 		s.disabled = true
 	}
-	if f, ok, known := handFlags(s.weapons[1]); ok && s.weapons[1] != "" {
+	if flags["shieldAttack"] {
+		// weapon2Flags = 0
+	} else if f, ok, known := handFlags(s.weapons[1]); ok && s.weapons[1] != "" {
 		if types[stDualWieldRequiresDifferentTypes] && s.weapons[0] == s.weapons[1] {
 			s.disabled = true
 		} else if attackLike {

@@ -1,6 +1,7 @@
 package engine
 
 import (
+	"maps"
 	"math"
 	"strings"
 
@@ -278,10 +279,22 @@ func (c *Calculator) offence(actor *ModDB, s *activeSkill, w1 hitSource, w2 *hit
 		if s.flags["weapon1Attack"] {
 			passes = append(passes, &hitPass{src: w1, cfg: s.weapon1Cfg, out: map[string]float64{}, label: "Main Hand"})
 		}
+		if s.flags["shieldAttack"] && w2 == nil {
+			// weaponData2 of a shield is empty: the skill sets its damage.
+			w2 = &hitSource{min: map[string]float64{}, max: map[string]float64{}}
+		}
 		if s.flags["weapon2Attack"] && w2 != nil {
 			src := *w2
 			if cc, ok := num(data["CritChance"]); ok {
 				src.critChance = cc
+			}
+			for _, t := range []string{"Physical", "Fire", "Cold"} {
+				mn, ok1 := num(data["setOffHand"+t+"Min"])
+				mx, ok2 := num(data["setOffHand"+t+"Max"])
+				if ok1 && ok2 {
+					src.min, src.max = maps.Clone(src.min), maps.Clone(src.max)
+					src.min[t], src.max[t] = mn, mx
+				}
 			}
 			if at, ok := num(data["attackTime"]); ok && at != 0 {
 				src.attackRate = 1000 / at

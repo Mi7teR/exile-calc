@@ -18,6 +18,13 @@ type Hook func(p *Parser, args []any) any
 // table and the key in ModParser.lua; each port quotes its Lua source.
 // Unported hooks make a line unsupported, never wrong.
 var hooks = map[string]Hook{
+	// ["(%d+)%% chance for hits to deal (%d+)%% of physical damage as extra damage of a random element"] = function(num, _, physPercent) return {
+	//   mod("PhysicalDamageGainAsRandom", "BASE", (num*physPercent/100) ) } end,
+	"specialModList[^(%d+)%% chance for hits to deal (%d+)%% of physical damage as extra damage of a random element$]": func(p *Parser, a []any) any {
+		n, _ := toNumber(arg(a, 0)).(float64)
+		pct, _ := toNumber(argS(a, 2)).(float64)
+		return []any{newMod("PhysicalDamageGainAsRandom", "BASE", n*pct/100, 0, 0)}
+	},
 	// ["(%d+)%% increased chaos damage per (%d+) maximum mana, up to a maximum of (%d+)%%"] = function(num, _, div, limit) return {
 	//   mod("ChaosDamage", "INC", num, { type = "PerStat", stat = "Mana", div = tonumber(div), globalLimit = tonumber(limit), globalLimitKey = "DarkIdeation" }) } end,
 	"specialModList[^(%d+)%% increased chaos damage per (%d+) maximum mana, up to a maximum of (%d+)%%$]": func(p *Parser, a []any) any {
