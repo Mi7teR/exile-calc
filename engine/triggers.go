@@ -22,6 +22,8 @@ type triggerConfig struct {
 	triggerChance      float64 // 0: not set
 	triggerSkillCond   func(main, s *activeSkill) bool
 	triggeredSkillCond func(main, s *activeSkill) bool
+	overlaps           float64 // 0: not set
+	doomBlast          bool
 }
 
 func isTriggered(s *activeSkill) bool {
@@ -40,14 +42,26 @@ func triggeredBy(s *activeSkill) *skillEffect {
 }
 
 func slotMatch(main, s *activeSkill) bool {
-	fromItem := main.active.ge.FromItem || s.active.ge.FromItem
+	// srcInstance.fromItem: gems of groups granted by items.
+	srcFromItem := func(x *activeSkill) bool { return x.group != nil && strings.HasPrefix(x.group.Source, "Item") }
+	fromItem := main.active.ge.FromItem || s.active.ge.FromItem || srcFromItem(main) || srcFromItem(s)
 	match1 := fromItem && s.group != nil && main.group != nil && s.group.Slot == main.group.Slot
 	match2 := !main.active.ge.FromItem && s.group == main.group
 	return match1 || match2
 }
 
-var triggerConfigs = map[string]func() *triggerConfig{
-	"asenath's chant": func() *triggerConfig {
+var triggerConfigs = map[string]func(db *ModDB, main *activeSkill) *triggerConfig{
+	"doom blast": func(db *ModDB, main *activeSkill) *triggerConfig {
+		const stHex = 97 // SkillType.Hex
+		main.data["ignoresTickRate"] = true
+		cfg := &triggerConfig{doomBlast: true,
+			triggerSkillCond: func(main, s *activeSkill) bool { return s.types[stHex] && slotMatch(main, s) }}
+		if len(db.TabulateCfg(nil, "BASE", "Multiplier:CurseOverlaps")) > 0 {
+			cfg.overlaps = math.Max(db.Sum("BASE", "Multiplier:CurseOverlaps"), 1)
+		}
+		return cfg
+	},
+	"asenath's chant": func(*ModDB, *activeSkill) *triggerConfig {
 		return &triggerConfig{triggerOnUse: true,
 			triggerSkillCond: func(main, s *activeSkill) bool {
 				return (s.types[stDamage] || s.types[stAttack]) && s.cfg.Flags&modFlagByName["Bow"] > 0
@@ -56,12 +70,12 @@ var triggerConfigs = map[string]func() *triggerConfig{
 				return truthy(s.data["triggeredByUnique"]) && main.group != nil && s.group != nil && main.group.Slot == s.group.Slot && s.types[stSpell]
 			}}
 	},
-	"the covetous dark": func() *triggerConfig {
+	"the covetous dark": func(*ModDB, *activeSkill) *triggerConfig {
 		return &triggerConfig{
 			triggerSkillCond:   func(main, s *activeSkill) bool { return s.types[20] }, // Melee
 			triggeredSkillCond: func(main, s *activeSkill) bool { return truthy(s.data["triggeredByCovetousDark"]) }}
 	},
-	"cast on critical strike": func() *triggerConfig {
+	"cast on critical strike": func(*ModDB, *activeSkill) *triggerConfig {
 		return &triggerConfig{
 			triggerSkillCond:   func(main, s *activeSkill) bool { return s.types[stAttack] && slotMatch(main, s) },
 			triggeredSkillCond: func(main, s *activeSkill) bool { return truthy(s.data["triggeredByCoc"]) && slotMatch(main, s) }}
@@ -160,7 +174,7 @@ func (c *Calculator) triggers(db *ModDB, main *activeSkill, w1 hitSource, w2 *hi
 	if main.disabled {
 		return
 	}
-	var cfgFn func() *triggerConfig
+	var cfgFn func(*ModDB, *activeSkill) *triggerConfig
 	by := triggeredBy(main)
 	names := []string{strings.ToLower(main.active.ge.Name)}
 	if by != nil {
@@ -188,7 +202,7 @@ func (c *Calculator) triggers(db *ModDB, main *activeSkill, w1 hitSource, w2 *hi
 		delete(main.data, "triggered")
 		return
 	}
-	c.defaultTrigger(db, main, by, cfgFn(), w1, w2)
+	c.defaultTrigger(db, main, by, cfgFn(db, main), w1, w2)
 }
 
 func (c *Calculator) defaultTrigger(db *ModDB, main *activeSkill, by *skillEffect, cfg *triggerConfig, w1 hitSource, w2 *hitSource) {
@@ -263,6 +277,9 @@ func (c *Calculator) defaultTrigger(db *ModDB, main *activeSkill, by *skillEffec
 		out["TriggerRateCap"] = 1 / actionRounded
 	}
 	out["EffectiveSourceRate"] = trigRate
+	if cfg.doomBlast {
+		c.doomBlastSourceRate(db, main, sourceOut, trigRate, icdr, w1, w2)
+	}
 	chance := 100.0
 	if (source.types[20] || source.types[stAttack]) && !cfg.triggerOnUse {
 		if hc := sourceOut["HitChance"]; hc != 100 {
@@ -285,7 +302,11 @@ func (c *Calculator) defaultTrigger(db *ModDB, main *activeSkill, by *skillEffec
 	case out["EffectiveSourceRate"] == 0:
 		skillRate = 0
 	case ignoresTick && (cfg.triggeredSkillCond == nil || len(triggered) == 1 && triggered[0].skill == main):
-		skillRate = math.Min(out["TriggerRateCap"], out["EffectiveSourceRate"])
+		overlaps := cfg.overlaps
+		if overlaps == 0 {
+			overlaps = 1
+		}
+		skillRate = math.Min(out["TriggerRateCap"], out["EffectiveSourceRate"]*overlaps)
 	default:
 		rot := triggered
 		if cfg.triggeredSkillCond == nil {
@@ -307,6 +328,48 @@ func (c *Calculator) defaultTrigger(db *ModDB, main *activeSkill, by *skillEffec
 		for _, m := range appliedMods(main.mods, source.cfg, typ, "TriggeredDamage") {
 			main.mods.Add(Mod{Name: "Damage", Type: typ, Value: m.Value, Flags: m.Flags, KeywordFlags: m.KeywordFlags, Source: m.Source, Tags: m.Tags})
 		}
+	}
+}
+
+// doomBlastSourceRate is the Doom Blast part of the default trigger
+// handler: the source rate by the doomBlastSource config (default "vixen").
+func (c *Calculator) doomBlastSourceRate(db *ModDB, main *activeSkill, sourceOut map[string]float64, trigRate, icdr float64, w1 hitSource, w2 *hitSource) {
+	out := db.output
+	src := "vixen"
+	if db.build != nil {
+		src = configString(db.build.ActiveConfig(), "doomBlastSource", src)
+	}
+	switch src {
+	case "expiration":
+		if d := sourceOut["Duration"]; d > 0 && 1/d <= trigRate {
+			out["EffectiveSourceRate"] = 1 / d
+		}
+	case "hexblast":
+		var rate float64
+		found := false
+		for _, s := range db.activeSkills {
+			if s.active.ge.Name == "Hexblast" && !isTriggered(s) && s != main && !s.disabled {
+				o := c.offenceOnCopy(db, s, w1, w2)
+				r, ok := o["HitSpeed"]
+				if !ok {
+					r = o["Speed"]
+				}
+				if !found || r > rate {
+					rate, found = r, true
+				}
+			}
+		}
+		if found && rate > 0 {
+			out["EffectiveSourceRate"] = 1 / (1/trigRate + 1/rate)
+		}
+	case "vixen":
+		vixensCD := 0.0
+		if v := c.data.Skills.Effects["SupportUniqueCastCurseOnCurse"]; v != nil {
+			if lv := v.Levels[1]; lv != nil {
+				vixensCD = lv.Cooldown / icdr
+			}
+		}
+		out["EffectiveSourceRate"] = rotationImpact(main, []*simSkill{{skill: main, icdr: icdr}}, trigRate, vixensCD, 0)
 	}
 }
 
