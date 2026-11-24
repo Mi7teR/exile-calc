@@ -1023,7 +1023,7 @@ var unarmedPhysicalMax = [...]float64{6, 8, 5, 5, 6, 6, 5}
 // quiver. Hollow Palm and countsAsDualWielding are not ported.
 func playerWeapons(db *ModDB, gear map[string][]modparser.Mod, classID int) (hitSource, *hitSource) {
 	w1, _, ok := itemWeapon(db.items["Weapon 1"], gear["Weapon 1"])
-	if !ok {
+	if !ok || db.Flag("DisableWeapons") {
 		w1 = hitSource{min: map[string]float64{"Physical": 2}, max: map[string]float64{"Physical": 6}, attackRate: 1.2}
 		if classID >= 0 && classID < len(unarmedPhysicalMax) {
 			w1.max["Physical"] = unarmedPhysicalMax[classID]

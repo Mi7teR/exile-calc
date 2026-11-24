@@ -93,6 +93,21 @@ var hooks = map[string]Hook{
 	"specialModList[^(%d+)%% reduced bonuses gained from equipped (.+)$]": func(p *Parser, a []any) any {
 		return equippedBonus(a, -1)
 	},
+	// ["adds (%d+) to (%d+) attack physical damage to melee skills per (%d+) dexterity while you are unencumbered"] = function(_, min, max, dex) return {
+	//   mod("PhysicalMin", "BASE", tonumber(min), nil, ModFlag.Melee, KeywordFlag.Attack, { type = "PerStat", stat = "Dex", div = tonumber(dex) }, { type = "Condition", var = "Unencumbered" }),
+	//   mod("PhysicalMax", ...same with max) } end,
+	"specialModList[^adds (%d+) to (%d+) attack physical damage to melee skills per (%d+) dexterity while you are unencumbered$]": func(p *Parser, a []any) any {
+		const mfMelee, kfAttack = 0x100, 0x10000
+		dex, _ := toNumber(argS(a, 3)).(float64)
+		var out []any
+		for i, name := range []string{"PhysicalMin", "PhysicalMax"} {
+			v, _ := toNumber(argS(a, i+1)).(float64)
+			out = append(out, withTags(newMod(name, "BASE", v, mfMelee, kfAttack),
+				map[string]any{"type": "PerStat", "stat": "Dex", "div": dex},
+				map[string]any{"type": "Condition", "var": "Unencumbered"}))
+		}
+		return out
+	},
 	// ["your hits treat cold resistance as (%d+)%% higher than actual value"] = function(num) return {
 	//   mod("ColdPenetration", "BASE", -num, nil, 0, KeywordFlag.Hit) } end,
 	"specialModList[^your hits treat cold resistance as (%d+)%% higher than actual value$]": func(p *Parser, a []any) any {

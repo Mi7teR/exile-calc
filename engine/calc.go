@@ -476,6 +476,15 @@ func (c *Calculator) Calc(b *pobcode.Build) (*Result, error) {
 	extraAuras(db)
 	guaranteedChills(db, chilling)
 	c.mergeKeystones(db, keystones, res)
+	// CalcPerform.lua: Dancing Dervish (DisableWeapons); playerWeapons
+	// makes the main hand unarmed. PoB quirk: env.player.Gloves is never
+	// set, so the player is always Unencumbered here. PoB quirk: CalcSetup
+	// keeps the weapon's own mods out only for a UniqueAnimateWeapon skill,
+	// which the Dervish no longer grants, so they still apply.
+	if db.Flag("DisableWeapons") {
+		db.conditions["Unarmed"] = true
+		db.conditions["Unencumbered"] = true
+	}
 	defenceForConditionals(db, gearMods)
 	charges(db)
 	flaskRecovery(db, flaskSt)
