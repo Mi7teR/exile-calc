@@ -57,6 +57,18 @@ var hooks = map[string]Hook{
 		return []any{newMod("EnemyModifier", "LIST", map[string]any{"mod": withTags(newMod("Damage", "INC", -n, 0, 0),
 			map[string]any{"type": "Multiplier", "var": "ActiveMineCount", "limit": limit / n})}, 0, 0)}
 	},
+	// ["during f?l?a?s?k? ?effect, (%d+)%% reduced damage taken of each element for which your uncapped elemental resistance is lowest"] = function(num) return {
+	//   mod("<E>DamageTaken", "INC", -num, { type = "StatThreshold", stat = "<E>ResistTotal", thresholdStat = "<O>ResistTotal", upper = true }, ...) } end,
+	"specialModList[^during f?l?a?s?k? ?effect, (%d+)%% reduced damage taken of each element for which your uncapped elemental resistance is lowest$]": func(p *Parser, a []any) any {
+		n, _ := toNumber(arg(a, 0)).(float64)
+		return wiseOakMods(func(e string) map[string]any { return newMod(e+"DamageTaken", "INC", -n, 0, 0) }, true)
+	},
+	// ["during f?l?a?s?k? ?effect, damage penetrates (%d+)%% o?f? ?resistance of each element for which your uncapped elemental resistance is highest"] = function(num) return {
+	//   mod("<E>Penetration", "BASE", num, { type = "StatThreshold", stat = "<E>ResistTotal", thresholdStat = "<O>ResistTotal" }, ...) } end,
+	"specialModList[^during f?l?a?s?k? ?effect, damage penetrates (%d+)%% o?f? ?resistance of each element for which your uncapped elemental resistance is highest$]": func(p *Parser, a []any) any {
+		n, _ := toNumber(arg(a, 0)).(float64)
+		return wiseOakMods(func(e string) map[string]any { return newMod(e+"Penetration", "BASE", n, 0, 0) }, false)
+	},
 	// ["every (%d+) seconds, gain (%d+)%% of physical damage as extra fire damage for (%d+) seconds"] = function(frequency, _, num, duration) return {
 	//   mod("PhysicalDamageGainAsFire", "BASE", tonumber(num), { type = "Condition", var = "NgamahuFlamesAdvance" }) } end,
 	"specialModList[^every (%d+) seconds, gain (%d+)%% of physical damage as extra fire damage for (%d+) seconds$]": func(p *Parser, a []any) any {
@@ -1043,6 +1055,26 @@ func noReservation(p *Parser, name string, aura bool) any {
 	var out []any
 	for _, key := range []string{"manaReservationFlat", "lifeReservationFlat", "manaReservationPercent", "lifeReservationPercent"} {
 		out = append(out, withTags(newMod("SkillData", "LIST", map[string]any{"key": key, "value": 0.0}, 0, 0), tags...))
+	}
+	return out
+}
+
+// wiseOakMods are The Wise Oak's per-element mods, in ModParser's order
+// (Lightning, Cold, Fire): each holds while that element's uncapped
+// resistance is the lowest (upper) or highest of the three.
+func wiseOakMods(mk func(elem string) map[string]any, upper bool) []any {
+	others := map[string][2]string{"Lightning": {"Cold", "Fire"}, "Cold": {"Lightning", "Fire"}, "Fire": {"Lightning", "Cold"}}
+	var out []any
+	for _, e := range []string{"Lightning", "Cold", "Fire"} {
+		var tags []any
+		for _, o := range others[e] {
+			t := map[string]any{"type": "StatThreshold", "stat": e + "ResistTotal", "thresholdStat": o + "ResistTotal"}
+			if upper {
+				t["upper"] = true
+			}
+			tags = append(tags, t)
+		}
+		out = append(out, withTags(mk(e), tags...))
 	}
 	return out
 }
