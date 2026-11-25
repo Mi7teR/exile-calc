@@ -94,6 +94,15 @@ var hooks = map[string]Hook{
 		per, _ := toNumber(argS(a, 2)).(float64)
 		return []any{newMod("StrDmgBonusRatioOverride", "BASE", n/per, 0, 0)}
 	},
+	// ["adds (%d+) to (%d+) fire damage to attacks for every (%d+)%% your light radius is above base value"] = function(_, min, max, lightRadius) return {
+	//   mod("FireMin", "BASE", min, nil, ModFlag.Attack, { type = "PerStat", stat = "LightRadiusInc", div = lightRadius }), ...FireMax } end,
+	"specialModList[^adds (%d+) to (%d+) fire damage to attacks for every (%d+)%% your light radius is above base value$]": func(p *Parser, a []any) any {
+		mn, _ := toNumber(argS(a, 1)).(float64)
+		mx, _ := toNumber(argS(a, 2)).(float64)
+		div, _ := toNumber(argS(a, 3)).(float64)
+		tag := map[string]any{"type": "PerStat", "stat": "LightRadiusInc", "div": div}
+		return []any{withTags(newMod("FireMin", "BASE", mn, 1, 0), tag), withTags(newMod("FireMax", "BASE", mx, 1, 0), tag)}
+	},
 	// ["every (%d+) seconds, gain (%d+)%% of physical damage as extra fire damage for (%d+) seconds"] = function(frequency, _, num, duration) return {
 	//   mod("PhysicalDamageGainAsFire", "BASE", tonumber(num), { type = "Condition", var = "NgamahuFlamesAdvance" }) } end,
 	"specialModList[^every (%d+) seconds, gain (%d+)%% of physical damage as extra fire damage for (%d+) seconds$]": func(p *Parser, a []any) any {

@@ -431,9 +431,11 @@ func (c *Calculator) offence(actor *ModDB, s *activeSkill, w1 hitSource, w2 *hit
 	pacts(actor, s, out)
 	for _, p := range passes {
 		ruthlessAndFistOfWar(s, p, out)
-		dpsMult = numOr(data["dpsMultiplier"], 1) * dpsMod
 		p.global = out
 		c.hitDamage(actor, s, p)
+		// After hitDamage: postCritFunc may change it too (CalcOffence reads
+		// skillData.dpsMultiplier for TotalDPS after postCritFunc).
+		dpsMult = numOr(data["dpsMultiplier"], 1) * dpsMod
 		speed := out["Speed"]
 		if hs, ok := out["HitSpeed"]; ok {
 			speed = hs
@@ -693,7 +695,8 @@ func (c *Calculator) hitDamage(actor *ModDB, s *activeSkill, p *hitPass) {
 		warcry = 1
 	}
 	scaled *= out["RuthlessBlowHitEffect"] * out["FistOfWarDamageEffect"] * warcry
-	postCritFunc(s, out)
+	postCritFunc(s, out, p.global)
+	redirectAddedDamage(list, p.cfg)
 
 	// Base hit damage.
 	baseMult, eff := 1.0, 1.0
@@ -1108,6 +1111,16 @@ func preDamageFunc(actor *ModDB, s *activeSkill, out map[string]float64) {
 			s.mods.Add(Mod{Name: "DPS", Type: "MORE", Value: -(1 / interval) * 100, Source: "Normal pulse", Tags: part})
 		case 3:
 			s.mods.Add(Mod{Name: "DPS", Type: "MORE", Value: -(interval - 1) / interval * 100, Source: "Stronger pulse", Tags: part})
+		}
+	case "Kinetic Fusillade":
+		if s.part == 1 {
+			data["dpsMultiplier"] = proj
+			// Each projectile deals more damage per earlier one: the average.
+			if per := numOr(data["damagePerProjectile"], 0); per != 0 && proj > 1 {
+				avg := per * (proj - 1) / 2
+				s.mods.NewMod("Damage", "MORE", avg, "Skill:KineticFusillade")
+				out["KineticFusilladeAvgMoreMult"] = avg
+			}
 		}
 	case "Molten Strike", "Molten Strike of the Zenith":
 		if s.part == 1 {
@@ -1829,9 +1842,30 @@ func areaOfEffect(s *activeSkill, out map[string]float64) {
 }
 
 // postCritFunc ports the skills' postCritFunc (Data/Skills/*.lua), run
-// after the crit chance of a damage pass.
-func postCritFunc(s *activeSkill, out map[string]float64) {
+// after the crit chance of each damage pass. PoB passes the global output
+// (runSkillFunc's upvalue); out is the pass's, which is the same for spells.
+func postCritFunc(s *activeSkill, out, global map[string]float64) {
 	switch s.active.ge.Name {
+	case "Kinetic Fusillade":
+		// Attacking faster than the projectiles fire wastes damage.
+		n := 1.0
+		if s.part == 1 {
+			n = global["ProjectileCount"]
+		}
+		delay := (numOr(s.data["duration"], 0) + numOr(s.data["delayPerProjectile"], 0)*(n-1)) * global["DurationMod"]
+		maxAPS := 1 / (math.Ceil(delay/serverTickTime) * serverTickTime)
+		// PoB differs: it scales the current dpsMultiplier on every pass, so
+		// a dual wielder's off hand gets the efficiency twice. It applies
+		// once here, to the multiplier before the first pass.
+		if s.part == 1 && global["Speed"] > maxAPS {
+			base, ok := num(s.data["kineticFusilladeBaseDps"])
+			if !ok {
+				base = numOr(s.data["dpsMultiplier"], global["ProjectileCount"])
+				s.data["kineticFusilladeBaseDps"] = base
+			}
+			s.data["dpsMultiplier"] = base * maxAPS / global["Speed"]
+		}
+		global["KineticFusilladeMaxEffectiveAPS"] = maxAPS
 	case "Lightning Tendrils of Eccentricity":
 		// The 5th pulse's more damage as an average over the interval.
 		if s.part != 1 {
@@ -1843,5 +1877,42 @@ func postCritFunc(s *activeSkill, out map[string]float64) {
 		avg := 100 * (((interval-1)*(1+crit*(multi-1))+(1+pulse)*multi)/(interval*((1-eff)+multi*eff)) - 1)
 		s.mods.Add(Mod{Name: "Damage", Type: "MORE", Value: avg, Source: "Average Pulse Damage", KeywordFlags: kfHit | kfAilment,
 			Tags: []map[string]any{{"type": "SkillPart", "skillPart": 1.0}}})
+	}
+}
+
+// redirectAddedDamage is calcs.offence's "Added damage redirection"
+// (Cryogenesis): with AllAddedDamageAsLightning or AllAddedDamageAsCold,
+// the applicable added damage mods of the other types become that type
+// (ModList:ConvertMod, in place), except Elemental Hit's own. PoB's marker
+// tag ("Cryogenesis Added Damage") is display only and not added.
+func redirectAddedDamage(list *ModDB, cfg *Cfg) {
+	to := ""
+	switch {
+	case list.FlagCfg(cfg, "AllAddedDamageAsLightning"):
+		to = "Lightning"
+	case list.FlagCfg(cfg, "AllAddedDamageAsCold"):
+		to = "Cold"
+	default:
+		return
+	}
+	for _, t := range dmgTypeList {
+		if t == to {
+			continue
+		}
+		for _, suffix := range []string{"Min", "Max"} {
+			from, dst := t+suffix, to+suffix
+			for d := list; d != nil; d = d.parent {
+				kept := d.mods[from][:0]
+				for _, m := range d.mods[from] {
+					if _, ok := list.eval(&m, cfg); ok && eligible(&m, "BASE", cfg) && !strings.Contains(m.Source, "ElementalHit") {
+						m.Name = dst
+						d.mods[dst] = append(d.mods[dst], m)
+						continue
+					}
+					kept = append(kept, m)
+				}
+				d.mods[from] = kept
+			}
+		}
 	}
 }

@@ -26,5 +26,39 @@
       "reason": "Mirage copy keeps +gem levels from items, and a stronger mirage ignite/bleed counts in CombinedDPS (PoB: raw gem level; drops it from CombinedDPS).",
       "value": 6918794.71397955
     }
+  },
+  "yvENgQrpk-61": {
+    "BleedDPS": {
+      "reason": "Kinetic Fusillade's attack-speed efficiency applies once; PoB's postCritFunc scales dpsMultiplier on every pass, so a dual wielder's off hand (and what follows from it) gets it twice.",
+      "value": 214.29073551208845
+    },
+    "CombinedDPS": {
+      "reason": "Kinetic Fusillade's attack-speed efficiency applies once; PoB's postCritFunc scales dpsMultiplier on every pass, so a dual wielder's off hand (and what follows from it) gets it twice.",
+      "value": 102731994.54762274
+    },
+    "MirageDPS": {
+      "reason": "Kinetic Fusillade's attack-speed efficiency applies once; PoB's postCritFunc scales dpsMultiplier on every pass, so a dual wielder's off hand (and what follows from it) gets it twice.",
+      "value": 42644070.19364079
+    },
+    "TotalDPS": {
+      "reason": "Kinetic Fusillade's attack-speed efficiency applies once; PoB's postCritFunc scales dpsMultiplier on every pass, so a dual wielder's off hand (and what follows from it) gets it twice.",
+      "value": 60087710.06324643
+    },
+    "TotalDotDPS": {
+      "reason": "Kinetic Fusillade's attack-speed efficiency applies once; PoB's postCritFunc scales dpsMultiplier on every pass, so a dual wielder's off hand (and what follows from it) gets it twice.",
+      "value": 214.29073551208845
+    },
+    "WithBleedDPS": {
+      "reason": "Kinetic Fusillade's attack-speed efficiency applies once; PoB's postCritFunc scales dpsMultiplier on every pass, so a dual wielder's off hand (and what follows from it) gets it twice.",
+      "value": 60087924.35398194
+    },
+    "WithIgniteDPS": {
+      "reason": "Kinetic Fusillade's attack-speed efficiency applies once; PoB's postCritFunc scales dpsMultiplier on every pass, so a dual wielder's off hand (and what follows from it) gets it twice.",
+      "value": 60087710.06324643
+    },
+    "WithPoisonDPS": {
+      "reason": "Kinetic Fusillade's attack-speed efficiency applies once; PoB's postCritFunc scales dpsMultiplier on every pass, so a dual wielder's off hand (and what follows from it) gets it twice.",
+      "value": 60087710.06324643
+    }
   }
 }

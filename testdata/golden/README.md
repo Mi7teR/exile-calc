@@ -3,8 +3,11 @@
 Real Path of Building builds on the 3.30 tree and the stats PoB computes for
 them; the engine's diff tests compare against `expected/`.
 
-63 builds: public pobb.in links listed on poebuilds.cc, level 85+, at most
-two per ascendancy for the later additions. The engine matches PoB on all
+78 builds: public pobb.in links listed on poebuilds.cc, level 85+, at most
+two per ascendancy for the later additions. Builds published on an older
+tree were added with `goldencorpus add -tree 3_30`, which moves the active
+spec to the 3.30 tree (PoB drops nodes the tree lacks), so the oracle and
+the engine compute the same build. The engine matches PoB on all
 15 compared stats (attributes, life, mana, resistances, armour, evasion,
 energy shield, ward, block) within 0.5% for every build.
 

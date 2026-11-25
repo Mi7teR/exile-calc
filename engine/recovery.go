@@ -259,6 +259,8 @@ func avoidanceAndRecovery(db *ModDB) {
 		// The uncapped sum (CalcDefence's local spellSuppressionChance).
 		db.NewMod("AvoidElementalAilments", "BASE", math.Floor(pct*db.Sum("BASE", "SpellSuppressionChance")), "Ancestral Vision")
 	}
+	out["LightRadiusMod"] = calcMod(db, nil, "LightRadius")
+	out["LightRadiusInc"] = math.Max(db.Sum("INC", "LightRadius"), 0)
 	for _, a := range []string{"Bleed", "Poison"} {
 		out[a+"AvoidChance"] = math.Floor(capped(db.Sum("BASE", "Avoid"+a, "AvoidAilments")))
 		if immune(a + "Immune") {
