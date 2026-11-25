@@ -1,0 +1,795 @@
+package engine
+
+import (
+	"fmt"
+	"math"
+	"sort"
+	"strconv"
+	"strings"
+
+	"github.com/Mi7teR/poe-lib/gamedata"
+	"github.com/Mi7teR/poe-lib/itemtext"
+	"github.com/Mi7teR/poe-lib/modparser"
+	"github.com/Mi7teR/poe-lib/pobcode"
+)
+
+// calcState holds what one Calc call shares between its steps: the locals
+// of the old single-body Calc that outlive one step. It is created per
+// call, so Calc stays safe for concurrent use.
+type calcState struct {
+	b      *pobcode.Build
+	spec   *pobcode.Spec // the pruned active spec
+	class  gamedata.Class
+	config *pobcode.ConfigSet
+	db     *ModDB
+	res    *Result
+
+	// Passive tree.
+	allocated    map[int]bool
+	clusterLinks map[int][]int
+	radiusFuncs  radiusJewels
+	// addTreeNode is buildModListForNode; with add false it only runs the
+	// radius functions (PoB's extraRadiusNodeList, whose lists are dropped).
+	addTreeNode func(id int, add bool)
+
+	// Items.
+	flasks    []flaskSlot
+	gear      []equipped
+	gearMods  map[string][]modparser.Mod // all parsed mods of each gear slot
+	reflected []*itemtext.Item           // the other ring of each Kalandra's Touch
+	useSwap   bool
+
+	// Skills and calcs.perform.
+	skills              []*activeSkill
+	keystones           map[string]bool
+	tinctures           tinctureEffect
+	flaskSt             *flaskState
+	playerEnemyMods     enemyModifiers
+	chilling            []*activeSkill
+	guaranteedBonechill bool
+	curses              []*enemyCurse
+	buffs               map[string][]Mod
+}
+
+// calcStep is one named stage of Calc.
+type calcStep struct {
+	name string
+	run  func(c *Calculator, st *calcState) error
+}
+
+// calcSteps is Calc's pipeline. The order is PoB's CalcSetup.lua initEnv
+// order followed by CalcPerform.lua calcs.perform order (with this port's
+// known reorderings noted on the steps); MORE mods round per layer, so
+// moving a step changes numbers. TestCalcStepOrder pins the names.
+var calcSteps = []calcStep{
+	{"initEnv", stepInitEnv},
+	{"baseMods", stepBaseMods},
+	{"bandit", stepBandit},
+	{"pantheon", stepPantheon},
+	{"passiveTree", stepPassiveTree},
+	{"items", stepItems},
+	{"jewelSockets", stepJewelSockets},
+	{"customMods", stepCustomMods},
+	{"grantedPassives", stepGrantedPassives},
+	{"itemConditions", stepItemConditions},
+	{"config", stepConfig},
+	{"skills", stepSkills},
+	{"flasks", stepFlasks},
+	{"skillModLayer", stepSkillModLayer},
+	{"earlyEnemyMods", stepEarlyEnemyMods},
+	{"armourESToLife", stepArmourESToLife},
+	{"attributesLifeMana", stepAttributesLifeMana},
+	{"reservations", stepReservations},
+	{"tinctures", stepTinctures},
+	{"skillCounts", stepSkillCounts},
+	{"chillSkills", stepChillSkills},
+	{"earlyCharges", stepEarlyCharges},
+	{"buffs", stepBuffs},
+	{"curses", stepCurses},
+	{"extraAuras", stepExtraAuras},
+	{"disableWeapons", stepDisableWeapons},
+	{"defenceForConditionals", stepDefenceForConditionals},
+	{"charges", stepCharges},
+	{"actorMisc", stepActorMisc},
+	{"skillInfo", stepSkillInfo},
+	{"allyLife", stepAllyLife},
+	{"defence", stepDefence},
+	{"minion", stepMinion},
+	{"offence", stepOffence},
+	{"unsupportedTags", stepUnsupportedTags},
+}
+
+// Calc computes a build: it runs calcSteps in order over a fresh calcState.
+func (c *Calculator) Calc(b *pobcode.Build) (*Result, error) {
+	st := &calcState{b: b}
+	for _, step := range calcSteps {
+		if err := step.run(c, st); err != nil {
+			return nil, err
+		}
+	}
+	return st.res, nil
+}
+
+// stepInitEnv: CalcSetup.lua calcs.initEnv — the active spec, the class
+// and a fresh player/enemy ModDB pair.
+func stepInitEnv(c *Calculator, st *calcState) error {
+	b := st.b
+	spec := b.ActiveSpec()
+	if spec == nil {
+		return fmt.Errorf("engine: build has no passive tree")
+	}
+	tree := c.data.Tree
+	spec = c.pruneSpec(spec, b)
+	if spec.ClassID < 0 || spec.ClassID >= len(tree.Classes) {
+		return fmt.Errorf("engine: unknown class id %d", spec.ClassID)
+	}
+	st.spec = spec
+	st.class = tree.Classes[spec.ClassID]
+	db := NewModDB()
+	db.tags = itemTags{
+		special:   c.parser.Table("itemTagSpecial"),
+		exclusion: c.parser.Table("itemTagSpecialExclusionPattern"),
+	}
+	db.build = b
+	db.enemy = NewModDB()
+	db.enemy.enemy = db
+	db.player, db.enemy.player = db, db
+	db.gameIDs = c.gemIdx.gameID
+	st.db = db
+	st.res = &Result{Stats: db.output, DB: db}
+	st.config = b.ActiveConfig()
+	return nil
+}
+
+// stepBaseMods: CalcSetup.lua calcs.initModDB and initEnv's base values
+// (attributes, resists, block, life/mana per level, resistance penalty).
+func stepBaseMods(_ *Calculator, st *calcState) error {
+	db, b, class, config := st.db, st.b, st.class, st.config
+	db.NewMod("Str", "BASE", float64(class.BaseStr), "Base")
+	db.NewMod("Dex", "BASE", float64(class.BaseDex), "Base")
+	db.NewMod("Int", "BASE", float64(class.BaseInt), "Base")
+	db.multipliers["Level"] = math.Max(1, math.Min(100, float64(b.Level)))
+	for _, r := range resistTypes {
+		db.NewMod(r+"ResistMax", "BASE", baseMaxResist, "Base")
+	}
+	chargeBaseMods(db)
+	db.NewMod("ManaRegen", "BASE", manaRegenBase, "Base", map[string]any{"type": "PerStat", "stat": "Mana", "div": 1.0})
+	db.NewMod("BlockChanceMax", "BASE", 75, "Base")      // characterConstants maximum_block_%
+	db.NewMod("SpellBlockChanceMax", "BASE", 75, "Base") // base_maximum_spell_block_%
+	// inherent_block_while_dual_wielding_% = 20
+	db.NewMod("BlockChance", "BASE", 20, "Base", map[string]any{"type": "Condition", "var": "DualWielding"},
+		map[string]any{"type": "Condition", "var": "NoInherentBlock", "neg": true},
+		map[string]any{"type": "Condition", "var": "DoubledInherentDualWieldingBlock", "neg": true})
+	db.NewMod("BlockChance", "BASE", 40, "Base", map[string]any{"type": "Condition", "var": "DualWielding"},
+		map[string]any{"type": "Condition", "var": "NoInherentBlock", "neg": true},
+		map[string]any{"type": "Condition", "var": "DoubledInherentDualWieldingBlock"})
+	db.NewMod("Life", "BASE", lifePerLevel, "Base", map[string]any{"type": "Multiplier", "var": "Level", "base": 38.0})
+	db.NewMod("Mana", "BASE", manaPerLevel, "Base", map[string]any{"type": "Multiplier", "var": "Level", "base": 34.0})
+	db.NewMod("Evasion", "BASE", baseEvasion, "Base")
+	initConditionMods(db)
+	playerBaseMods(db)
+	initConditionMods(db.enemy)
+	penalty := -60.0
+	if in, ok := configInput(config, "resistancePenalty"); ok && in.Kind == pobcode.KindNumber {
+		penalty = in.Number
+	}
+	for _, r := range resistTypes {
+		db.NewMod(r+"Resist", "BASE", penalty, "Base")
+	}
+	return nil
+}
+
+// stepBandit: CalcSetup.lua "Add bandit mods".
+func stepBandit(_ *Calculator, st *calcState) error {
+	db := st.db
+	switch bandit := configString(st.config, "bandit", st.b.Bandit); bandit {
+	case "Alira":
+		db.NewMod("ElementalResist", "BASE", 15, "Bandit")
+	case "Kraityn":
+		db.NewMod("MovementSpeed", "INC", 8, "Bandit")
+	case "Oak":
+		db.NewMod("Life", "BASE", 40, "Bandit")
+	}
+	return nil
+}
+
+// stepPantheon: CalcSetup.lua "Add Pantheon mods" (PantheonTools.lua
+// applySoulMod): every soul of the chosen gods, named after the god's own
+// soul.
+func stepPantheon(c *Calculator, st *calcState) error {
+	db, b, config := st.db, st.b, st.config
+	for _, x := range [][2]string{{"pantheonMajorGod", b.PantheonMajorGod}, {"pantheonMinorGod", b.PantheonMinorGod}} {
+		god := c.data.Pantheons[configString(config, x[0], x[1])]
+		if god == nil || len(god.Souls) == 0 {
+			continue
+		}
+		for _, soul := range god.Souls {
+			for _, m := range soul.Mods {
+				r := c.parser.Parse(m.Line)
+				if !r.Parsed() {
+					continue
+				}
+				for _, pm := range r.Mods {
+					db.Add(fromParsed(pm, "Pantheon:"+god.Souls[0].Name))
+				}
+			}
+		}
+	}
+	return nil
+}
+
+// stepPassiveTree: CalcSetup.lua buildModListForNodeList over the
+// allocated nodes: node stats, mastery effects, cluster, conquered and
+// radius-jewel nodes.
+//
+//nolint:gocognit // moved verbatim from Calc (addTreeNode closure); splitting it is out of scope for a pure refactor
+func stepPassiveTree(c *Calculator, st *calcState) error {
+	db, b, spec, res := st.db, st.b, st.spec, st.res
+	tree := c.data.Tree
+	allocated := map[int]bool{}
+	for _, id := range spec.Nodes {
+		allocated[id] = true
+	}
+	mastery := map[int]int{}
+	for _, m := range spec.MasteryEffects {
+		mastery[m.Node] = m.Effect
+	}
+	cluster, clusterLinks, _ := c.clusterGraph(spec, b, res)
+	treeCounts(db, tree, spec.Nodes, cluster)
+	conquered := c.conquests(spec, b, allocated, res)
+	radiusFuncs := c.radiusFuncs(spec, b, allocated, res)
+	addTreeNode := func(id int, add bool) {
+		if g, ok := cluster[id]; ok {
+			if !add {
+				return
+			}
+			c.addNode(db, res, g.stats, g.incEffect, fmt.Sprintf("Tree:%d", id), nil, nil)
+			return
+		}
+		node := tree.Nodes[id]
+		if node == nil {
+			return
+		}
+		stats := node.Stats
+		source := fmt.Sprintf("Tree:%d", id)
+		if node.IsMastery {
+			stats = nil
+			for _, e := range node.MasteryEffects {
+				if e.Effect == mastery[id] {
+					stats = e.Stats
+				}
+			}
+		}
+		cq, isConquered := conquered[id]
+		if isConquered && !node.IsMastery {
+			stats, source, _ = c.conqueredStats(node, id, cq, res)
+		}
+		funcs, second := radiusFuncs.byNode[id], radiusFuncs.second[id]
+		mods := finishNode(c.nodeMods(res, stats, 0, source, node, funcs), add, node, second)
+		if !add {
+			return
+		}
+		for _, m := range mods {
+			db.Add(m)
+		}
+	}
+	for _, id := range spec.Nodes {
+		addTreeNode(id, true)
+	}
+	st.allocated, st.clusterLinks, st.radiusFuncs, st.addTreeNode = allocated, clusterLinks, radiusFuncs, addTreeNode
+	return nil
+}
+
+// stepItems: CalcSetup.lua "Build and merge item modifiers" for the active
+// item set: flasks, gear, Kalandra's Touch and abyss jewels.
+//
+//nolint:gocognit,gocyclo,cyclop,nestif,funlen // moved verbatim from Calc; splitting it is out of scope for a pure refactor
+func stepItems(c *Calculator, st *calcState) error {
+	db, b, spec, res := st.db, st.b, st.spec, st.res
+	var flasks []flaskSlot
+	var gear []equipped
+	type reflect struct {
+		slot string
+		item *pobcode.Item
+		it   *itemtext.Item
+	}
+	var kalandra []reflect
+	gearMods := map[string][]modparser.Mod{} // all parsed mods of each gear slot
+	db.gearMods = gearMods
+	var reflected []*itemtext.Item // the other ring of each Kalandra's Touch
+	useSwap := false
+	if set := b.ActiveItems(); set != nil {
+		useSwap = set.UseSecondWeaponSet
+		type abyss struct {
+			slot, parent string
+			num          int
+			item         *pobcode.Item
+		}
+		var abyssal []abyss
+		bonusScale := c.equipmentBonusScale(db, b, set, res)
+		ringItems := map[string]*pobcode.Item{}
+		parents := map[string]*itemtext.Item{}
+		jewelEffect := map[string]float64{}
+		for _, slot := range set.Slots {
+			if slot.ItemID == 0 {
+				continue
+			}
+			if strings.HasPrefix(slot.Name, "Flask") {
+				n, _ := strconv.Atoi(strings.TrimPrefix(slot.Name, "Flask "))
+				flasks = append(flasks, flaskSlot{item: b.Item(slot.ItemID), active: slot.Active, num: n})
+				continue
+			}
+			if skipSlot(slot.Name, set.UseSecondWeaponSet) {
+				continue
+			}
+			// CalcSetup.lua: Graft slots exist on the 3.27 tree only, Wickerman
+			// slots on the 3.30 tree only.
+			if tree := spec.TreeVersion; (strings.HasPrefix(slot.Name, "Graft ") && !strings.Contains(tree, "3_27")) ||
+				(strings.HasPrefix(slot.Name, "Wickerman ") && !strings.Contains(tree, "3_30")) {
+				continue
+			}
+			// CalcSetup.lua: the active swap set's slots lose " Swap".
+			if set.UseSecondWeaponSet {
+				slot.Name = strings.Replace(slot.Name, " Swap", "", 1)
+			}
+			if i := strings.Index(slot.Name, " Abyssal Socket "); i >= 0 {
+				n, _ := strconv.Atoi(slot.Name[i+len(" Abyssal Socket "):])
+				abyssal = append(abyssal, abyss{slot.Name, slot.Name[:i], n, b.Item(slot.ItemID)})
+				continue
+			}
+			if strings.HasPrefix(slot.Name, "Ring") {
+				if pit := c.peekItem(
+					b.Item(slot.ItemID),
+				); pit != nil &&
+					strings.Contains(pit.Name, "Kalandra's Touch") {
+					// Kalandra's Touch: its own mods do not apply, except ExtraSkill.
+					it, mods := c.itemMods(b.Item(slot.ItemID), res)
+					for _, m := range mods {
+						if m.Name == "ExtraSkill" {
+							if sm, ok := slotTags(
+								fromParsed(m, itemSource(b.Item(slot.ItemID), it)),
+								slot.Name,
+								slotNumber(it, slot.Name),
+							); ok {
+								db.Add(sm)
+							}
+						}
+					}
+					gear = append(gear, equipped{slot.Name, it})
+					db.items[slot.Name] = it
+					parents[slot.Name] = it
+					kalandra = append(kalandra, reflect{slot.Name, b.Item(slot.ItemID), it})
+					continue
+				}
+				ringItems[slot.Name] = b.Item(slot.ItemID)
+			}
+			it, mods := c.addItem(db, res, b.Item(slot.ItemID), bonusScale(b.Item(slot.ItemID)), slot.Name)
+			if it != nil {
+				gearMods[slot.Name] = mods
+				gear = append(gear, equipped{slot.Name, it})
+				db.items[slot.Name] = it
+				parents[slot.Name] = it
+				for _, m := range mods {
+					if m.Name == "SocketedJewelEffect" && m.Type == "INC" {
+						if f, ok := num(m.Value); ok {
+							jewelEffect[slot.Name] += f
+						}
+					}
+				}
+			}
+		}
+		// CalcSetup.lua: an abyss jewel counts only if its parent has that
+		// many abyssal sockets, scaled by the parent's socketed jewel effect.
+		// CalcSetup.lua: Kalandra's Touch takes the other ring's mods, except
+		// SocketedIn ones, with its own source.
+		for _, k := range kalandra {
+			other := "Ring 1"
+			if k.slot == "Ring 1" {
+				other = "Ring 2"
+			}
+			oi := ringItems[other]
+			if oi == nil {
+				continue
+			}
+			oit, omods := c.itemMods(oi, &Result{})
+			if oit == nil {
+				continue
+			}
+			source := itemSource(k.item, k.it)
+		mods:
+			for _, m := range omods {
+				for _, t := range m.Tags {
+					if tagStr(t, "type") == "SocketedIn" {
+						continue mods
+					}
+				}
+				if sm, ok := slotTags(fromParsed(m, source), k.slot, slotNumber(k.it, k.slot)); ok {
+					db.Add(sm)
+				}
+			}
+			reflected = append(reflected, oit)
+		}
+		for _, a := range abyssal {
+			parent := parents[a.parent]
+			if parent == nil || abyssalSockets(parent) < a.num {
+				continue
+			}
+			if it, _ := c.addItem(db, res, a.item, 1+jewelEffect[a.parent]/100, ""); it != nil {
+				db.items[a.slot] = it
+				abyssCounts(db, it, a.parent)
+			}
+		}
+	}
+	st.flasks, st.gear, st.gearMods, st.reflected, st.useSwap = flasks, gear, gearMods, reflected, useSwap
+	return nil
+}
+
+// stepJewelSockets: CalcSetup.lua's jewel slots — jewels in allocated tree
+// sockets, with corrupted (Adorned) and class-start jewel effect.
+func stepJewelSockets(c *Calculator, st *calcState) error {
+	db, b, spec, res, allocated := st.db, st.b, st.spec, st.res, st.allocated
+	corruptedEffect := c.adornedEffect(spec, b, allocated, res)
+	if v, ok := corruptedEffect[itemtext.Magic]; ok {
+		db.multipliers["CorruptedMagicJewelEffect"] = v
+	}
+	if v, ok := corruptedEffect[itemtext.Rare]; ok {
+		db.multipliers["CorruptedRareJewelEffect"] = v
+	}
+	for _, s := range spec.Sockets {
+		if s.ItemID != 0 && allocated[s.NodeID] {
+			scale := 1.0
+			if it := c.peekItem(b.Item(s.ItemID)); it != nil && it.Corrupted && it.Base != nil &&
+				it.Base.Type == "Jewel" && it.Base.SubType != "Charm" {
+				scale += corruptedEffect[it.Rarity]
+			}
+			scale += c.classStartJewelEffect(b.Item(s.ItemID), s.NodeID, allocated, spec.ClassID, st.clusterLinks, res)
+			if it, _ := c.addItem(db, res, b.Item(s.ItemID), scale, ""); it != nil {
+				db.items["Jewel "+strconv.Itoa(s.NodeID)] = it
+				abyssCounts(db, it, "")
+			}
+		}
+	}
+	return nil
+}
+
+// stepCustomMods: CalcSetup.lua "Add mods from the config tab". The config
+// tab's mod list (custom modifiers) joins env.modDB before the granted
+// passives are added, so "Allocates X" custom lines grant their node.
+func stepCustomMods(c *Calculator, st *calcState) error {
+	c.customMods(st.db, st.res, st.config)
+	return nil
+}
+
+// stepGrantedPassives: CalcSetup.lua "Add granted passives", then
+// buildModListForNodeList's finishJewels: unallocated nodes in a radius,
+// then the radius jewels' finalisers.
+func stepGrantedPassives(c *Calculator, st *calcState) error {
+	db, allocated, radiusFuncs, addTreeNode := st.db, st.allocated, st.radiusFuncs, st.addTreeNode
+	granted := grantedNodes(db, c.data.Tree, st.class.Name, allocated)
+	for _, id := range granted {
+		addTreeNode(id, true)
+	}
+	isGranted := map[int]bool{}
+	for _, id := range granted {
+		isGranted[id] = true
+	}
+	extra := make([]int, 0, len(radiusFuncs.inRadius))
+	for id := range radiusFuncs.inRadius {
+		if !allocated[id] && !isGranted[id] {
+			extra = append(extra, id)
+		}
+	}
+	sort.Ints(extra)
+	for _, id := range extra {
+		addTreeNode(id, false)
+	}
+	for _, final := range radiusFuncs.finals {
+		for _, m := range final() {
+			db.Add(m)
+		}
+	}
+	return nil
+}
+
+// stepItemConditions: CalcSetup.lua's item conditions and "Calculate
+// socket counts"; Kalandra's Touch adds the influence and corruption
+// multipliers of the other ring.
+func stepItemConditions(c *Calculator, st *calcState) error {
+	db := st.db
+	itemConditions(db, st.gear)
+	c.socketCounts(db, st.b, st.gear, st.config)
+	for _, o := range st.reflected {
+		for mult, infl := range influenceMultipliers {
+			if hasInfluence(o, infl) {
+				db.multipliers[mult]++
+				db.multipliers["Non"+mult]--
+			}
+		}
+		if o.Corrupted {
+			db.multipliers["CorruptedItem"]++
+			db.multipliers["NonCorruptedItem"]--
+		}
+		if hasInfluence(o, "shaper") || hasInfluence(o, "elder") {
+			db.multipliers["ShaperOrElderItem"]++
+		}
+		db.multipliers[strings.ReplaceAll(o.BaseName, " ", "")+"Equipped"]++
+	}
+	return nil
+}
+
+// stepConfig: the config tab's conditions (ConfigOptions.lua apply), buff
+// mode and the enemy environment (CalcSetup.lua enemy level, accuracy).
+func stepConfig(c *Calculator, st *calcState) error {
+	db, b, res := st.db, st.b, st.res
+	buffMode(db)
+	buffMode(db.enemy)
+	c.applyConfig(db, res, st.config)
+	db.enemyEnv = newEnemyEnv(st.config, c.data.Config, b.Level, c.data.Monster, res)
+	db.enemy.NewMod("Accuracy", "BASE", enemyAccuracy(c.data.Monster, db.enemyEnv.level), "Base")
+	shrineBaseMods(db)
+	return nil
+}
+
+// stepSkills: CalcSetup.lua calcs.createActiveSkill and
+// calcs.buildActiveSkillModList for every active skill.
+func stepSkills(c *Calculator, st *calcState) error {
+	db, res := st.db, st.res
+	skills := c.setupSkills(db, st.b, st.useSwap, res)
+	db.activeSkills = skills
+	for _, s := range skills {
+		c.buildSkillMods(db, s, res)
+	}
+	if debugSkills != nil {
+		debugSkills(skills)
+	}
+	st.skills = skills
+	return nil
+}
+
+// stepFlasks: CalcPerform.lua the Alchemist's Genius buff (before flasks
+// are merged), "Merge flask modifiers", then "Merge keystones again to
+// catch any that were added by flasks".
+func stepFlasks(c *Calculator, st *calcState) error {
+	db, res := st.db, st.res
+	st.keystones = map[string]bool{}
+	if db.Flag("AlchemistsGenius") {
+		effect := 1 + db.Sum("INC", "BuffEffectOnSelf")/100
+		db.NewMod("FlaskEffect", "INC", math.Floor(10*effect), "Alchemist's Genius")
+		db.NewMod("FlaskChargesGained", "INC", math.Floor(20*effect), "Alchemist's Genius")
+	}
+	st.tinctures = readTinctureEffect(db)
+	st.flaskSt = c.applyFlasks(db, res, st.flasks)
+	c.mergeKeystones(db, st.keystones, res)
+	return nil
+}
+
+// stepSkillModLayer: CalcPerform.lua skillModList = new("ModList",
+// baseSkillModList), so mods added while calculating sit in their own
+// layer (MORE rounds per layer).
+func stepSkillModLayer(_ *Calculator, st *calcState) error {
+	for _, s := range st.skills {
+		if s.mods != nil {
+			s.mods = s.mods.child()
+		}
+	}
+	return nil
+}
+
+// stepEarlyEnemyMods: banners, warcry power and the first pass of
+// CalcPerform.lua "Process enemy modifiers" (player and minion enemies).
+func stepEarlyEnemyMods(c *Calculator, st *calcState) error {
+	db := st.db
+	banners(db)
+	warcryPower(db)
+	st.playerEnemyMods = enemyModifiers{}
+	st.playerEnemyMods.apply(db)
+	c.earlyMinionEnemyMods(db, st.skills, st.b.Level)
+	return nil
+}
+
+// stepArmourESToLife: CalcPerform.lua ConvertArmourESToLife — "gain maximum
+// life instead of maximum energy shield from equipped armour items".
+func stepArmourESToLife(_ *Calculator, st *calcState) error {
+	db := st.db
+	if db.Flag("ConvertArmourESToLife") {
+		for _, slot := range esToLifeSlots {
+			if it := db.items[slot]; it != nil {
+				if es := itemArmour(it, st.gearMods[slot]).EnergyShield; es > 0 {
+					db.NewMod("Life", "BASE", es, slot+" ES to Life Conversion")
+				}
+			}
+		}
+	}
+	return nil
+}
+
+// stepAttributesLifeMana: CalcPerform.lua "Calculate attributes and
+// life/mana pools" (doActorAttribsConditions, doActorLifeMana).
+func stepAttributesLifeMana(c *Calculator, st *calcState) error {
+	db := st.db
+	damageToAuraEffect(db)
+	combatConditions(db, mainSkill(st.skills))
+	c.attributes(db)
+	shrineBuffs(db)
+	c.lifeMana(db)
+	return nil
+}
+
+// stepReservations: CalcPerform.lua "Calculate skill life and mana
+// reservations" (doActorLifeManaReservation).
+func stepReservations(_ *Calculator, st *calcState) error {
+	reservations(st.db, st.skills, st.res)
+	return nil
+}
+
+// stepTinctures: CalcPerform.lua's tincture modifiers.
+func stepTinctures(c *Calculator, st *calcState) error {
+	c.applyTinctures(st.db, st.res, st.flasks, st.tinctures)
+	return nil
+}
+
+// stepSkillCounts: CalcPerform.lua's per-skill counts — brands, totems,
+// minions, exerts, "Calculate number of active heralds and auras affecting
+// self" — and Mana applies to Shock.
+func stepSkillCounts(c *Calculator, st *calcState) error {
+	db, skills := st.db, st.skills
+	brandCounts(db, skills)
+	totemCounts(db, skills)
+	c.minionCounts(db, skills)
+	warcryExertMods(db, skills)
+	heraldAuraCounts(db, skills)
+	manaAppliesToShock(db)
+	return nil
+}
+
+// stepChillSkills: CalcPerform.lua's chilling-skill scan (HasBonechill,
+// hasGuaranteedBonechill); the chills themselves come later.
+func stepChillSkills(_ *Calculator, st *calcState) error {
+	st.chilling, st.guaranteedBonechill = chillSkills(st.db, st.skills)
+	return nil
+}
+
+// stepEarlyCharges: CalcPerform.lua "Calculate charges early to enable
+// usage of stats that depend on charge count" (doActorCharges).
+func stepEarlyCharges(_ *Calculator, st *calcState) error {
+	charges(st.db)
+	return nil
+}
+
+// stepBuffs: CalcPerform.lua "Combine buffs/debuffs" (Buff, Aura, ...).
+func stepBuffs(c *Calculator, st *calcState) error {
+	st.curses, st.buffs = c.applyBuffs(st.db, st.skills, st.res)
+	return nil
+}
+
+// stepCurses: CalcPerform.lua "Check for extra curses", then the curse
+// slots.
+func stepCurses(c *Calculator, st *calcState) error {
+	curses := c.extraCurses(st.db, st.curses, st.res)
+	c.applyCurses(st.db, st.skills, curses, st.res)
+	return nil
+}
+
+// stepExtraAuras: impale stacks (before ExtraAura, as in calcs.perform),
+// CalcPerform.lua ExtraAura, and keystones merged again.
+func stepExtraAuras(c *Calculator, st *calcState) error {
+	db := st.db
+	impaleStacks(db)
+	extraAuras(db)
+	c.mergeKeystones(db, st.keystones, st.res)
+	return nil
+}
+
+// stepDisableWeapons: CalcPerform.lua Dancing Dervish (DisableWeapons);
+// playerWeapons makes the main hand unarmed, and the player is
+// Unencumbered without gloves. PoB differs: it checks env.player.Gloves,
+// which is never set, so it is always Unencumbered. The Dervish's own
+// global mods (Rampage) still apply to the player, as in game.
+func stepDisableWeapons(_ *Calculator, st *calcState) error {
+	db := st.db
+	if db.Flag("DisableWeapons") {
+		db.conditions["Unarmed"] = true
+		if db.items["Gloves"] == nil {
+			db.conditions["Unencumbered"] = true
+		}
+	}
+	return nil
+}
+
+// stepDefenceForConditionals: CalcPerform.lua calcs.defenceForConditionals.
+func stepDefenceForConditionals(_ *Calculator, st *calcState) error {
+	defenceForConditionals(st.db, st.gearMods)
+	return nil
+}
+
+// stepCharges: doActorCharges, flask recovery and CalcPerform.lua "Process
+// stats from alternate charges" (3158) before the guaranteed chills
+// (3414): Affliction Charges' more chill effect scales them.
+func stepCharges(_ *Calculator, st *calcState) error {
+	db := st.db
+	charges(db)
+	flaskRecovery(db, st.flaskSt)
+	alternateCharges(db)
+	guaranteedChills(db, st.chilling)
+	return nil
+}
+
+// stepActorMisc: CalcPerform.lua doActorMisc for the player and the enemy,
+// rage, the second "Process enemy modifiers" pass, enemy ailments,
+// exposures and consecrated ground.
+func stepActorMisc(_ *Calculator, st *calcState) error {
+	db, skills := st.db, st.skills
+	actorMisc(db, mainSkill(skills), st.flaskSt.silver, st.flaskSt.silverInc)
+	rage(db, mainCfg(skills))
+	st.playerEnemyMods.apply(db)
+	enemyAilments(db, skills, st.guaranteedBonechill)
+	actorMisc(db.enemy, nil, false, -100)
+	exposures(db)
+	consecratedGround(db)
+	return nil
+}
+
+// stepSkillInfo fills Result.Skills (no PoB counterpart; the skills tab).
+func stepSkillInfo(_ *Calculator, st *calcState) error {
+	st.res.Skills = skillInfo(st.skills, st.b.ActiveSkills())
+	return nil
+}
+
+// stepAllyLife: life-based mods from allies (CalcPerform.lua's minion and
+// party life buffs).
+func stepAllyLife(c *Calculator, st *calcState) error {
+	c.allyLifeMods(st.db, st.skills, st.buffs, st.b.Level, st.res)
+	return nil
+}
+
+// stepDefence: CalcPerform.lua calcs.defence and
+// calcs.buildDefenceEstimations for the player.
+func stepDefence(c *Calculator, st *calcState) error {
+	db := st.db
+	c.resistances(db)
+	c.defence(db, st.gearMods, st.keystones)
+	avoidanceAndRecovery(db)
+	recoup(db)
+	buildDefenceEstimations(db)
+	return nil
+}
+
+// stepMinion: the main skill's minion (CalcPerform.lua env.minion).
+func stepMinion(c *Calculator, st *calcState) error {
+	st.res.Minion = c.mainMinion(st.db, st.skills, st.buffs, st.b.Level, st.res)
+	return nil
+}
+
+// stepOffence: CalcPerform.lua calcs.triggers, calcs.mirages and
+// calcs.offence for the player's main skill.
+func stepOffence(c *Calculator, st *calcState) error {
+	db, res := st.db, st.res
+	res.main = mainSkill(st.skills)
+	if s := res.main; s != nil {
+		w1, w2 := playerWeapons(db, st.gearMods, st.spec.ClassID)
+		c.triggers(db, s, w1, w2)
+		if truthy(s.data["triggeredByGeneralsCry"]) && !s.disabled {
+			c.generalsCry(db, s, w1, w2)
+		}
+		c.mirages(db, s, w1, w2, res)
+		for k, v := range c.offence(db, s, w1, w2) {
+			db.output[k] = v //nolint:modernize // kept as moved from Calc
+		}
+		if debugPlayerSkill != nil {
+			debugPlayerSkill(s)
+		}
+	}
+	return nil
+}
+
+// stepUnsupportedTags copies the tag types left out to the Result.
+func stepUnsupportedTags(_ *Calculator, st *calcState) error {
+	res := st.res
+	for k, v := range st.db.UnsupportedTags {
+		if res.UnsupportedTags == nil {
+			res.UnsupportedTags = map[string]int{}
+		}
+		res.UnsupportedTags[k] = v
+	}
+	return nil
+}
