@@ -1,9 +1,13 @@
 STATSDUMP_DIR := $(HOME)/.cache/poe-lib/statsdump-base
 
-.PHONY: test lint bench dump-base dump-check luaport
+.PHONY: test test-short lint bench dump-base dump-check luaport
 
 test:
 	go vet ./... && go test ./...
+
+# Fast loop: skips the corpus-heavy engine tests (make test runs them).
+test-short:
+	go vet ./... && go test -short ./...
 
 # Compare skill hooks with PoB's own Lua functions (needs PoB src, POB_SRC).
 luaport:
@@ -15,7 +19,8 @@ lint:
 
 # Compare current benchmarks against the committed baseline.
 bench:
-	go test ./engine -run '^$$' -bench . -count=10 > /tmp/bench.txt && go -C tools tool benchstat ../testdata/bench/baseline.txt /tmp/bench.txt
+	@f=$$(mktemp) && trap 'rm -f "$$f"' EXIT && \
+	go test ./engine -run '^$$' -bench . -count=10 > "$$f" && go -C tools tool benchstat ../testdata/bench/baseline.txt "$$f"
 
 # Write the stats snapshot that dump-check compares against.
 dump-base:

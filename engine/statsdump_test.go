@@ -116,6 +116,9 @@ func corpusIDs(t *testing.T) []string {
 // TestStatsDumpDeterministic dumps every build twice in one process; any
 // difference means an output depends on map iteration order or similar.
 func TestStatsDumpDeterministic(t *testing.T) {
+	if testing.Short() {
+		t.Skip("corpus-heavy; run without -short")
+	}
 	c := newCalc(t)
 	for _, id := range corpusIDs(t) {
 		a, b := dumpBuild(t, c, id), dumpBuild(t, c, id)

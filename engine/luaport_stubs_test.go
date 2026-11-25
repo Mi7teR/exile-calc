@@ -29,8 +29,8 @@ import (
 // Data.lua's lines), and the activeSkill itself (luaPortRunHook). EvalMod is
 // absent: case mods carry no tags, so ModList never calls it.
 
-// pobSrcDir is the PoB src directory (env POB_SRC); it skips the test when
-// the directory is missing.
+// pobSrcDir is the PoB src directory (env POB_SRC). The luaport build tag is
+// an explicit opt-in, so a missing source fails the test instead of skipping.
 func pobSrcDir(t *testing.T) string {
 	t.Helper()
 	dir := os.Getenv("POB_SRC")
@@ -39,7 +39,8 @@ func pobSrcDir(t *testing.T) string {
 		dir = filepath.Join(home, "GoProjects", "poe-pob-oracle", ".pob", "v2.68.1", "src")
 	}
 	if _, err := os.Stat(filepath.Join(dir, "Data", "Global.lua")); err != nil {
-		t.Skipf("PoB source not found at %s (set POB_SRC): %v", dir, err)
+		t.Fatalf("PoB source not found: %s/Data/Global.lua is missing (set POB_SRC to PoB's src directory): %v",
+			dir, err)
 	}
 	return dir
 }

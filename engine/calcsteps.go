@@ -101,8 +101,9 @@ var calcSteps = []calcStep{
 	{"unsupportedTags", stepUnsupportedTags},
 }
 
-// Calc computes a build: it runs calcSteps in order over a fresh calcState.
+// Calc computes a build (PoB's calcs.initEnv and calcs.perform).
 func (c *Calculator) Calc(b *pobcode.Build) (*Result, error) {
+	// The steps of calcSteps run in order over a fresh calcState.
 	st := &calcState{b: b}
 	for _, step := range calcSteps {
 		if err := step.run(c, st); err != nil {

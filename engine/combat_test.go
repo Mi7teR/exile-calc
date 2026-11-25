@@ -44,9 +44,13 @@ func near(got, want, rel float64) bool {
 }
 
 // corpusCombat runs Calc and Combat on every golden corpus build with a
-// main skill and calls f; a Calc or Combat error fails the test.
+// main skill and calls f; a Calc or Combat error fails the test. It skips
+// under -short (about 35 s per test).
 func corpusCombat(t *testing.T, f func(id string, res *Result, cr *CombatResult)) {
 	t.Helper()
+	if testing.Short() {
+		t.Skip("corpus-heavy; run without -short")
+	}
 	c := newCalc(t)
 	paths, _ := filepath.Glob("../testdata/golden/builds/*.code")
 	for _, p := range paths {

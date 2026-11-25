@@ -25,6 +25,7 @@ func limitChecks(t *testing.T, n string) {
 	if set {
 		return
 	}
+	// Mutating the global flag is safe only because engine tests do not use t.Parallel.
 	old := f.Value.String()
 	if err := f.Value.Set(n); err != nil {
 		t.Fatal(err)

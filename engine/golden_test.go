@@ -144,6 +144,9 @@ func within(got, want float64) bool {
 }
 
 func TestGoldenCorpus(t *testing.T) {
+	if testing.Short() {
+		t.Skip("corpus-heavy; run without -short")
+	}
 	codes, err := filepath.Glob("../testdata/golden/builds/*.code")
 	if err != nil || len(codes) == 0 {
 		t.Fatalf("no golden builds: %v", err)

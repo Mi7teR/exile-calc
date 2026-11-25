@@ -69,6 +69,7 @@ func TestSkillHookRegistryCoversSwitch(t *testing.T) {
 // against a second hook of the same kind for one name, and that hooks of
 // different kinds merge.
 func TestSkillHookRegistryDuplicatePanics(t *testing.T) {
+	// Swapping the global registry is safe only because engine tests do not use t.Parallel.
 	saved := skillHookRegistry
 	t.Cleanup(func() { skillHookRegistry = saved })
 	skillHookRegistry = map[string]*skillHooks{}
