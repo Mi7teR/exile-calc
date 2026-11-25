@@ -2101,14 +2101,15 @@ func initialFunc(actor *ModDB, s *activeSkill, w1 hitSource, w2 *hitSource) {
 	var source string
 	switch s.active.ge.Name {
 	case "Blood Sacrament":
-		// other.lua BloodSacramentUnique initialFunc. PoB reads skillData
-		// LifeReservedPercent / LifeReservedBase, which nothing sets, so the
-		// defaults (3 and math.huge) apply; with the skill's own reservation
-		// life is fully reserved and the function returns first.
+		// other.lua BloodSacramentUnique initialFunc: the skill's own life
+		// reservation (skillData LifeReservedPercent / LifeReservedBase, set
+		// by the reservation pass). PoB differs: with no reservation stored it
+		// falls back to math.huge life per stage, i.e. infinite damage; here
+		// an unknown reservation adds nothing.
 		if actor.output["LifeReservedPercent"] >= 100 {
 			return
 		}
-		pct, base := numOr(s.data["LifeReservedPercent"], 3), numOr(s.data["LifeReservedBase"], math.Inf(1))
+		pct, base := numOr(s.data["LifeReservedPercent"], 3), numOr(s.data["LifeReservedBase"], 0)
 		s.mods.NewMod("Multiplier:ChannelledLifeReservedPercentPerStage", "BASE", pct, "Blood Sacrament")
 		s.mods.NewMod("Multiplier:ChannelledLifeReservedPerStage", "BASE", base, "Blood Sacrament")
 		return

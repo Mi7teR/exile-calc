@@ -1002,8 +1002,9 @@ func skillStats(e *skillEffect, actorLevel float64) map[string]float64 {
 	if actorLevel == 0 {
 		// CalcTools.lua: skillInstance.actorLevel or level.levelRequirement
 		// or 1. Lua's 0 is true, so a levelRequirement of 0 (item-granted
-		// skills such as Blood Sacrament) is used as is; only the levels
-		// that lack the field (stat-less minion levels) fall back to 1.
+		// skills such as Blood Sacrament) is used as is. A level without the
+		// field also reads 0 here (PoB: 1); the only such levels (minion
+		// levels with cost only) have no stats to interpolate.
 		actorLevel = float64(level.LevelRequirement)
 	}
 	for i, stat := range ge.Stats {

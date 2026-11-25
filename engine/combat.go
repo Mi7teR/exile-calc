@@ -2,10 +2,10 @@ package engine
 
 import (
 	"fmt"
-	"github.com/Mi7teR/poe-lib/gamedata"
 	"math"
 	"strings"
 
+	"github.com/Mi7teR/poe-lib/gamedata"
 	"github.com/Mi7teR/poe-lib/pobcode"
 )
 
@@ -160,13 +160,13 @@ func (c *Calculator) Combat(b *pobcode.Build, opts CombatOptions) (*CombatResult
 	if spreadByContagion[s.active.ge.Name] {
 		bossSpread = c.contagionOf(b)
 	}
-	r.Boss, bossNotes = combatDPSSpread(bossRes, boss, true, opts.Seed, bossSpread)
+	r.Boss, bossNotes = combatDPS(bossRes, boss, true, opts.Seed, bossSpread)
 	pm := packModel(pack)
 	spread := contagionSpread{}
 	if spreadByContagion[s.active.ge.Name] {
 		spread = c.contagionOf(nonBossBuild(b))
 	}
-	r.Pack, packNotes = combatDPSSpread(packRes, pm, false, opts.Seed, spread)
+	r.Pack, packNotes = combatDPS(packRes, pm, false, opts.Seed, spread)
 	r.PackPerMob = perMob(r.Pack, float64(pack.Count))
 
 	bossName := map[BossSize]string{BossSmall: "маленький", BossMedium: "средний", BossLarge: "большой"}[size]
@@ -254,13 +254,7 @@ func nonBossBuild(b *pobcode.Build) *pobcode.Build {
 // An area kind with no radius (AreaOfEffectRadius 0, the engine does not
 // know it) is counted as a single hit rather than an area that touches
 // nothing.
-func combatDPS(res *Result, m targetModel, isBoss bool, seed uint64) (CombatDPS, []string) {
-	return combatDPSSpread(res, m, isBoss, seed, contagionSpread{})
-}
-
-// combatDPSSpread is combatDPS where the main skill's own DoT (TotalDot)
-// also reaches every mob Contagion spreads it to (spread.radius > 0).
-func combatDPSSpread(res *Result, m targetModel, isBoss bool, seed uint64, spread contagionSpread) (CombatDPS, []string) {
+func combatDPS(res *Result, m targetModel, isBoss bool, seed uint64, spread contagionSpread) (CombatDPS, []string) {
 	s, out := res.main, res.Stats
 	sh := shapeOf(s, out)
 	src := sourcesOf(s, out)
@@ -268,12 +262,12 @@ func combatDPSSpread(res *Result, m targetModel, isBoss bool, seed uint64, sprea
 	if sh.kind == meleeStrike {
 		radius = out["WeaponRange"]
 	}
-	// A projectile hits an area only when the gem has an area radius stat
+	// A projectile hits an area only when the gem deals area damage
 	// (Fireball's explosion, Ball Lightning's bolts). s.flags["area"] and the
 	// Area skill type are no guide: the engine sets the flag for any skill
 	// with a radius, and Essence Drain has both, yet its projectile only
 	// applies the debuff to what it hits (PoB's skill("radius", 8)).
-	if sh.kind == projectile && !hasAreaRadiusStat(s.active.ge) {
+	if sh.kind == projectile && !gemHasArea(s.active.ge) {
 		radius = 0
 	}
 	noRadius := areaKind(sh.kind) && radius <= 0 && (sh.subHits <= 0 || sh.subRadius <= 0)
@@ -371,6 +365,14 @@ func combatDPSSpread(res *Result, m targetModel, isBoss bool, seed uint64, sprea
 			}
 			vals[i] = v
 		}
+		// Contagion's own debuff: kept up on the target and, cast at it, on
+		// every mob its area reaches (the same mobs it spreads to). It is a
+		// DoT on that enemy, so it counts toward the per-enemy cap.
+		contagion := 0.0
+		if spread.dot > 0 && spreadTo[t] {
+			contagion = math.Min(spread.dot, dotDpsCap)
+			dots += contagion
+		}
 		// PoB caps the DoT sum (TotalDotDPS) per enemy too.
 		capScale := 1.0
 		if dots > dotDpsCap {
@@ -385,18 +387,8 @@ func combatDPSSpread(res *Result, m targetModel, isBoss bool, seed uint64, sprea
 				d.Components[cmp.name] += v
 			}
 		}
-	}
-	// Contagion's own debuff: kept up on the target and, cast at it, on
-	// every mob its area reaches (the same mobs it spreads to).
-	if spread.dot > 0 {
-		n := 0.0
-		for _, in := range spreadTo {
-			if in {
-				n++
-			}
-		}
-		if n > 0 {
-			d.Components["Contagion"] = math.Min(spread.dot, dotDpsCap) * n
+		if contagion > 0 {
+			d.Components["Contagion"] += contagion * capScale
 		}
 	}
 	for _, v := range d.Components {
@@ -412,7 +404,13 @@ func combatDPSSpread(res *Result, m targetModel, isBoss bool, seed uint64, sprea
 		}
 		// The skill's own DoT over its duration: one debuff per target from
 		// the whole pack unless it stacks (then one per hit, per source).
-		if dot, dur := math.Min(out["TotalDot"], dotDpsCap), out["Duration"]; dot > 0 && dur > 0 {
+		// Only a debuff on the primary duration is timed by out["Duration"];
+		// secondary/tertiary-duration debuffs (no output here) are left out.
+		dur := out["Duration"]
+		if !truthy(s.data["debuff"]) || truthy(s.data["debuffSecondary"]) || truthy(s.data["debuffTertiary"]) {
+			dur = 0
+		}
+		if dot := math.Min(out["TotalDot"], dotDpsCap); dot > 0 && dur > 0 {
 			n := dotTargets
 			if dotStacks {
 				n *= src.burstHits
@@ -466,17 +464,21 @@ func combatDPSSpread(res *Result, m targetModel, isBoss bool, seed uint64, sprea
 	return d, notes
 }
 
-// hasAreaRadiusStat reports whether the gem's own stats give it an area
-// (active_skill_base_area_of_effect_radius), as opposed to a radius PoB
-// hard-codes for display.
-func hasAreaRadiusStat(ge *gamedata.Skill) bool {
-	const stat = "active_skill_base_area_of_effect_radius"
-	if contains(ge.Stats, stat) {
+// gemHasArea reports whether the gem itself deals area damage: baseFlags
+// area, the is_area_damage stat or an area radius stat, as opposed to a
+// radius PoB hard-codes (Essence Drain's skill("radius", 8) has none).
+func gemHasArea(ge *gamedata.Skill) bool {
+	if contains(ge.BaseFlags, "area") {
 		return true
 	}
-	for _, cs := range ge.ConstantStats {
-		if cs.Stat == stat {
+	for _, stat := range []string{"is_area_damage", "active_skill_base_area_of_effect_radius"} {
+		if contains(ge.Stats, stat) {
 			return true
+		}
+		for _, cs := range ge.ConstantStats {
+			if cs.Stat == stat {
+				return true
+			}
 		}
 	}
 	return false
@@ -507,11 +509,22 @@ func (c *Calculator) contagionOf(b *pobcode.Build) contagionSpread {
 	if set == nil {
 		return contagionSpread{}
 	}
+	// The main skill's own group counts too (Spellslinger links Contagion
+	// with Essence Drain). Only a group holding a Contagion gem is
+	// calculated, with Contagion's index among the group's active gems.
 	for gi, g := range set.Groups {
-		if !g.Enabled || gi+1 == b.MainSocketGroup {
+		if !g.Enabled {
 			continue
 		}
-		for k := 1; k <= len(g.Gems); k++ {
+		k := 0
+		for _, gem := range g.Gems {
+			if !gem.Enabled || strings.HasPrefix(gem.SkillID, "Support") {
+				continue
+			}
+			k++
+			if !strings.Contains(gem.SkillID, "Contagion") && !strings.HasPrefix(gem.NameSpec, "Contagion") {
+				continue
+			}
 			res, err := c.Calc(withMainSkill(b, gi+1, k))
 			if err != nil || res.main == nil || !strings.HasPrefix(res.main.active.ge.Name, "Contagion") {
 				continue

@@ -488,6 +488,12 @@ func (c *Calculator) cwcTrigger(db *ModDB, main *activeSkill) {
 // stage multipliers and Snipe's hit rate (hitTimeMultiplier stages - 0.5)
 // as the trigger rate, or is self-cast when Snipe lacks the stages.
 func (c *Calculator) snipeTrigger(db *ModDB, main *activeSkill, by *skillEffect, w1 hitSource, w2 *hitSource) {
+	// PoB compares socketGroup.slot of skills with a group; a main skill
+	// without one (granted) has no Snipe to pair with.
+	if main.group == nil {
+		delete(main.data, "triggered")
+		return
+	}
 	stages := math.Min(db.Sum("BASE", "Multiplier:SnipeStage"), db.Sum("BASE", "Multiplier:SnipeStagesMax"))
 	hitMulti := main.mods.SumCfg(main.cfg, "BASE", "snipeHitMulti")
 	ailmentMulti := main.mods.SumCfg(main.cfg, "BASE", "snipeAilmentMulti")
