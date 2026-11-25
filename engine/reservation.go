@@ -101,6 +101,11 @@ func reservations(db *ModDB, skills []*activeSkill, res *Result) {
 				flat *= s.mineCount
 				pct *= s.mineCount
 			}
+			// Blood Sacrament increases reservation per stage channelled.
+			if s.active.ge.Name == "Blood Sacrament" && s.hasStageCount {
+				flat *= s.activeStageCount + 1
+				pct *= s.activeStageCount + 1
+			}
 			// CalcPerform.lua: the skill's own reservation, for GetStat
 			// ManaReservedPercent and LifeReservedPercent.
 			if flat != 0 {

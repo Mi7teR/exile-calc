@@ -213,7 +213,7 @@ func (c *Calculator) offence(actor *ModDB, s *activeSkill, w1 hitSource, w2 *hit
 		out["CombinedDPS"] = 0
 		return out
 	}
-	initialFunc(s, w1, w2)
+	initialFunc(actor, s, w1, w2)
 	for _, e := range list.List(cfg, "SkillData") {
 		skillData(data, e.Value)
 	}
@@ -2096,10 +2096,22 @@ func weaponRange(s *activeSkill, w1 hitSource, w2 *hitSource, out map[string]flo
 // initialFunc ports the skills' initialFunc (Data/Skills/*.lua), run first
 // in calcs.offence. Cyclone: AdditionalMeleeRange is the weapon's range
 // bonus plus MeleeWeaponRange (averaged when dual wielding), or the
-// unarmed range bonus. Not ported: Blood Sacrament.
-func initialFunc(s *activeSkill, w1 hitSource, w2 *hitSource) {
+// unarmed range bonus. Blood Sacrament: life reserved per stage.
+func initialFunc(actor *ModDB, s *activeSkill, w1 hitSource, w2 *hitSource) {
 	var source string
 	switch s.active.ge.Name {
+	case "Blood Sacrament":
+		// other.lua BloodSacramentUnique initialFunc. PoB reads skillData
+		// LifeReservedPercent / LifeReservedBase, which nothing sets, so the
+		// defaults (3 and math.huge) apply; with the skill's own reservation
+		// life is fully reserved and the function returns first.
+		if actor.output["LifeReservedPercent"] >= 100 {
+			return
+		}
+		pct, base := numOr(s.data["LifeReservedPercent"], 3), numOr(s.data["LifeReservedBase"], math.Inf(1))
+		s.mods.NewMod("Multiplier:ChannelledLifeReservedPercentPerStage", "BASE", pct, "Blood Sacrament")
+		s.mods.NewMod("Multiplier:ChannelledLifeReservedPerStage", "BASE", base, "Blood Sacrament")
+		return
 	case "Cyclone", "Vaal Cyclone":
 		source = "Skill:Cyclone"
 	case "Cyclone of Tumult":

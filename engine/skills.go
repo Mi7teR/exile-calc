@@ -297,6 +297,10 @@ type activeSkill struct {
 	mirage *mirageResult
 	// mineCount is activeSkill.activeMineCount (0 when unset).
 	mineCount float64
+	// activeStageCount is activeSkill.activeStageCount of a multi-stage
+	// skill (the stages after the first), set when hasStageCount.
+	activeStageCount float64
+	hasStageCount    bool
 }
 
 // modFlagByName is the weapon part of Data/Global.lua ModFlag.
@@ -988,10 +992,11 @@ func skillStats(e *skillEffect, actorLevel float64) map[string]float64 {
 		level = &gamedata.SkillLevel{}
 	}
 	if actorLevel == 0 {
+		// CalcTools.lua: skillInstance.actorLevel or level.levelRequirement
+		// or 1. Lua's 0 is true, so a levelRequirement of 0 (item-granted
+		// skills such as Blood Sacrament) is used as is; only the levels
+		// that lack the field (stat-less minion levels) fall back to 1.
 		actorLevel = float64(level.LevelRequirement)
-		if actorLevel == 0 {
-			actorLevel = 1
-		}
 	}
 	for i, stat := range ge.Stats {
 		v := 1.0
@@ -1468,9 +1473,11 @@ func (c *Calculator) buildSkillMods(db *ModDB, s *activeSkill, res *Result) {
 			count = float64(s.gem.SkillStageCount)
 		}
 		count = math.Max(count, 1+list.SumCfg(s.cfg, "BASE", "Multiplier:"+stageName+"MinimumStage"))
+		s.activeStageCount, s.hasStageCount = count, true
 		if count > 0 {
 			list.NewMod("Multiplier:"+stageName+"Stage", "BASE", math.Min(limit, count), "Base")
 			list.NewMod("Multiplier:"+stageName+"StageAfterFirst", "BASE", math.Min(limit-1, count-1), "Base")
+			s.activeStageCount = count - 1
 		}
 	}
 	// env.modDB: the player's SkillData, also for a minion's skills.
