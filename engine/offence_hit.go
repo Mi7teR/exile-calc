@@ -162,7 +162,7 @@ func (c *Calculator) hitDamage(actor *ModDB, s *activeSkill, p *hitPass) {
 				allMult *= out["CritMultiplier"]
 			}
 			mn, mx = mn*allMult, mx*allMult
-			lucky := 0.0
+			lucky := 0.0 //nolint:wastedassign // legacy, kept by pure refactor; see refactor plan part 2
 			ele := t == "Lightning" || t == "Cold" || t == "Fire"
 			if list.FlagCfg(cfg, "LuckyHits") ||
 				(pass == 2 && t == "Lightning" && list.FlagCfg(cfg, "LightningNoCritLucky")) ||
@@ -231,7 +231,7 @@ func (c *Calculator) enemyEffMult(actor, list *ModDB, cfg *Cfg, s *activeSkill, 
 	enemy := actor.enemy
 	takenInc := enemy.SumCfg(cfg, "INC", "DamageTaken", t+"DamageTaken")
 	takenMore := enemy.MoreCfg(cfg, "DamageTaken", t+"DamageTaken")
-	useResChance := 1.0
+	useResChance := 1.0 //nolint:ineffassign,wastedassign // legacy, kept by pure refactor; see refactor plan part 2
 	resNames := []string{"Ignore" + t + "Resistance"}
 	chanceNames := []string{"ChanceToIgnore" + t + "Resistance"}
 	if isElemental[t] {

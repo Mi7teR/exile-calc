@@ -378,7 +378,7 @@ func (c *Calculator) setupSkills(db *ModDB, b *pobcode.Build, useSwap bool, res 
 				if ge == nil || ge.Support || ge.Unsupported {
 					continue
 				}
-				if ge.HasGlobalEffect && !(n == 0 && gm.EnableGlobal1 || n == 1 && gm.EnableGlobal2) {
+				if ge.HasGlobalEffect && !(n == 0 && gm.EnableGlobal1 || n == 1 && gm.EnableGlobal2) { //nolint:staticcheck // legacy, kept by pure refactor; see refactor plan part 2
 					continue
 				}
 				eff := newEffect(gc, gi, gm, gem, eid, ge)

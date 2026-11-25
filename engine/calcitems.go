@@ -275,7 +275,7 @@ func magnitudeMods(lines []magnitudeLine) []magnitudeMod {
 			if m == nil {
 				continue
 			}
-			amount, dir, tagsText, mult := m[1], "", "", 0.0
+			amount, dir, tagsText, mult := m[1], "", "", 0.0 //nolint:wastedassign // legacy, kept by pure refactor; see refactor plan part 2
 			if pi == 2 {
 				tagsText, amount, dir, mult = m[1], "100", "increased", 2
 			} else {

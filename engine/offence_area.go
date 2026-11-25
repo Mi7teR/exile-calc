@@ -281,7 +281,7 @@ func explodeSource(s *activeSkill, entries []ListEntry) string {
 			items = append(items, e.Mod.Source)
 		}
 	}
-	sources := append(tree, items...)
+	sources := append(tree, items...) //nolint:gocritic // legacy, kept by pure refactor; see refactor plan part 2
 	n := 0
 	if s.group != nil {
 		for i := range s.group.Gems {

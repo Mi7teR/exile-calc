@@ -476,12 +476,17 @@ linters:
       - path: 'engine/calcsteps\.go'
         linters: [ mnd, goconst, gochecknoglobals ]
       # why: these files hold legacy port code moved verbatim out of calc.go, offence.go and skills.go (Task 6
-      # split, no body edits); new-from-rev sees moved lines as new, and the findings are the same ones the
-      # legacy code already had in its old files (style, complexity, PoB literals, plus shadow/ineffassign
-      # findings listed in the Task 6 report for a later look).
+      # split, no body edits); new-from-rev sees moved lines as new. Only style and complexity linters are
+      # excluded here (PoB literals, long ported functions); correctness linters still run, and their findings
+      # on legacy lines carry line-level nolint directives.
       - path: 'engine/(calc(items|tree)|offence_(area|crit|hit|speed|warcry)|skill(setup|mods|buffs))\.go'
-        linters: [ exhaustive, funlen, gochecknoglobals, gocognit, gocyclo, cyclop, goconst, gocritic, govet, ineffassign,
-                   intrange, mnd, modernize, nestif, nolintlint, revive, staticcheck, wastedassign ]
+        linters: [ mnd, funlen, gocognit, gocyclo, cyclop, nestif, goconst, gochecknoglobals, exhaustive, intrange,
+                   modernize, revive ]
+      # why: skillmods.go keeps a nolint:goconst directive moved verbatim from skills.go; goconst is excluded for
+      # the moved files above, so the directive is unused there.
+      - path: 'engine/skillmods\.go'
+        text: 'directive `//nolint:goconst // PoB base item type name` is unused'
+        linters: [ nolintlint ]
       - text: 'should have a package comment'
         linters: [ revive ]
       - text: 'exported \S+ \S+ should have comment( \(or a comment on this block\))? or be unexported'

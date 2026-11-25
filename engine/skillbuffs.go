@@ -209,7 +209,7 @@ func (c *Calculator) applyBuffs(db *ModDB, skills []*activeSkill, res *Result) (
 				name := strings.ReplaceAll(b.name, " ", "")
 				db.enemy.conditions["AffectedBy"+name] = true
 				db.conditions["AffectedBy"+name] = true
-				mult := 1.0
+				mult := 1.0 //nolint:ineffassign,wastedassign // legacy, kept by pure refactor; see refactor plan part 2
 				var extra []Mod
 				if b.typ == "AuraDebuff" {
 					extra = extraAuraDebuffMods(db, cfg)
@@ -270,7 +270,7 @@ func (c *Calculator) applyBuffs(db *ModDB, skills []*activeSkill, res *Result) (
 	var slots []string
 	nonVaal := false
 	for _, name := range guardOrder {
-		if name == "Vaal Molten Shell" {
+		if name == "Vaal Molten Shell" { //nolint:gocritic // legacy, kept by pure refactor; see refactor plan part 2
 			slots, nonVaal = []string{name}, false
 			break
 		} else if strings.HasPrefix(name, "Vaal") {
@@ -402,9 +402,9 @@ func warcryBonus(db *ModDB, s *activeSkill, b *skillBuff) ([]float64, float64) {
 		if len(m.Tags) == 0 || tagStr(m.Tags[0], "effectType") != "Warcry" {
 			continue
 		}
-		if div, ok := tagNum(m.Tags[0], "div"); ok && div != 0 {
+		if div, ok := tagNum(m.Tags[0], "div"); ok && div != 0 { //nolint:govet // legacy, kept by pure refactor; see refactor plan part 2
 			p := power
-			if limit, ok := tagNum(m.Tags[0], "limit"); ok {
+			if limit, ok := tagNum(m.Tags[0], "limit"); ok { //nolint:govet // legacy, kept by pure refactor; see refactor plan part 2
 				p = math.Min(p, limit)
 			}
 			bonus[i] = math.Floor(p / div)
