@@ -21,7 +21,7 @@ const (
 
 // PackParams describes a pack of mobs. Zero fields take the defaults: 10
 // mobs of radius 4 spread uniformly over a cluster of radius 30 whose centre
-// is 60 in front of the player.
+// is 60 in front of the player. Count is capped at 50.
 type PackParams struct {
 	Count     int     // mobs in the pack
 	Radius    float64 // cluster radius the mob centres fall in
@@ -42,6 +42,8 @@ const (
 	aimScatter         = 5                  // aim point spread per trial for ranged shapes
 	chainRange         = 40                 // max gap between hitboxes a chain or fork reaches (approximation)
 	defaultFanDeg      = 60                 // fan width of several projectiles without a shotgun support's spread
+	fanStepDeg         = 10                 // max angle between neighbouring projectiles: few projectiles fly close together (approximation)
+	maxPackCount       = 50                 // PackParams.Count cap: the Monte Carlo is quadratic in mobs
 	coneHalfDeg        = 45                 // half-angle of a cone shape (approximation)
 	packPlacementTries = 100                // rejection tries before a mob may overlap another
 )
@@ -58,7 +60,13 @@ type targetModel struct {
 	inside bool
 }
 
+// validBossSize reports whether size is one of the presets.
+func validBossSize(size BossSize) bool {
+	return size == BossMedium || size == BossSmall || size == BossLarge
+}
+
 // bossModel is one boss at (40, 0); melee shapes walk up to it (see stance).
+// An unknown size is a medium boss.
 func bossModel(size BossSize) targetModel {
 	r := 20.0
 	switch size {
@@ -89,11 +97,12 @@ func packModel(p PackParams) targetModel {
 	return targetModel{targets: ts, distance: p.Distance, inside: true}
 }
 
-// withDefaults fills the zero fields with the default pack.
+// withDefaults fills the zero fields with the default pack and caps Count.
 func (p PackParams) withDefaults() PackParams {
 	if p.Count <= 0 {
 		p.Count = defaultPackCount
 	}
+	p.Count = min(p.Count, maxPackCount)
 	if p.Radius <= 0 {
 		p.Radius = defaultPackRadius
 	}
@@ -121,21 +130,25 @@ func overlapsAny(x, y, r float64, ts []target) bool {
 // strikeTargets is the number of targets a meleeStrike hits (at least 1).
 //
 // Per kind:
-//   - projectile: a fan of rays from the player towards the aim point.
-//     Without canShotgun a target takes at most one projectile hit per cast;
+//   - projectile: a fan of rays from the player towards the aim point,
+//     neighbours at most fanStepDeg apart within the fan width.
+//     Without canShotgun a target takes at most one hit per cast;
 //     pierce continues the ray, fork (two projectiles) and chain go to the
 //     nearest not-yet-hit target within chainRange. Sub-hits with a radius
 //     (Kinetic Blast) explode around the impact point and only the
 //     explosions count; sub-hits without one (Tornado Shot) are secondary
 //     projectiles from the impact point in random directions that cannot hit
-//     what the primary hit.
+//     what the primary hit. Without sub-hits, a radius > 0 is an explosion
+//     where the projectile stops on a target (after its pierces) and on each
+//     chain or fork target; it hits the targets around not yet hit.
 //   - selfArea, channel: an area of radius around the player.
 //   - slam: an area centred meleeGap in front of the player.
 //   - targetArea: an area at the aim point.
 //   - cone: a sector of radius and coneHalfDeg in front of the player.
 //   - beam: an unbounded line towards the aim point hitting everything on it.
 //   - meleeStrike: the strikeTargets nearest targets within reach.
-//   - singleHit: one hit on the target nearest the player.
+//   - singleHit: one hit on the target nearest the player, then chains
+//     (Vaal Arc) like a projectile's.
 //
 // Melee-range kinds (selfArea, channel, slam, cone, meleeStrike) put the
 // player meleeGap from the nearest target's hitbox (r+10 from the boss
@@ -156,6 +169,9 @@ func expectedHits(sh skillShape, projectiles, pierce, chain, fork, radius, strik
 		rng:    rand.New(rand.NewPCG(seed, pcgStream)),
 		pierce: int(pierce), chain: int(chain), fork: int(fork),
 		hits: make([]float64, len(m.targets)),
+	}
+	if sh.kind == projectile && sh.subHits == 0 {
+		s.blast = max(radius, 0)
 	}
 	n := max(int(math.Round(projectiles)), 1)
 	strikes := max(int(strikeTargets), 1)
@@ -180,6 +196,7 @@ type hitSim struct {
 	sh                  skillShape
 	ts                  []target
 	aim, radius         float64
+	blast               float64 // explosion radius where a projectile stops on a target, 0 = none
 	inside              bool
 	rng                 *rand.Rand
 	pierce, chain, fork int
@@ -216,7 +233,11 @@ func (s *hitSim) cast(projectiles, strikes int) {
 	case meleeStrike:
 		s.strike(strikes)
 	default: // singleHit
-		s.hits[s.nearest(0, 0)]++
+		i := s.nearest(0, 0)
+		s.hits[i]++
+		hit := make([]bool, len(s.ts))
+		hit[i] = true
+		s.afterHit(i, s.chain, 0, 1, hit)
 	}
 }
 
@@ -320,6 +341,9 @@ func (s *hitSim) projectiles(n int) {
 	if fan == 0 {
 		fan = defaultFanDeg
 	}
+	// Neighbours fly at most fanStepDeg apart: a fixed fan width would put
+	// two projectiles 60 degrees apart and miss what is in front.
+	fan = min(fan, fanStepDeg*float64(n-1))
 	shared := make([]bool, len(s.ts))
 	for k := range n {
 		ang := base
@@ -376,6 +400,7 @@ func (s *hitSim) travel(x, y, dx, dy, maxLen, w float64, hit []bool) (float64, f
 			continue
 		}
 		s.afterHit(i, s.chain, s.fork, w, hit)
+		s.explode(x, y, w, hit)
 		return x, y
 	}
 }
@@ -392,6 +417,7 @@ func (s *hitSim) afterHit(i, chain, fork int, w float64, hit []bool) {
 			hit[j] = true
 			s.hits[j] += w
 			s.afterHit(j, chain, fork-1, w, hit)
+			s.explode(s.ts[j].x, s.ts[j].y, w, hit)
 		}
 		return
 	}
@@ -400,6 +426,22 @@ func (s *hitSim) afterHit(i, chain, fork int, w float64, hit []bool) {
 			hit[j] = true
 			s.hits[j] += w
 			s.afterHit(j, chain-1, 0, w, hit)
+			s.explode(s.ts[j].x, s.ts[j].y, w, hit)
+		}
+	}
+}
+
+// explode lands the projectile's explosion (radius blast) at (x, y) on the
+// targets not in hit, marking them: one hit per target per cast without
+// shotgun, as for the projectiles themselves.
+func (s *hitSim) explode(x, y, w float64, hit []bool) {
+	if s.blast <= 0 {
+		return
+	}
+	for i, t := range s.ts {
+		if !hit[i] && circleHits(x, y, s.blast, t) {
+			hit[i] = true
+			s.hits[i] += w
 		}
 	}
 }

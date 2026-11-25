@@ -41,38 +41,46 @@ func near(got, want, rel float64) bool {
 	return math.Abs(got-want) <= rel*math.Abs(want)
 }
 
-// TestCombatSingleTargetInvariant: where the shape adds nothing (a melee
-// strike or a single hit, no sources), combat DPS on the boss is PoB's,
-// component by component.
-func TestCombatSingleTargetInvariant(t *testing.T) {
+// corpusCombat runs Calc and Combat on every golden corpus build with a
+// main skill and calls f; a Calc or Combat error fails the test.
+func corpusCombat(t *testing.T, f func(id string, res *Result, cr *CombatResult)) {
+	t.Helper()
 	c := newCalc(t)
 	paths, _ := filepath.Glob("../testdata/golden/builds/*.code")
-	checked := 0
 	for _, p := range paths {
 		id := strings.TrimSuffix(filepath.Base(p), ".code")
 		b := corpusBuild(t, id)
 		res, err := c.Calc(b)
-		if err != nil || res.main == nil {
-			continue
+		if err != nil {
+			t.Fatalf("%s: Calc: %v", id, err)
 		}
-		sh := shapeOf(res.main, res.Stats)
-		if sh.pobOverlap || (sh.kind != meleeStrike && sh.kind != singleHit) || sourcesOf(res.main, res.Stats).kind != "" {
+		if res.main == nil {
 			continue
-		}
-		if truthy(res.main.data["showAverage"]) {
-			continue // CombinedDPS is an average hit, not a rate
 		}
 		cr, err := c.Combat(b, CombatOptions{})
 		if err != nil {
-			t.Fatalf("%s: %v", id, err)
+			t.Fatalf("%s: Combat: %v", id, err)
+		}
+		f(id, res, cr)
+	}
+}
+
+// TestCombatSingleTargetInvariant: with no sources, where one use lands one
+// hit on the boss (any shape), combat DPS on the boss is PoB's CombinedDPS,
+// and so are its hit parts (the DoT parts share PoB's DoT cap, so only
+// their sum is checked, through Sustained).
+func TestCombatSingleTargetInvariant(t *testing.T) {
+	checked := 0
+	corpusCombat(t, func(id string, res *Result, cr *CombatResult) {
+		if sourcesOf(res.main, res.Stats).kind != "" || cr.Boss.HitsPerCast != 1 {
+			return
+		}
+		if truthy(res.main.data["showAverage"]) {
+			return // CombinedDPS is an average hit, not a rate
 		}
 		out := res.Stats
 		mult := combinedMult(res.main, out)
-		ignite, ok := out["TotalIgniteDPS"]
-		if !ok {
-			ignite = out["IgniteDPS"]
-		}
-		for comp, want := range map[string]float64{"Hit": out["TotalDPS"], "Ignite": ignite, "Poison": out["TotalPoisonDPS"], "Mirage": out["MirageDPS"]} {
+		for comp, want := range map[string]float64{"Hit": out["TotalDPS"], "Mirage": out["MirageDPS"], "Impale": out["ImpaleDPS"]} {
 			if got := cr.Boss.Components[comp]; !near(got, want*mult, 0.005) {
 				t.Errorf("%s (%s): Boss %s = %v, PoB %v x %v", id, cr.Skill, comp, got, want, mult)
 			}
@@ -81,36 +89,49 @@ func TestCombatSingleTargetInvariant(t *testing.T) {
 			t.Errorf("%s (%s): Boss.Sustained %v, PoB CombinedDPS %v (%v)", id, cr.Skill, cr.Boss.Sustained, out["CombinedDPS"], cr.Boss.Components)
 		}
 		checked++
-	}
+	})
 	if checked == 0 {
 		t.Fatal("no single-target build in the corpus")
 	}
-	t.Logf("%d single-target builds checked", checked)
+	t.Logf("%d one-hit builds checked", checked)
+}
+
+// TestCombatPackSanity: a skill with no sources that hits the boss at least
+// once per use deals at least about PoB's single-target DPS to the pack
+// (the boss hits, not the pack's, select: a collapsed shape hits the pack
+// less than once). Flags a
+// shape that collapses on the pack (area radius 0, explosions as rays).
+// pobOverlap shapes are left out: on the pack they start from one
+// projectile's damage (PoB / dpsMultiplier), which the geometry does not
+// repeat (orbiting balls, tornado stages), so they may fall below PoB.
+func TestCombatPackSanity(t *testing.T) {
+	checked := 0
+	corpusCombat(t, func(id string, res *Result, cr *CombatResult) {
+		if sourcesOf(res.main, res.Stats).kind != "" || cr.Boss.HitsPerCast < 1 || shapeOf(res.main, res.Stats).pobOverlap {
+			return
+		}
+		if cr.Pack.Sustained < 0.9*cr.Pack.PoB {
+			t.Errorf("%s (%s): Pack.Sustained %v < 0.9 x PoB %v (hits %.2f)", id, cr.Skill, cr.Pack.Sustained, cr.Pack.PoB, cr.Pack.HitsPerCast)
+		}
+		checked++
+	})
+	t.Logf("%d builds checked", checked)
 }
 
 // TestCombatNoDoubleOverlap: PoB's dpsMultiplier already counts the overlap
 // of a pobOverlap shape, so geometry adds nothing on the boss.
 func TestCombatNoDoubleOverlap(t *testing.T) {
-	c := newCalc(t)
-	paths, _ := filepath.Glob("../testdata/golden/builds/*.code")
 	checked := 0
-	for _, p := range paths {
-		id := strings.TrimSuffix(filepath.Base(p), ".code")
-		b := corpusBuild(t, id)
-		res, err := c.Calc(b)
-		if err != nil || res.main == nil || !shapeOf(res.main, res.Stats).pobOverlap {
-			continue
-		}
-		cr, err := c.Combat(b, CombatOptions{})
-		if err != nil {
-			t.Fatalf("%s: %v", id, err)
+	corpusCombat(t, func(id string, res *Result, cr *CombatResult) {
+		if !shapeOf(res.main, res.Stats).pobOverlap {
+			return
 		}
 		want := res.Stats["TotalDPS"] * sourcesOf(res.main, res.Stats).sustain("TotalDPS", res.main) * combinedMult(res.main, res.Stats)
 		if cr.Boss.HitsPerCast != 1 || !near(cr.Boss.Components["Hit"], want, 0.005) {
 			t.Errorf("%s (%s): HitsPerCast %v, Hit %v, PoB TotalDPS x sources %v", id, cr.Skill, cr.Boss.HitsPerCast, cr.Boss.Components["Hit"], want)
 		}
 		checked++
-	}
+	})
 	if checked == 0 {
 		t.Fatal("no pobOverlap build in the corpus")
 	}
@@ -207,5 +228,103 @@ func TestCombatDeterministic(t *testing.T) {
 	}
 	if !reflect.DeepEqual(x, y) {
 		t.Errorf("two runs differ:\n%+v\n%+v", x, y)
+	}
+}
+
+// assumed reports whether one of the assumptions contains sub.
+func assumed(cr *CombatResult, sub string) bool {
+	for _, a := range cr.Assumptions {
+		if strings.Contains(a, sub) {
+			return true
+		}
+	}
+	return false
+}
+
+func TestCombatZeroDPSSkills(t *testing.T) {
+	c := newCalc(t)
+	for id, note := range map[string]string{
+		"rfm48XKZzz4v": "главный скилл — миньоны", // Summon Skeletons
+		"LuQygQN4SdUj": "CombinedDPS PoB = 0",     // Purity of Fire
+	} {
+		cr, err := c.Combat(corpusBuild(t, id), CombatOptions{})
+		if err != nil {
+			t.Fatalf("%s: %v", id, err)
+		}
+		if cr.Boss.Sustained != 0 || cr.Pack.Sustained != 0 || !assumed(cr, note) {
+			t.Errorf("%s (%s): boss %v, pack %v, assumptions %q; want 0 and %q", id, cr.Skill, cr.Boss.Sustained, cr.Pack.Sustained, cr.Assumptions, note)
+		}
+	}
+}
+
+func TestCombatAreaWithoutRadius(t *testing.T) {
+	// Moonfall: AreaOfEffectRadius 0, counted as a single hit, not an area
+	// that touches nothing.
+	cr, err := newCalc(t).Combat(corpusBuild(t, "OmGuvxN4Nw7A"), CombatOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cr.Pack.HitsPerCast < 1 || !assumed(cr, "радиус области неизвестен") {
+		t.Errorf("%s: pack hits %v, assumptions %q", cr.Skill, cr.Pack.HitsPerCast, cr.Assumptions)
+	}
+}
+
+func TestCombatNoProjectileShotgun(t *testing.T) {
+	// Rolling Magma with GMP: one hit on the boss per use.
+	cr, err := newCalc(t).Combat(corpusBuild(t, "8YoGqmeyF3HU"), CombatOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cr.Boss.HitsPerCast != 1 {
+		t.Errorf("%s: boss hits %v, want 1", cr.Skill, cr.Boss.HitsPerCast)
+	}
+}
+
+// TestCombatBurst: the burst is one use's hit damage times the hits and the
+// sources, with culling and reservation like Sustained.
+func TestCombatBurst(t *testing.T) {
+	checked := 0
+	corpusCombat(t, func(id string, res *Result, cr *CombatResult) {
+		src := sourcesOf(res.main, res.Stats)
+		rate := hitSpeed(res.Stats)
+		if src.kind == "" || rate <= 0 || shapeOf(res.main, res.Stats).pobOverlap {
+			return
+		}
+		want := res.Stats["TotalDPS"] / rate * cr.Boss.HitsPerCast * src.burstHits * combinedMult(res.main, res.Stats)
+		if !near(cr.Boss.Burst, want, 1e-9) {
+			t.Errorf("%s (%s): Boss.Burst %v, want %v", id, cr.Skill, cr.Boss.Burst, want)
+		}
+		checked++
+	})
+	if checked == 0 {
+		t.Fatal("no build with sources")
+	}
+}
+
+func TestCombatOptionsAndPerMob(t *testing.T) {
+	c := newCalc(t)
+	b := corpusBuild(t, "hlasMvXnooQc")
+	def, err := c.Combat(b, CombatOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	odd, err := c.Combat(b, CombatOptions{Boss: BossSize(9), Pack: PackParams{Count: 500}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if odd.Boss.Sustained != def.Boss.Sustained || !assumed(odd, "неизвестный размер босса") || !assumed(odd, "ограничено 50") {
+		t.Errorf("unknown boss size: %v (medium %v), assumptions %q", odd.Boss.Sustained, def.Boss.Sustained, odd.Assumptions)
+	}
+	for _, r := range []struct {
+		cr *CombatResult
+		n  float64
+	}{{def, defaultPackCount}, {odd, maxPackCount}} {
+		pm := r.cr.PackPerMob
+		if !near(pm.Sustained, r.cr.Pack.Sustained/r.n, 1e-12) || !near(pm.Burst, r.cr.Pack.Burst/r.n, 1e-12) || pm.PoB != r.cr.Pack.PoB {
+			t.Errorf("PackPerMob %+v, Pack %+v / %v", pm, r.cr.Pack, r.n)
+		}
+	}
+	if !assumed(def, "в среднем на моба = сумма / 10") {
+		t.Errorf("no per-mob assumption: %q", def.Assumptions)
 	}
 }

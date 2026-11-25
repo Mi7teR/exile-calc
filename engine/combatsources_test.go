@@ -59,6 +59,7 @@ func TestDotScale(t *testing.T) {
 	plain := &activeSkill{mods: NewModDB(), flags: map[string]bool{}}
 	crimson := &activeSkill{mods: NewModDB(), flags: map[string]bool{}}
 	crimson.mods.Add(Mod{Name: "Condition:HaveCrimsonDance", Type: "FLAG", Value: true})
+	igniteStack := &activeSkill{mods: NewModDB(), flags: map[string]bool{"igniteCanStack": true}}
 	out := map[string]float64{"BleedStacksMax": 8, "BleedStacks": 1}
 	cases := []struct {
 		comp string
@@ -78,6 +79,10 @@ func TestDotScale(t *testing.T) {
 		{"BleedDPS", 3, crimson, map[string]float64{"BleedStacksMax": 8, "BleedStacks": 4}, 2},
 		// A target the cast misses gets no non-stacking DoT either.
 		{"IgniteDPS", 0, plain, nil, 0},
+		// Stacking ignite: PoB's value holds min(potential x max, max)
+		// stacks; two stacks times three hits fill five, a factor of 2.5.
+		{"IgniteDPS", 3, igniteStack, map[string]float64{"IgniteStacksMax": 5, "IgniteStackPotential": 0.4}, 2.5},
+		{"IgniteDPS", 1, igniteStack, map[string]float64{"IgniteStacksMax": 5, "IgniteStackPotential": 0.4}, 1},
 	}
 	for _, c := range cases {
 		if got := dotScale(c.comp, c.hits, c.s, c.out); math.Abs(got-c.want) > 1e-12 {

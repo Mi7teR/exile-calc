@@ -27,8 +27,8 @@ type skillShape struct {
 	subHits     float64 // sub-hits per projectile/impact (Kinetic Blast explosions)
 	subRadius   float64 // radius of each sub-hit, PoB units
 	scatter     float64 // radius the sub-hits spread over around the impact point
-	spreadDeg   float64 // projectile fan width (GMP/Scattershot shotgun)
-	canShotgun  bool    // several projectiles of one cast may hit the same target
+	spreadDeg   float64 // projectile fan width set by a support (GMP), 0 = default fan
+	canShotgun  bool    // the sub-hit areas of several projectiles of one cast may hit the same target
 	pobOverlap  bool    // PoB's dpsMultiplier already models overlap
 	fromDefault bool    // inferred from skill types, not from the table
 }
@@ -131,7 +131,10 @@ var shapeTable = func() map[string]shapeEntry {
 // (poewiki, Greater Multiple Projectiles Support).
 const gmpSpreadDeg = 35
 
-// shotgunSupports lets several projectiles of one use hit the same target.
+// shotgunSupports narrows the projectile fan to their spread. Only shapes
+// whose sub-hits are areas (Kinetic Blast explosions) may then shotgun:
+// projectiles of one skill use never hit the same target twice (the game
+// rule since 3.0; PoB models the exceptions through dpsMultiplier).
 // Scattershot is not in PoB v2.68.1's support data.
 var shotgunSupports = map[string]float64{
 	"Greater Multiple Projectiles":          gmpSpreadDeg,
@@ -192,14 +195,17 @@ func kindByTypes(types map[int]bool) deliveryKind {
 	return singleHit
 }
 
-// withShotgun marks projectile shapes supported by a shotgun support.
+// withShotgun sets the fan of projectile shapes supported by a shotgun
+// support; only sub-hit areas (explosions) may then hit one target from
+// several projectiles.
 func withShotgun(s *activeSkill, sh skillShape) skillShape {
 	if sh.kind != projectile || sh.pobOverlap {
 		return sh
 	}
 	for _, e := range s.effects {
 		if deg, ok := shotgunSupports[e.ge.Name]; ok {
-			sh.canShotgun, sh.spreadDeg = true, deg
+			sh.spreadDeg = deg
+			sh.canShotgun = sh.subHits > 0 && sh.subRadius > 0
 		}
 	}
 	return sh

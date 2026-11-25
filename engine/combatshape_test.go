@@ -113,8 +113,10 @@ func TestShapeShotgunGMP(t *testing.T) {
 	s := &activeSkill{active: active, types: map[int]bool{stProjectile: true},
 		effects: []*skillEffect{active, {ge: &gamedata.Skill{Name: "Greater Multiple Projectiles"}}}}
 	sh := shapeOf(s, nil)
-	if !sh.canShotgun || sh.spreadDeg != gmpSpreadDeg || !sh.fromDefault {
-		t.Errorf("shape %+v, want GMP shotgun", sh)
+	// Bare projectiles of one use never hit the same target twice: GMP only
+	// narrows the fan.
+	if sh.canShotgun || sh.spreadDeg != gmpSpreadDeg || !sh.fromDefault {
+		t.Errorf("shape %+v, want GMP fan without shotgun", sh)
 	}
 	s.effects = s.effects[:1]
 	if sh := shapeOf(s, nil); sh.canShotgun || sh.spreadDeg != 0 {
@@ -204,5 +206,18 @@ func TestShapeFlameblast(t *testing.T) {
 		if e, ok := shapeTable[n]; !ok || e.kind != targetArea {
 			t.Errorf("%s: table entry %+v, %v", n, e, ok)
 		}
+	}
+}
+
+func TestShapeShotgunOnlyAreas(t *testing.T) {
+	// Kinetic Blast with GMP: the explosions of several projectiles overlap.
+	s := &activeSkill{effects: []*skillEffect{{ge: &gamedata.Skill{Name: "Kinetic Blast"}}, {ge: &gamedata.Skill{Name: "Greater Multiple Projectiles"}}}}
+	if sh := withShotgun(s, skillShape{kind: projectile, subHits: 5, subRadius: 12}); !sh.canShotgun {
+		t.Errorf("explosions with GMP: %+v, want shotgun", sh)
+	}
+	// Rolling Magma (8YoGqmeyF3HU) with GMP: bare projectiles, no shotgun.
+	res := calcCorpus(t, "8YoGqmeyF3HU")
+	if sh := shapeOf(res.main, res.Stats); sh.canShotgun {
+		t.Errorf("%s: %+v, want no shotgun", res.main.active.ge.Name, sh)
 	}
 }

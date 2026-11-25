@@ -13,7 +13,8 @@ import (
 // stacking rules. Calc and its outputs are left as they are.
 
 // CombatOptions sets the boss and the pack. The zero value takes the
-// defaults: a medium boss, the default pack, seed 0.
+// defaults: a medium boss, the default pack, seed 0. An unknown Boss is a
+// medium boss; Pack.Count is capped at 50.
 type CombatOptions struct {
 	Boss BossSize
 	Pack PackParams
@@ -38,7 +39,11 @@ type CombatDPS struct {
 
 // CombatResult holds combat DPS against the boss and against the pack.
 type CombatResult struct {
-	Boss, Pack  CombatDPS
+	Boss, Pack CombatDPS
+	// PackPerMob is Pack averaged over the mobs of the pack: Sustained,
+	// Burst, Components and HitsPerCast divided by the mob count. PoB stays
+	// the pack run's CombinedDPS, which is already per target.
+	PackPerMob  CombatDPS
 	Skill       string // the main skill's gem name
 	Assumptions []string
 }
@@ -125,23 +130,65 @@ func (c *Calculator) Combat(b *pobcode.Build, opts CombatOptions) (*CombatResult
 		return nil, err
 	}
 	r.Skill = s.active.ge.Name
-	boss := bossModel(opts.Boss)
+	r.Boss.PoB, r.Pack.PoB = bossRes.Stats["CombinedDPS"], packRes.Stats["CombinedDPS"]
+	r.PackPerMob.PoB = r.Pack.PoB
+	// A skill whose damage is its minions' (Dominating Blow strikes itself,
+	// so its CombinedDPS is not 0) or that deals none: PoB's player
+	// CombinedDPS is 0 and so is combat DPS.
+	if r.Boss.PoB == 0 && r.Pack.PoB == 0 {
+		if s.flags["minion"] {
+			r.Assumptions = []string{"главный скилл — миньоны: DPS в бою для миньонов не считается"}
+		} else {
+			r.Assumptions = []string{"у главного скилла CombinedDPS PoB = 0 (скилл не наносит урона): DPS в бою 0"}
+		}
+		return r, nil
+	}
+	size := opts.Boss
+	if !validBossSize(size) {
+		r.Assumptions = append(r.Assumptions, fmt.Sprintf("неизвестный размер босса %d: взят средний", size))
+		size = BossMedium
+	}
+	if opts.Pack.Count > maxPackCount {
+		r.Assumptions = append(r.Assumptions, fmt.Sprintf("мобов в паке %d: ограничено %d", opts.Pack.Count, maxPackCount))
+	}
+	boss := bossModel(size)
 	pack := opts.Pack.withDefaults()
 	var bossNotes, packNotes []string
 	r.Boss, bossNotes = combatDPS(bossRes, boss, true, opts.Seed)
 	r.Pack, packNotes = combatDPS(packRes, packModel(pack), false, opts.Seed)
+	r.PackPerMob = perMob(r.Pack, float64(pack.Count))
 
-	bossName := map[BossSize]string{BossSmall: "маленький", BossMedium: "средний", BossLarge: "большой"}[opts.Boss]
+	bossName := map[BossSize]string{BossSmall: "маленький", BossMedium: "средний", BossLarge: "большой"}[size]
 	r.Assumptions = append(r.Assumptions,
 		fmt.Sprintf("босс: %s, радиус хитбокса %.0f (%.1f м), конфиг врага из билда", bossName, boss.targets[0].r, boss.targets[0].r/10),
 		fmt.Sprintf("пак: %d мобов радиуса %.0f в круге радиуса %.0f на дистанции %.0f, враг не босс (enemyIsBoss = None)",
 			pack.Count, pack.MobRadius, pack.Radius, pack.Distance),
 		fmt.Sprintf("попаданий за каст: по боссу %.2f, по паку %.2f (сумма по мобам)", r.Boss.HitsPerCast, r.Pack.HitsPerCast),
 		"мобы бессмертны, сумма = пропускная способность",
+		fmt.Sprintf("в среднем на моба = сумма / %d (устойчивый DPS и бурст пака)", pack.Count),
 	)
 	r.Assumptions = append(r.Assumptions, bossNotes...)
 	r.Assumptions = append(r.Assumptions, packNotes...)
 	return r, nil
+}
+
+// perMob is d divided over n mobs; PoB, already per target, is kept.
+func perMob(d CombatDPS, n float64) CombatDPS {
+	m := CombatDPS{PoB: d.PoB, Sustained: d.Sustained / n, Burst: d.Burst / n,
+		HitsPerCast: d.HitsPerCast / n, Components: map[string]float64{}}
+	for k, v := range d.Components {
+		m.Components[k] = v / n
+	}
+	return m
+}
+
+// areaKind reports whether a kind lands an area of AreaOfEffectRadius.
+func areaKind(k deliveryKind) bool {
+	switch k {
+	case selfArea, targetArea, channel, slam, cone:
+		return true
+	}
+	return false
 }
 
 // nonBossBuild is a shallow copy of b whose active config set is a copy
@@ -182,7 +229,13 @@ func nonBossBuild(b *pobcode.Build) *pobcode.Build {
 // every component takes PoB's culling and reservation multiplier, so a
 // skill whose shape adds nothing gets CombinedDPS. With pobOverlap PoB's
 // dpsMultiplier already holds the overlap, so a boss the skill reaches
-// counts one hit per use.
+// counts one hit per use. On the pack the overlap is taken back out: the
+// parts that scale with the hits start from PoB's value / dpsMultiplier (one
+// projectile or pod) times the geometric hits on each mob.
+//
+// An area kind with no radius (AreaOfEffectRadius 0, the engine does not
+// know it) is counted as a single hit rather than an area that touches
+// nothing.
 func combatDPS(res *Result, m targetModel, isBoss bool, seed uint64) (CombatDPS, []string) {
 	s, out := res.main, res.Stats
 	sh := shapeOf(s, out)
@@ -191,7 +244,25 @@ func combatDPS(res *Result, m targetModel, isBoss bool, seed uint64) (CombatDPS,
 	if sh.kind == meleeStrike {
 		radius = out["WeaponRange"]
 	}
-	hits := expectedHits(sh, out["ProjectileCount"], out["PierceCount"], out["ChainMax"], out["ForkCountMax"],
+	noRadius := areaKind(sh.kind) && radius <= 0 && (sh.subHits <= 0 || sh.subRadius <= 0)
+	if noRadius {
+		sh.kind = singleHit
+	}
+	unoverlap := 1.0
+	if !isBoss && sh.pobOverlap {
+		if dm := numOr(s.data["dpsMultiplier"], 1); dm > 0 {
+			unoverlap = 1 / dm
+		}
+	}
+	geo := sh
+	if !isBoss && sh.pobOverlap {
+		// The overlap PoB counts is several projectiles of one use hitting
+		// one target; on the pack each projectile hits on its own, from one
+		// projectile's damage (unoverlap).
+		geo.pobOverlap, geo.subHits = false, 0
+		geo.canShotgun = sh.kind == projectile
+	}
+	hits := expectedHits(geo, out["ProjectileCount"], out["PierceCount"], out["ChainMax"], out["ForkCountMax"],
 		radius, out["StrikeTargets"], m, seed)
 	if isBoss && sh.pobOverlap {
 		hits[0] = 1
@@ -205,10 +276,16 @@ func combatDPS(res *Result, m targetModel, isBoss bool, seed uint64) (CombatDPS,
 		dots := 0.0
 		for i, cmp := range combatComponents {
 			v := componentBase(cmp.name, cmp.out, out) * src.sustain(cmp.out, s)
-			if cmp.hit {
+			if cmp.hit || stackingDot(cmp.out, s) {
+				v *= unoverlap
+			}
+			switch {
+			case cmp.hit:
 				v *= h
-			} else {
+			case cmp.dot:
 				v = math.Min(v*dotScale(cmp.out, h, s, out), dotDpsCap)
+			default: // Impale: PoB does not cap it
+				v *= dotScale(cmp.out, h, s, out)
 			}
 			if cmp.dot {
 				dots += v
@@ -234,10 +311,12 @@ func combatDPS(res *Result, m targetModel, isBoss bool, seed uint64) (CombatDPS,
 		d.Sustained += v
 	}
 	// Burst: one use's hit damage is TotalDPS / hit rate, which keeps PoB's
-	// dpsMultiplier once; hitsPerCast is 1 per target with pobOverlap.
+	// dpsMultiplier once (taken out on the pack like the sustained hits);
+	// hitsPerCast is 1 per target with pobOverlap. Culling and reservation
+	// apply as for Sustained.
 	if src.kind != "" {
 		if rate := hitSpeed(out); rate > 0 {
-			d.Burst = out["TotalDPS"] / rate * d.HitsPerCast * src.burstHits
+			d.Burst = out["TotalDPS"] * unoverlap / rate * d.HitsPerCast * src.burstHits * mult
 		}
 	}
 
@@ -245,11 +324,14 @@ func combatDPS(res *Result, m targetModel, isBoss bool, seed uint64) (CombatDPS,
 		return d, nil
 	}
 	notes := []string{"форма: " + kindNames[sh.kind]}
+	if noRadius {
+		notes = append(notes, "радиус области неизвестен (AreaOfEffectRadius 0): считается как одиночный хит")
+	}
 	if sh.fromDefault {
 		notes = append(notes, "форма по умолчанию (выведена из типов скилла, цифра грубая)")
 	}
 	if sh.pobOverlap {
-		notes = append(notes, "перекрытие уже учтено PoB (dpsMultiplier): по боссу 1 попадание за каст, по мобу не больше одного")
+		notes = append(notes, "перекрытие уже учтено PoB (dpsMultiplier): по боссу 1 попадание за каст; на паке урон одного снаряда (DPS PoB / dpsMultiplier) × попадания по мобу")
 		if sequentialProjectiles(s) {
 			notes = append(notes, "последовательные снаряды (Barrage): геометрия под-ударов (взрывов) не применяется")
 		}
@@ -262,7 +344,10 @@ func combatDPS(res *Result, m targetModel, isBoss bool, seed uint64) (CombatDPS,
 		notes = append(notes, fmt.Sprintf("вторичные снаряды: %.0f с каждой точки попадания", sh.subHits))
 	}
 	if sh.canShotgun {
-		notes = append(notes, fmt.Sprintf("шотган: снаряды веером %.0f° могут попасть в одну цель", sh.spreadDeg))
+		notes = append(notes, fmt.Sprintf("шотган: взрывы снарядов веером %.0f° могут попасть в одну цель", sh.spreadDeg))
+	}
+	if sh.kind == projectile && sh.subHits == 0 && radius > 0 {
+		notes = append(notes, fmt.Sprintf("снаряд взрывается при попадании (радиус %.0f): цель за каст поражается не больше одного раза", radius))
 	}
 	if src.kind != "" {
 		srcName := map[string]string{"mine": "мины", "trap": "ловушки", "totem": "тотемы", "ballista": "баллисты"}[src.kind]

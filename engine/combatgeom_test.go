@@ -201,3 +201,50 @@ func TestKindsOnPack(t *testing.T) {
 		t.Errorf("target area of 25 on the pack centre: %v, want > 1", h)
 	}
 }
+
+func TestSingleHitChains(t *testing.T) {
+	// Vaal Arc: a non-projectile hit chains like a projectile.
+	pack := packModel(PackParams{})
+	if h := sumHits(expectedHits(skillShape{kind: singleHit}, 1, 0, 3, 0, 0, 0, pack, 1)); h != 4 {
+		t.Errorf("single hit chaining 3 times in the pack: %v, want 4", h)
+	}
+	if h := expectedHits(skillShape{kind: singleHit}, 1, 0, 16, 0, 0, 0, bossModel(BossMedium), 1); h[0] != 1 {
+		t.Errorf("chain on the boss alone: %v, want [1]", h)
+	}
+}
+
+func TestProjectileExplosion(t *testing.T) {
+	// Fireball: an explosion where the projectile stops hits the mobs
+	// around it; the boss still takes one hit per cast.
+	sh := skillShape{kind: projectile}
+	pack := packModel(PackParams{})
+	ray := sumHits(expectedHits(sh, 1, 0, 0, 0, 0, 0, pack, 1))
+	boom := sumHits(expectedHits(sh, 1, 0, 0, 0, 20, 0, pack, 1))
+	if boom <= ray || boom <= 1 {
+		t.Errorf("pack: ray %v, with explosion radius 20 %v; want the explosion to add hits", ray, boom)
+	}
+	if h := expectedHits(sh, 5, 0, 0, 0, 20, 0, bossModel(BossMedium), 1); h[0] != 1 {
+		t.Errorf("5 exploding projectiles on the boss: %v, want [1]", h)
+	}
+}
+
+func TestEvenProjectilesHitAhead(t *testing.T) {
+	// Two projectiles fly close together: the one in front is not missed.
+	for _, n := range []float64{2, 4} {
+		if h := expectedHits(skillShape{kind: projectile}, n, 0, 0, 0, 0, 0, bossModel(BossSmall), 1); h[0] != 1 {
+			t.Errorf("%v projectiles on a small boss: %v, want [1]", n, h)
+		}
+	}
+}
+
+func TestPackCountCap(t *testing.T) {
+	if p := (PackParams{Count: 500}).withDefaults(); p.Count != maxPackCount {
+		t.Errorf("Count 500: %d, want %d", p.Count, maxPackCount)
+	}
+	if !validBossSize(BossLarge) || validBossSize(BossSize(9)) {
+		t.Error("validBossSize")
+	}
+	if m := bossModel(BossSize(9)); m.targets[0].r != 20 {
+		t.Errorf("unknown boss size: radius %v, want medium 20", m.targets[0].r)
+	}
+}

@@ -86,19 +86,28 @@ func stackingDot(component string, s *activeSkill) bool {
 //
 // Stacking DoTs scale with the hits. Bleed stacks only with Crimson Dance,
 // and PoB's BleedDPS already holds min(BleedStacks, BleedStacksMax) stacks,
-// so the hits raise it only up to the stack limit. Everything else keeps
-// the strongest instance: one hit is enough, fewer than one is the chance
-// the target is hit at all.
+// so the hits raise it only up to the stack limit; stacking ignite
+// (igniteCanStack, PoB's TotalIgniteDPS) the same with IgniteStackPotential
+// × IgniteStacksMax stacks. Everything else keeps the strongest instance:
+// one hit is enough, fewer than one is the chance the target is hit at all.
 func dotScale(component string, hitsPerCast float64, s *activeSkill, out map[string]float64) float64 {
 	if stackingDot(component, s) {
 		return hitsPerCast
 	}
+	if maxStacks := out["IgniteStacksMax"]; component == "IgniteDPS" && s.flags["igniteCanStack"] && maxStacks > 0 {
+		return stackScale(out["IgniteStackPotential"]*maxStacks, maxStacks, hitsPerCast)
+	}
 	if component == "BleedDPS" && s.mods.FlagCfg(s.cfg, "Condition:HaveCrimsonDance") {
-		maxStacks, stacks := out["BleedStacksMax"], out["BleedStacks"]
-		if stacks <= 0 {
-			return math.Min(hitsPerCast, maxStacks)
-		}
-		return math.Min(stacks*hitsPerCast, maxStacks) / math.Min(stacks, maxStacks)
+		return stackScale(out["BleedStacks"], out["BleedStacksMax"], hitsPerCast)
 	}
 	return math.Min(hitsPerCast, 1)
+}
+
+// stackScale raises a DoT holding min(stacks, maxStacks) stacks by the
+// hits, up to maxStacks.
+func stackScale(stacks, maxStacks, hitsPerCast float64) float64 {
+	if stacks <= 0 {
+		return math.Min(hitsPerCast, maxStacks)
+	}
+	return math.Min(stacks*hitsPerCast, maxStacks) / math.Min(stacks, maxStacks)
 }
