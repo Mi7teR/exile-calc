@@ -3,6 +3,7 @@
 // each mod type where they differ.
 //
 //	go run ./cmd/enginediff -builds ID1,ID2 -stats Dex,Life [-oracle ../poe-pob-oracle/run.sh]
+//	go run ./cmd/enginediff -combat -builds ID1,ID2
 package main
 
 import (
@@ -29,7 +30,15 @@ func main() {
 	source := flag.String("source", "", "only sources with this prefix (e.g. Item:)")
 	conds := flag.Bool("conditions", false, "compare conditions and multipliers instead of mods")
 	skills := flag.Bool("skills", false, "compare active skills (level, quality, buffs, aura effect) instead of mods")
+	combat := flag.Bool("combat", false, "print combat DPS (boss and pack) of the main skill for -builds; needs no oracle")
 	flag.Parse()
+	if *combat {
+		if err := runCombat(*builds); err != nil {
+			fmt.Fprintln(os.Stderr, "enginediff:", err)
+			os.Exit(1)
+		}
+		return
+	}
 	sourcePrefix = *source
 	compareConditions = *conds
 	compareSkills = *skills

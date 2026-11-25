@@ -27,3 +27,11 @@ go run ./cmd/goldencorpus input > /tmp/builds.jsonl
 ../poe-pob-oracle/run.sh v2.68.1 < /tmp/builds.jsonl > /tmp/results.jsonl
 go run ./cmd/goldencorpus expected < /tmp/results.jsonl
 ```
+
+## Combat DPS report
+
+`go run ./cmd/enginediff -combat -builds ID1,ID2` prints, per build, the main
+skill's combat DPS model against a boss and a pack: PoB's CombinedDPS, the
+sustained and burst DPS, hits per cast, the components and the assumptions.
+It does not run the PoB oracle. The numbers are the engine's model (hit
+geometry, sources, DoT stacking), not checked against the oracle.
