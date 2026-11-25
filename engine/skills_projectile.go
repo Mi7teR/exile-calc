@@ -8,7 +8,10 @@ func init() {
 	registerSkill([]string{"Barrage", "Barrage of Volley Fire", "Blast Rain", "Vaal Lightning Arrow"},
 		skillHooks{preDamage: barragePreDamage})
 	registerSkill([]string{"Blazing Salvo"}, skillHooks{preDamage: blazingSalvoPreDamage})
-	registerSkill([]string{"Forbidden Rite", "Forbidden Rite of Soul Sacrifice"}, skillHooks{preDamage: forbiddenRitePreDamage})
+	registerSkill(
+		[]string{"Forbidden Rite", "Forbidden Rite of Soul Sacrifice"},
+		skillHooks{preDamage: forbiddenRitePreDamage},
+	)
 	registerSkill([]string{"Freezing Pulse"}, skillHooks{preDamage: freezingPulsePreDamage})
 	registerSkill([]string{"Kinetic Fusillade"},
 		skillHooks{preDamage: kineticFusilladePreDamage, postCrit: kineticFusilladePostCrit})
@@ -16,41 +19,51 @@ func init() {
 	registerSkill([]string{"Ice Spear", "Ice Spear of Splitting"}, skillHooks{preDamage: iceSpearPreDamage})
 	registerSkill([]string{"Toxic Rain", "Toxic Rain of Sporeburst", "Toxic Rain of Withering"},
 		skillHooks{preDamage: toxicRainPreDamage})
-	registerSkill([]string{"Shrapnel Ballista", "Shrapnel Ballista of Steel"}, skillHooks{preDamage: shrapnelBallistaPreDamage})
+	registerSkill(
+		[]string{"Shrapnel Ballista", "Shrapnel Ballista of Steel"},
+		skillHooks{preDamage: shrapnelBallistaPreDamage},
+	)
 	registerSkill([]string{"Ball Lightning of Orbiting"}, skillHooks{preDamage: ballLightningOfOrbitingPreDamage})
 }
 
-// Data/Skills/act_dex.lua Barrage/Blast Rain/Vaal Lightning Arrow preDamageFunc
+// Data/Skills/act_dex.lua Barrage/Blast Rain/Vaal Lightning Arrow preDamageFunc.
 func barragePreDamage(_ *ModDB, s *activeSkill, out map[string]float64) {
 	if s.part == 2 {
 		s.data["dpsMultiplier"] = out["ProjectileCount"]
 	}
 }
 
-// Data/Skills/act_int.lua Blazing Salvo preDamageFunc
+// Data/Skills/act_int.lua Blazing Salvo preDamageFunc.
 func blazingSalvoPreDamage(_ *ModDB, s *activeSkill, out map[string]float64) {
 	if s.part == 2 {
 		mulDPS(s.data, out["ProjectileCount"])
 	}
 }
 
-// Data/Skills/act_int.lua Forbidden Rite preDamageFunc
+// Data/Skills/act_int.lua Forbidden Rite preDamageFunc.
 func forbiddenRitePreDamage(_ *ModDB, s *activeSkill, out map[string]float64) {
 	if s.part == 2 {
 		mulDPS(s.data, out["ProjectileCount"]+1)
 	}
 }
 
-// Data/Skills/act_int.lua Freezing Pulse preDamageFunc
+// Data/Skills/act_int.lua Freezing Pulse preDamageFunc.
 func freezingPulsePreDamage(_ *ModDB, s *activeSkill, out map[string]float64) {
 	r := 60 * out["ProjectileSpeedMod"]
 	s.mods.Add(Mod{Name: "Damage", Type: "MORE", Value: -50.0, Source: "Skill:FreezingPulse",
 		Tags: []map[string]any{{"type": "DistanceRamp", "ramp": []any{[]any{0.0, 0.0}, []any{r, 1.0}}}}})
-	s.mods.Add(Mod{Name: "EnemyFreezeChance", Type: "BASE", Value: 25.0, Source: "Skill:FreezingPulse",
-		Tags: []map[string]any{{"type": "DistanceRamp", "ramp": []any{[]any{0.0, 1.0}, []any{15 * out["ProjectileSpeedMod"], 0.0}}}}})
+	s.mods.Add(Mod{
+		Name:   "EnemyFreezeChance",
+		Type:   "BASE",
+		Value:  25.0,
+		Source: "Skill:FreezingPulse",
+		Tags: []map[string]any{
+			{"type": "DistanceRamp", "ramp": []any{[]any{0.0, 1.0}, []any{15 * out["ProjectileSpeedMod"], 0.0}}},
+		},
+	})
 }
 
-// Data/Skills/act_int.lua Kinetic Fusillade preDamageFunc
+// Data/Skills/act_int.lua Kinetic Fusillade preDamageFunc.
 func kineticFusilladePreDamage(_ *ModDB, s *activeSkill, out map[string]float64) {
 	if s.part == 1 {
 		proj := out["ProjectileCount"]
@@ -64,7 +77,7 @@ func kineticFusilladePreDamage(_ *ModDB, s *activeSkill, out map[string]float64)
 	}
 }
 
-// Data/Skills/act_int.lua Kinetic Fusillade postCritFunc
+// Data/Skills/act_int.lua Kinetic Fusillade postCritFunc.
 //
 // Attacking faster than the projectiles fire wastes damage.
 func kineticFusilladePostCrit(s *activeSkill, _, global map[string]float64) {
@@ -88,26 +101,26 @@ func kineticFusilladePostCrit(s *activeSkill, _, global map[string]float64) {
 	global["KineticFusilladeMaxEffectiveAPS"] = maxAPS
 }
 
-// Data/Skills/act_int.lua Spark preDamageFunc
+// Data/Skills/act_int.lua Spark preDamageFunc.
 func sparkPreDamage(_ *ModDB, s *activeSkill, out map[string]float64) {
 	if s.part == 2 {
 		mulDPS(s.data, 1+math.Floor(out["Duration"]/0.66))
 	}
 }
 
-// Data/Skills/act_int.lua Ice Spear preDamageFunc
+// Data/Skills/act_int.lua Ice Spear preDamageFunc.
 func iceSpearPreDamage(_ *ModDB, s *activeSkill, out map[string]float64) {
 	if s.part == 3 || s.part == 4 {
 		mulDPS(s.data, out["ProjectileCount"])
 	}
 }
 
-// Data/Skills/act_dex.lua Toxic Rain preDamageFunc
+// Data/Skills/act_dex.lua Toxic Rain preDamageFunc.
 func toxicRainPreDamage(_ *ModDB, s *activeSkill, out map[string]float64) {
 	s.data["dpsMultiplier"] = math.Min(numOr(s.data["podOverlapMultiplier"], 1), out["ProjectileCount"])
 }
 
-// Data/Skills/act_dex.lua Shrapnel Ballista preDamageFunc
+// Data/Skills/act_dex.lua Shrapnel Ballista preDamageFunc.
 func shrapnelBallistaPreDamage(_ *ModDB, s *activeSkill, out map[string]float64) {
 	if !s.mods.Flag("SequentialProjectiles") {
 		proj := out["ProjectileCount"]
@@ -121,7 +134,7 @@ func shrapnelBallistaPreDamage(_ *ModDB, s *activeSkill, out map[string]float64)
 	}
 }
 
-// Data/Skills/act_int.lua Ball Lightning of Orbiting preDamageFunc
+// Data/Skills/act_int.lua Ball Lightning of Orbiting preDamageFunc.
 func ballLightningOfOrbitingPreDamage(_ *ModDB, s *activeSkill, _ map[string]float64) {
 	data := s.data
 	if s.part == 2 || s.part == 3 {

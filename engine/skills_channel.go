@@ -10,23 +10,31 @@ import (
 func init() {
 	registerSkill([]string{"Flameblast", "Flameblast of Celerity", "Flameblast of Contraction"},
 		skillHooks{preDamage: flameblastPreDamage})
-	registerSkill([]string{"Lightning Tendrils of Eccentricity"},
-		skillHooks{preDamage: lightningTendrilsOfEccentricityPreDamage, postCrit: lightningTendrilsOfEccentricityPostCrit})
+	registerSkill(
+		[]string{"Lightning Tendrils of Eccentricity"},
+		skillHooks{
+			preDamage: lightningTendrilsOfEccentricityPreDamage,
+			postCrit:  lightningTendrilsOfEccentricityPostCrit,
+		},
+	)
 	registerSkill([]string{"Storm Burst"}, skillHooks{preDamage: stormBurstPreDamage})
 	registerSkill([]string{"Blood Sacrament"}, skillHooks{initial: bloodSacramentInitial})
 	registerSkill([]string{"Cyclone", "Vaal Cyclone"}, skillHooks{initial: cycloneInitial})
 	registerSkill([]string{"Cyclone of Tumult"}, skillHooks{initial: cycloneOfTumultInitial})
 }
 
-// Data/Skills/act_int.lua Flameblast preDamageFunc
+// Data/Skills/act_int.lua Flameblast preDamageFunc.
 //
 // One release per channelled stage beyond the starting stages.
 func flameblastPreDamage(_ *ModDB, s *activeSkill, _ map[string]float64) {
 	stage := "Multiplier:" + strings.Join(strings.Fields(s.active.ge.Name), "") + "Stage"
-	s.data["hitTimeMultiplier"] = math.Max(s.mods.SumCfg(s.cfg, "BASE", stage)-s.mods.SumCfg(s.cfg, "BASE", "Multiplier:FlameblastMinimumStage"), 1)
+	s.data["hitTimeMultiplier"] = math.Max(
+		s.mods.SumCfg(s.cfg, "BASE", stage)-s.mods.SumCfg(s.cfg, "BASE", "Multiplier:FlameblastMinimumStage"),
+		1,
+	)
 }
 
-// Data/Skills/act_int.lua Lightning Tendrils of Eccentricity preDamageFunc
+// Data/Skills/act_int.lua Lightning Tendrils of Eccentricity preDamageFunc.
 //
 // The DPS of each pulse part.
 func lightningTendrilsOfEccentricityPreDamage(_ *ModDB, s *activeSkill, _ map[string]float64) {
@@ -36,11 +44,19 @@ func lightningTendrilsOfEccentricityPreDamage(_ *ModDB, s *activeSkill, _ map[st
 	case 2:
 		s.mods.Add(Mod{Name: "DPS", Type: "MORE", Value: -(1 / interval) * 100, Source: "Normal pulse", Tags: part})
 	case 3:
-		s.mods.Add(Mod{Name: "DPS", Type: "MORE", Value: -(interval - 1) / interval * 100, Source: "Stronger pulse", Tags: part})
+		s.mods.Add(
+			Mod{
+				Name:   "DPS",
+				Type:   "MORE",
+				Value:  -(interval - 1) / interval * 100,
+				Source: "Stronger pulse",
+				Tags:   part,
+			},
+		)
 	}
 }
 
-// Data/Skills/act_int.lua Lightning Tendrils of Eccentricity postCritFunc
+// Data/Skills/act_int.lua Lightning Tendrils of Eccentricity postCritFunc.
 //
 // The 5th pulse's more damage as an average over the interval.
 func lightningTendrilsOfEccentricityPostCrit(s *activeSkill, out, _ map[string]float64) {
@@ -51,11 +67,13 @@ func lightningTendrilsOfEccentricityPostCrit(s *activeSkill, out, _ map[string]f
 	pulse := numOr(s.data["pulseDamage"], 0) / 100
 	crit, eff, multi := out["PreEffectiveCritChance"]/100, out["CritChance"]/100, out["CritMultiplier"]
 	avg := 100 * (((interval-1)*(1+crit*(multi-1))+(1+pulse)*multi)/(interval*((1-eff)+multi*eff)) - 1)
-	s.mods.Add(Mod{Name: "Damage", Type: "MORE", Value: avg, Source: "Average Pulse Damage", KeywordFlags: kfHit | kfAilment,
-		Tags: []map[string]any{{"type": "SkillPart", "skillPart": 1.0}}})
+	s.mods.Add(
+		Mod{Name: "Damage", Type: "MORE", Value: avg, Source: "Average Pulse Damage", KeywordFlags: kfHit | kfAilment,
+			Tags: []map[string]any{{"type": "SkillPart", "skillPart": 1.0}}},
+	)
 }
 
-// Data/Skills/act_int.lua Storm Burst preDamageFunc
+// Data/Skills/act_int.lua Storm Burst preDamageFunc.
 func stormBurstPreDamage(_ *ModDB, s *activeSkill, out map[string]float64) {
 	data := s.data
 	freq, _ := num(data["repeatFrequency"])
@@ -71,7 +89,7 @@ func stormBurstPreDamage(_ *ModDB, s *activeSkill, out map[string]float64) {
 	}
 }
 
-// Data/Skills/other.lua Blood Sacrament initialFunc
+// Data/Skills/other.lua Blood Sacrament initialFunc.
 //
 // BloodSacramentUnique: life reserved per stage, from the skill's own life
 // reservation (skillData LifeReservedPercent / LifeReservedBase, set by the
@@ -87,12 +105,12 @@ func bloodSacramentInitial(actor *ModDB, s *activeSkill, _ hitSource, _ *hitSour
 	s.mods.NewMod("Multiplier:ChannelledLifeReservedPerStage", "BASE", base, "Blood Sacrament")
 }
 
-// Data/Skills/act_dex.lua Cyclone initialFunc (also Vaal Cyclone)
+// Data/Skills/act_dex.lua Cyclone initialFunc (also Vaal Cyclone).
 func cycloneInitial(_ *ModDB, s *activeSkill, w1 hitSource, w2 *hitSource) {
 	cycloneMeleeRange(s, w1, w2, "Skill:Cyclone")
 }
 
-// Data/Skills/act_dex.lua Cyclone of Tumult initialFunc
+// Data/Skills/act_dex.lua Cyclone of Tumult initialFunc.
 func cycloneOfTumultInitial(_ *ModDB, s *activeSkill, w1 hitSource, w2 *hitSource) {
 	cycloneMeleeRange(s, w1, w2, "Skill:CycloneAltX")
 }
@@ -103,7 +121,8 @@ func cycloneOfTumultInitial(_ *ModDB, s *activeSkill, w1 hitSource, w2 *hitSourc
 func cycloneMeleeRange(s *activeSkill, w1 hitSource, w2 *hitSource, source string) {
 	list := s.mods
 	bonus := func(w *hitSource, wcfg *Cfg) float64 {
-		return list.SumCfg(wcfg, "BASE", "MeleeWeaponRange") + 10*list.SumCfg(wcfg, "BASE", "MeleeWeaponRangeMetre") + w.rangeBonus
+		weaponRange := list.SumCfg(wcfg, "BASE", "MeleeWeaponRange")
+		return weaponRange + 10*list.SumCfg(wcfg, "BASE", "MeleeWeaponRangeMetre") + w.rangeBonus
 	}
 	var r float64
 	if s.flags["weapon1Attack"] && w1.hasRange {

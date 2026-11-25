@@ -460,6 +460,11 @@ linters:
         linters: [ testpackage, paralleltest, cyclop, gocognit, musttag ]
       - source: 'TODO'
         linters: [ godot ]
+      # why: the skill hook files hold ported PoB skill formulas: PoB's literal numbers (skill parts, tick
+      # values) and mod name/type strings stay inline like the rest of the port, and each group file registers
+      # its hooks from init() into the package-level skillHookRegistry (switchCases is the test's fixture).
+      - path: 'engine/(skills_(brands|channel|projectile|melee|misc)|skillhooks(_test)?)\.go'
+        linters: [ mnd, goconst, gochecknoinits, gochecknoglobals ]
       - text: 'should have a package comment'
         linters: [ revive ]
       - text: 'exported \S+ \S+ should have comment( \(or a comment on this block\))? or be unexported'

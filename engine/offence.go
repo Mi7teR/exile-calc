@@ -1104,66 +1104,8 @@ func playerWeapons(db *ModDB, gear map[string][]modparser.Mod, classID int) (hit
 // preDamageFunc ports the skills' preDamageFunc (Data/Skills/*.lua) that
 // set skill data before the damage passes.
 func preDamageFunc(actor *ModDB, s *activeSkill, out map[string]float64) {
-	data := s.data
-	proj := out["ProjectileCount"]
-	mulDPS := func(m float64) { data["dpsMultiplier"] = numOr(data["dpsMultiplier"], 1) * m }
 	if h := hooksOf(s); h != nil && h.preDamage != nil {
 		h.preDamage(actor, s, out)
-	}
-	switch s.active.ge.Name {
-	case "On Kill Monster Explosion":
-		enemyExplode(s, out)
-	case "Molten Strike", "Molten Strike of the Zenith":
-		if s.part == 1 {
-			break
-		}
-		enemyRadius, ok := s.mods.OverrideCfg(s.cfg, "EnemyRadius")
-		if !ok {
-			enemyRadius = s.mods.SumCfg(s.cfg, "BASE", "EnemyRadius")
-		}
-		inner, outer := out["AreaOfEffectRadiusSecondary"], out["AreaOfEffectRadiusTertiary"]
-		overlap := math.Min(1, (enemyRadius+out["AreaOfEffectRadius"]-inner)/(outer-inner))
-		out["OverlapChance"] = overlap * 100
-		mult := 1.0
-		if s.part == 3 || s.part == 5 || s.part == 6 {
-			mult = overlap * proj
-			if s.part == 6 {
-				// Zenith: the weighted average of normal and 5th attack balls.
-				fifth := 1 + numOr(data["FifthStrikeDamage"], 0)/100
-				mult = 0.8*mult + 0.2*fifth*overlap*(proj+numOr(data["FifthStrikeProjectiles"], 0))
-			}
-		}
-		if mult != 1 {
-			mulDPS(mult)
-			if v, ok := out["SkillDPSMultiplier"]; ok {
-				mult *= v
-			}
-			out["SkillDPSMultiplier"] = mult
-		}
-	case "Avenging Flame":
-		// The trigger source's totem life (triggerSourceUUID's TotemLife).
-		add := numOr(data["triggerSourceTotemLife"], 0) * numOr(data["lifeDealtAsFire"], 0) / 100
-		data["FireMin"] = numOr(data["FireMin"], 0) + add
-		data["FireMax"] = numOr(data["FireMax"], 0) + add
-	case "Bladefall of Trarthus":
-		data["hitTimeOverride"] = numOr(data["hitFrequency"], 0) / (1 + numOr(data["incVolleyFrequency"], 0)/100)
-	case "Tornado of Elemental Turbulence":
-		data["hitTimeOverride"] = data["damageInterval"]
-		mulDPS(s.mods.SumCfg(s.cfg, "BASE", "Multiplier:TornadoofElementalTurbulenceStage"))
-	case "Bodyswap", "Bodyswap of Sacrifice":
-		if s.part == 1 {
-			m, _ := num(data["selfFireExplosionLifeMultiplier"])
-			life := actor.output["Life"]
-			if s.flags["totem"] {
-				life = out["TotemLife"]
-			}
-			data["FireBonusMin"], data["FireBonusMax"] = life*m, life*m
-		}
-	case "Static Strike":
-		if s.part == 2 {
-			f, _ := num(data["repeatFrequency"])
-			data["hitTimeOverride"] = f / (1 + s.mods.SumCfg(s.cfg, "INC", "StaticStrikeFrequency")/100)
-		}
 	}
 }
 
@@ -1413,20 +1355,8 @@ func ruthlessAndFistOfWar(s *activeSkill, p *hitPass, global map[string]float64)
 
 // preSkillTypeFunc ports the skills' preSkillTypeFunc (Data/Skills/*.lua).
 func preSkillTypeFunc(s *activeSkill) {
-	list, cfg, data := s.mods, s.cfg, s.data
-	switch s.active.ge.Name {
-	case "Rage Vortex":
-		if s.part == 2 {
-			maxRage := list.SumCfg(cfg, "BASE", "MaximumRage")
-			pct := numOr(data["MaxRageVortexSacrificePercentage"], 0) / 100
-			override := list.SumCfg(cfg, "BASE", "Multiplier:RageSacrificedStacks")
-			maxSac := math.Floor(pct * maxRage)
-			stacks := maxSac
-			if override > 0 {
-				stacks = math.Min(override, maxSac)
-			}
-			list.NewMod("Multiplier:RageSacrificed", "BASE", stacks, "Skill:RageVortex")
-		}
+	if h := hooksOf(s); h != nil && h.preSkillType != nil {
+		h.preSkillType(s)
 	}
 }
 

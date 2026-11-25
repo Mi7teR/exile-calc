@@ -273,17 +273,8 @@ func warcryExertMods(db *ModDB, skills []*activeSkill) {
 		if s.disabled || !s.flags["warcry"] {
 			continue
 		}
-		switch s.active.ge.Name {
-		case "Rallying Cry":
-			if !s.mods.Flag("CannotShareWarcryBuffs") && !db.Flag("RallyingActive") {
-				db.NewMod("RallyingExertMoreDamagePerAlly", "BASE", s.mods.SumCfg(main.cfg, "BASE", "RallyingCryExertDamageBonus"), "")
-				db.Add(Mod{Name: "RallyingActive", Type: "FLAG", Value: true})
-			}
-		case "Seismic Cry":
-			if !db.Flag("SeismicActive") {
-				db.NewMod("SeismicMoreAoE", "BASE", s.mods.SumCfg(main.cfg, "BASE", "SeismicAoEMoreMultiplier"), "")
-				db.Add(Mod{Name: "SeismicActive", Type: "FLAG", Value: true})
-			}
+		if h := hooksOf(s); h != nil && h.warcryShare != nil {
+			h.warcryShare(db, s, main)
 		}
 	}
 }

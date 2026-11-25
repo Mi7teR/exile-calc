@@ -12,7 +12,7 @@ func init() {
 	registerSkill([]string{"Wintertide Brand"}, skillHooks{preDamage: wintertideBrandPreDamage})
 }
 
-// Data/Skills/act_int.lua Arcanist/Armageddon/Penance/Storm Brand preDamageFunc
+// Data/Skills/act_int.lua Arcanist/Armageddon/Penance/Storm Brand preDamageFunc.
 //
 // Brands hit once per activation: repeatFrequency / (1 + inc Speed and
 // BrandActivationFrequency) / more BrandActivationFrequency. Penance Brand
@@ -23,10 +23,11 @@ func brandPreDamage(_ *ModDB, s *activeSkill, _ map[string]float64) {
 	if s.active.ge.Name == "Penance Brand" {
 		f *= s.mods.SumCfg(s.cfg, "BASE", "Multiplier:PenanceBrandMaxEnergy")
 	}
-	data["hitTimeOverride"] = f / (1 + s.mods.SumCfg(s.cfg, "INC", "Speed", "BrandActivationFrequency")/100) / s.mods.MoreCfg(s.cfg, "BrandActivationFrequency")
+	inc := s.mods.SumCfg(s.cfg, "INC", "Speed", "BrandActivationFrequency")
+	data["hitTimeOverride"] = f / (1 + inc/100) / s.mods.MoreCfg(s.cfg, "BrandActivationFrequency")
 }
 
-// Data/Skills/act_int.lua Wintertide Brand preDamageFunc
+// Data/Skills/act_int.lua Wintertide Brand preDamageFunc.
 //
 // Part 1 averages the stages gained per activation over the attached
 // duration, plus the strongest maximum-stage Wintertide's End debuff for
@@ -35,7 +36,8 @@ func wintertideBrandPreDamage(actor *ModDB, s *activeSkill, _ map[string]float64
 	data := s.data
 	data["countsAttachedBrandsInDamage"] = s.part == 1
 	f, _ := num(data["repeatFrequency"])
-	hitTime := f / (1 + s.mods.SumCfg(s.cfg, "INC", "Speed", "BrandActivationFrequency")/100) / s.mods.MoreCfg(s.cfg, "BrandActivationFrequency")
+	inc := s.mods.SumCfg(s.cfg, "INC", "Speed", "BrandActivationFrequency")
+	hitTime := f / (1 + inc/100) / s.mods.MoreCfg(s.cfg, "BrandActivationFrequency")
 	data["hitTimeOverride"] = hitTime
 	if s.part == 1 && hitTime > 0 {
 		list, cfg := s.mods, s.cfg
