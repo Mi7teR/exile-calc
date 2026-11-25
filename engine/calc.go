@@ -1485,6 +1485,7 @@ func (c *Calculator) resistances(db *ModDB) {
 		out[elem+"ResistTotal"] = total
 		out[elem+"ResistOverCap"] = math.Max(0, total-max)
 		out[elem+"ResistOver75"] = math.Max(0, final-75)
+		out["Missing"+elem+"Resist"] = math.Max(0, max-final)
 	}
 }
 
