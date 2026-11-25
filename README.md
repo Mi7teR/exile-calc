@@ -76,8 +76,7 @@ for name, dps := range cr.Pack.Components { // "Hit", "Ignite", "Poison", ...
 }
 ```
 
-`cr.Assumptions` lists what the result assumes (hitbox, pack layout, shape),
-in Russian for now.
+`cr.Assumptions` lists what the result assumes (hitbox, pack layout, shape).
 
 ### Read a build without computing it
 
@@ -132,6 +131,7 @@ build with a timeless jewel is still computed, and the jewel is reported in
 
 ```bash
 go test ./...
+make test | lint | bench | dump-check | luaport                # test, lint, benchmarks, stats-dump diff, Lua port check
 go run ./cmd/gamedatagen                                  # regenerate gamedata/poe1 from the pinned PoB tag
 go run ./cmd/enginediff -builds ID1,ID2 -stats Life,Armour # engine vs headless PoB, mod by mod
 go run ./cmd/enginediff -combat -builds ID1                # combat DPS report
