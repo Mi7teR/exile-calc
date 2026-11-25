@@ -156,10 +156,14 @@ func (c *Calculator) Combat(b *pobcode.Build, opts CombatOptions) (*CombatResult
 	boss := bossModel(size)
 	pack := opts.Pack.withDefaults()
 	var bossNotes, packNotes []string
-	r.Boss, bossNotes = combatDPS(bossRes, boss, true, opts.Seed)
+	bossSpread := contagionSpread{}
+	if spreadByContagion[s.active.ge.Name] {
+		bossSpread = c.contagionOf(b)
+	}
+	r.Boss, bossNotes = combatDPSSpread(bossRes, boss, true, opts.Seed, bossSpread)
 	pm := packModel(pack)
 	spread := contagionSpread{}
-	if spreadByContagion[r.Skill] {
+	if spreadByContagion[s.active.ge.Name] {
 		spread = c.contagionOf(nonBossBuild(b))
 	}
 	r.Pack, packNotes = combatDPSSpread(packRes, pm, false, opts.Seed, spread)
@@ -177,7 +181,9 @@ func (c *Calculator) Combat(b *pobcode.Build, opts CombatOptions) (*CombatResult
 	if spread.radius > 0 {
 		r.Assumptions = append(r.Assumptions, fmt.Sprintf(
 			"пак: %s разносит DoT %s с цели на мобов в радиусе %.0f (%.1f м); считается, что разнос уже случился (мобы бессмертны)",
-			spread.name, r.Skill, spread.radius, spread.radius/10))
+			spread.name, r.Skill, spread.radius, spread.radius/10),
+			fmt.Sprintf("собственный DoT %s (%s на врага) считается поддерживаемым на цели и на мобах в его радиусе; время на его каст не вычитается",
+				spread.name, humanNum(spread.dot)))
 	}
 	r.Assumptions = append(r.Assumptions, bossNotes...)
 	r.Assumptions = append(r.Assumptions, packNotes...)
@@ -371,6 +377,19 @@ func combatDPSSpread(res *Result, m targetModel, isBoss bool, seed uint64, sprea
 			}
 		}
 	}
+	// Contagion's own debuff: kept up on the target and, cast at it, on
+	// every mob its area reaches (the same mobs it spreads to).
+	if spread.dot > 0 {
+		n := 0.0
+		for _, in := range spreadTo {
+			if in {
+				n++
+			}
+		}
+		if n > 0 {
+			d.Components["Contagion"] = math.Min(spread.dot, dotDpsCap) * n
+		}
+	}
 	for _, v := range d.Components {
 		d.Sustained += v
 	}
@@ -457,6 +476,7 @@ var spreadByContagion = map[string]bool{
 type contagionSpread struct {
 	radius float64
 	name   string
+	dot    float64 // Contagion's own debuff DPS (its TotalDot) on one enemy
 }
 
 // contagionOf finds an enabled Contagion in b's active skill set and
@@ -479,9 +499,22 @@ func (c *Calculator) contagionOf(b *pobcode.Build) contagionSpread {
 				continue
 			}
 			if r := res.Stats["AreaOfEffectRadius"]; r > 0 {
-				return contagionSpread{radius: r, name: res.main.active.ge.Name}
+				return contagionSpread{radius: r, name: res.main.active.ge.Name, dot: res.Stats["TotalDot"]}
 			}
 		}
 	}
 	return contagionSpread{}
+}
+
+// humanNum is n with a k/M/G suffix, for assumption lines.
+func humanNum(n float64) string {
+	switch {
+	case n >= 1e9:
+		return fmt.Sprintf("%.1fG", n/1e9)
+	case n >= 1e6:
+		return fmt.Sprintf("%.1fM", n/1e6)
+	case n >= 1e3:
+		return fmt.Sprintf("%.1fk", n/1e3)
+	}
+	return fmt.Sprintf("%.0f", n)
 }

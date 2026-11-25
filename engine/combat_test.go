@@ -85,7 +85,8 @@ func TestCombatSingleTargetInvariant(t *testing.T) {
 				t.Errorf("%s (%s): Boss %s = %v, PoB %v x %v", id, cr.Skill, comp, got, want, mult)
 			}
 		}
-		if !near(cr.Boss.Sustained, out["CombinedDPS"], 0.005) {
+		// Contagion's own DoT is another skill's damage, on top of PoB's.
+		if !near(cr.Boss.Sustained-cr.Boss.Components["Contagion"], out["CombinedDPS"], 0.005) {
 			t.Errorf("%s (%s): Boss.Sustained %v, PoB CombinedDPS %v (%v)", id, cr.Skill, cr.Boss.Sustained, out["CombinedDPS"], cr.Boss.Components)
 		}
 		checked++
