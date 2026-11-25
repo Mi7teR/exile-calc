@@ -436,6 +436,37 @@ func heraldAuraCounts(db *ModDB, skills []*activeSkill) {
 	}
 }
 
+// manaAppliesToShock is calcs.perform's "Maximum Mana conversion from
+// Lightning Mastery": increases to maximum mana also apply to shock effect.
+func manaAppliesToShock(db *ModDB) {
+	if !db.Flag("ManaAppliesToShockEffect") {
+		return
+	}
+	mult := 100.0
+	if v, ok := db.MaxCfg(nil, "ImprovedManaAppliesToShockEffect"); ok {
+		mult = v
+	}
+	mult /= 100
+	var add []Mod
+	for d := db; d != nil; d = d.parent {
+		for i := range d.mods["Mana"] {
+			m := &d.mods["Mana"][i]
+			if !eligible(m, "INC", nil) {
+				continue
+			}
+			if _, ok := db.eval(m, nil); !ok {
+				continue
+			}
+			v, _ := num(m.Value)
+			add = append(add, Mod{Name: "EnemyShockEffect", Type: "INC", Value: math.Floor(v * mult), Source: m.Source,
+				Flags: m.Flags, KeywordFlags: m.KeywordFlags, Tags: convertedModTags(m.Tags, mult, false)})
+		}
+	}
+	for _, m := range add {
+		db.Add(m)
+	}
+}
+
 // impaleStacks is "Fix the configured impale stacks on the enemy" of
 // calcs.perform: the maximum when not configured, capped otherwise.
 func impaleStacks(db *ModDB) {

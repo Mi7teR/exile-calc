@@ -467,6 +467,7 @@ func (c *Calculator) Calc(b *pobcode.Build) (*Result, error) {
 	c.minionCounts(db, skills)
 	warcryExertMods(db, skills)
 	heraldAuraCounts(db, skills)
+	manaAppliesToShock(db)
 	chilling, guaranteedBonechill := chillSkills(db, skills)
 	charges(db) // early, for stats that depend on charges
 	curses, buffs := c.applyBuffs(db, skills, res)
