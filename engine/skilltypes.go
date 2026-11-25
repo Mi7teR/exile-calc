@@ -68,7 +68,7 @@ const (
 	stProjectileNumber                     = 62
 	stWarcry                               = 63
 	stInstant                              = 64
-	stBrand = 65
+	stBrand                                = 65
 	stDestroysCorpse                       = 66
 	stNonHitChill                          = 67
 	stChillingArea                         = 68

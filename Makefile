@@ -6,6 +6,7 @@ test:
 	go vet ./... && go test ./...
 
 lint:
+	@test -z "$$(gofmt -l .)" || { echo 'gofmt needed:'; gofmt -l .; exit 1; }
 	golangci-lint run ./...
 
 # Compare current benchmarks against the committed baseline.
