@@ -546,6 +546,14 @@ func (c *Calculator) setupSkills(db *ModDB, b *pobcode.Build, useSwap bool, res 
 			slotEnabled = strings.HasSuffix(g.Slot, " Swap") == useSwap
 		}
 		enabled[i] = i+1 == mainGroup || (g.Enabled && slotEnabled)
+		// CalcSetup.lua rebuilds the groups of tree-granted skills from the
+		// allocated nodes' ExtraSkill mods and removes the rest ("Remove any
+		// socket groups that no longer have a matching item"): a saved
+		// Tree:<id> group whose node no longer grants the skill (a build
+		// moved to a newer tree) is gone.
+		if strings.HasPrefix(g.Source, "Tree:") && !treeGrants(db, g) {
+			enabled[i] = false
+		}
 		cfg := &Cfg{SlotName: slotOf(g), GemCounts: map[string]int{}}
 		cfgs[i] = &groupCfg{cfg: cfg, props: db.List(&Cfg{SlotName: cfg.SlotName}, "GemProperty")}
 	}
@@ -2144,4 +2152,22 @@ func (c *Calculator) minionAurasOnPlayer(db *ModDB, s *activeSkill, add func([]M
 			}
 		}
 	}
+}
+
+// treeGrants reports whether a tree-sourced group's skill is granted by an
+// ExtraSkill mod of that node (source "Tree:<id>").
+func treeGrants(db *ModDB, g *pobcode.SocketGroup) bool {
+	if len(g.Gems) == 0 {
+		return false
+	}
+	for _, e := range db.List(nil, "ExtraSkill") {
+		if e.Mod.Source != g.Source {
+			continue
+		}
+		v, _ := e.Value.(map[string]any)
+		if id, _ := v["skillId"].(string); id == g.Gems[0].SkillID {
+			return true
+		}
+	}
+	return false
 }

@@ -487,7 +487,6 @@ func (c *Calculator) Calc(b *pobcode.Build) (*Result, error) {
 	c.applyCurses(db, skills, curses, res)
 	impaleStacks(db) // before ExtraAura, as in calcs.perform
 	extraAuras(db)
-	guaranteedChills(db, chilling)
 	c.mergeKeystones(db, keystones, res)
 	// CalcPerform.lua: Dancing Dervish (DisableWeapons); playerWeapons
 	// makes the main hand unarmed, and the player is Unencumbered without
@@ -504,6 +503,9 @@ func (c *Calculator) Calc(b *pobcode.Build) (*Result, error) {
 	charges(db)
 	flaskRecovery(db, flaskSt)
 	alternateCharges(db)
+	// CalcPerform.lua processes alternate charges (3158) before the guaranteed
+	// chills (3414): Affliction Charges' more chill effect scales them.
+	guaranteedChills(db, chilling)
 	actorMisc(db, mainSkill(skills), flaskSt.silver, flaskSt.silverInc)
 	rage(db, mainCfg(skills))
 	playerEnemyMods.apply(db)

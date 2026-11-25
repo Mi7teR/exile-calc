@@ -32,6 +32,11 @@ type triggerConfig struct {
 	// selfSource is config.source = mainSkill (a global trigger): no
 	// source search, and the source rate is the trigger rate cap.
 	selfSource bool
+	// source, sourceOut, trigRate: a source the config already chose
+	// (config.source / config.trigRate), so no source search.
+	source    *activeSkill
+	sourceOut map[string]float64
+	trigRate  float64
 }
 
 func isTriggered(s *activeSkill) bool {
@@ -223,6 +228,10 @@ func (c *Calculator) triggers(db *ModDB, main *activeSkill, w1 hitSource, w2 *hi
 			c.cwcTrigger(db, main)
 			return
 		}
+		if n == "snipe" {
+			c.snipeTrigger(db, main, by, w1, w2)
+			return
+		}
 	}
 	if cfgFn == nil {
 		delete(main.data, "triggered")
@@ -267,6 +276,9 @@ func (c *Calculator) defaultTrigger(db *ModDB, main *activeSkill, by *skillEffec
 	if cfg.selfSource {
 		source, sourceOut = main, map[string]float64{}
 		cfg.ignoreSourceRate = true
+	}
+	if cfg.source != nil {
+		source, sourceOut, trigRate = cfg.source, cfg.sourceOut, cfg.trigRate
 	}
 	if source == nil {
 		delete(main.data, "triggered")
@@ -466,4 +478,81 @@ func (c *Calculator) cwcTrigger(db *ModDB, main *activeSkill) {
 	main.data["triggered"] = true
 	main.data["triggerRate"] = rate
 	main.flags["globalTrigger"] = true
+}
+
+// snipeTrigger is the "snipe" trigger config (CalcTriggers.lua). Snipe
+// channels stages (config Multiplier:SnipeStage, at most SnipeStagesMax)
+// and on release triggers one supported bow skill per stage. As the main
+// skill Snipe hits with its stage multipliers when it supports nothing,
+// and deals no damage itself when it does. A supported skill gets the
+// stage multipliers and Snipe's hit rate (hitTimeMultiplier stages - 0.5)
+// as the trigger rate, or is self-cast when Snipe lacks the stages.
+func (c *Calculator) snipeTrigger(db *ModDB, main *activeSkill, by *skillEffect, w1 hitSource, w2 *hitSource) {
+	stages := math.Min(db.Sum("BASE", "Multiplier:SnipeStage"), db.Sum("BASE", "Multiplier:SnipeStagesMax"))
+	hitMulti := main.mods.SumCfg(main.cfg, "BASE", "snipeHitMulti")
+	ailmentMulti := main.mods.SumCfg(main.cfg, "BASE", "snipeAilmentMulti")
+	slot := func(s *activeSkill) string {
+		if s.group == nil {
+			return ""
+		}
+		return s.group.Slot
+	}
+	var triggered []*activeSkill
+	for _, s := range db.activeSkills {
+		if truthy(s.data["triggeredBySnipe"]) && s.group != nil && slot(s) == slot(main) {
+			triggered = append(triggered, s)
+		}
+	}
+	stageMods := func() {
+		tag := map[string]any{"type": "Multiplier", "var": "SnipeStages"}
+		main.mods.NewMod("Multiplier:SnipeStages", "BASE", stages, "Snipe")
+		main.mods.Add(Mod{Name: "Damage", Type: "MORE", Value: hitMulti, Flags: mfHit, Source: "Snipe", Tags: []map[string]any{tag}})
+		main.mods.Add(Mod{Name: "Damage", Type: "MORE", Value: ailmentMulti, Flags: mfAilment, Source: "Snipe", Tags: []map[string]any{tag}})
+	}
+	if main.active.ge.Name == "Snipe" {
+		// max(1, stages) as other channelled ranged skills; the first stage
+		// takes half the time.
+		main.data["hitTimeMultiplier"] = math.Max(1, stages) - 0.5
+		if len(triggered) == 0 {
+			stageMods()
+			return
+		}
+		for _, t := range []string{"Lightning", "Cold", "Fire", "Chaos", "Physical"} {
+			main.mods.Add(Mod{Name: "DealNo" + t, Type: "FLAG", Value: true,
+				Tags: []map[string]any{{"type": "SkillName", "skillName": "Snipe", "includeTransfigured": true}}})
+		}
+		return
+	}
+	idx := 0
+	for i, s := range triggered {
+		if s == main {
+			idx = i + 1
+			break
+		}
+	}
+	if idx == 0 || float64(idx) > stages {
+		delete(main.data, "triggered")
+		return
+	}
+	stageMods()
+	var source *activeSkill
+	var sourceOut map[string]float64
+	trigRate := 0.0
+	for _, s := range db.activeSkills {
+		if s.active.ge.Name != "Snipe" || s.group == nil || slot(s) != slot(main) {
+			continue
+		}
+		s.data["hitTimeMultiplier"] = stages - 0.5
+		o := c.offenceOnCopy(db, s, w1, w2)
+		speed, ok := o["HitSpeed"]
+		if !s.disabled && !s.cfg.SkillCond["usedByMirage"] && !s.types[95] && ok && (source == nil || speed > trigRate) {
+			source, sourceOut, trigRate = s, o, speed
+			db.output["ChannelTimeToTrigger"] = o["HitTime"]
+		}
+	}
+	if source == nil {
+		delete(main.data, "triggered")
+		return
+	}
+	c.defaultTrigger(db, main, by, &triggerConfig{source: source, sourceOut: sourceOut, trigRate: trigRate}, w1, w2)
 }
