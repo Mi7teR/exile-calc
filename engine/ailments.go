@@ -566,6 +566,31 @@ func skillDot(actor *ModDB, s *activeSkill, out map[string]float64, dpsMult, qua
 	}
 }
 
+// decay is Essence of Delirium's Decay (CalcOffence "Calculate DPS for
+// Essence of Delirium's Decay effect"): skillData.decay chaos DoT per second.
+func decay(actor *ModDB, s *activeSkill, out map[string]float64) {
+	base, ok := num(s.data["decay"])
+	if !ok || !s.flags["hit"] || !canDeal(s, "Chaos") {
+		return
+	}
+	s.flags["decay"] = true
+	list, enemy := s.mods, actor.enemy
+	dotCfg := *s.cfg
+	dotCfg.Flags = mfDot
+	dotCfg.KeywordFlags = s.cfg.KeywordFlags&^kfHit | kfDot["Chaos"]
+	names := []string{"DamageTaken", "DamageTakenOverTime", "ChaosDamageTaken", "ChaosDamageTakenOverTime"}
+	effMult := (1 - enemyResist(actor, &dotCfg, "Chaos")/100) * (1 + enemy.Sum("INC", names...)/100) * enemy.More(names...)
+	out["DecayEffMult"] = effMult
+	inc := list.SumCfg(&dotCfg, "INC", "Damage", "ChaosDamage")
+	more := list.MoreCfg(&dotCfg, "Damage", "ChaosDamage")
+	mult, ok := list.OverrideCfg(&dotCfg, "DotMultiplier")
+	if !ok {
+		mult = list.SumCfg(&dotCfg, "BASE", "DotMultiplier") + list.SumCfg(&dotCfg, "BASE", "ChaosDotMultiplier")
+	}
+	out["DecayDPS"] = base * (1 + inc/100) * more * (1 + mult/100) * effMult
+	out["DecayDuration"] = 8 / math.Max(buffExpirationSlowCap, calcMod(enemy, s.cfg, "BuffExpireFaster"))
+}
+
 // cullAndReservation is the culling and reservation DPS part of the damage
 // pass (CullMultiplier, ReservationDpsMultiplier).
 func cullAndReservation(actor *ModDB, s *activeSkill, p *hitPass, global map[string]float64, dpsMult float64) {

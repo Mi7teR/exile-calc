@@ -448,6 +448,7 @@ func (c *Calculator) offence(actor *ModDB, s *activeSkill, w1 hitSource, w2 *hit
 		impale(actor, s, p, out)
 	}
 	combineAilments(s, out, passes)
+	decay(actor, s, out)
 	if isAttack {
 		out["AverageHit"] = passes[0].out["AverageHit"]
 		for k, v := range passes[0].out {
@@ -1079,6 +1080,18 @@ func preDamageFunc(actor *ModDB, s *activeSkill, out map[string]float64) {
 			Tags: []map[string]any{{"type": "DistanceRamp", "ramp": []any{[]any{0.0, 0.0}, []any{r, 1.0}}}}})
 		s.mods.Add(Mod{Name: "EnemyFreezeChance", Type: "BASE", Value: 25.0, Source: "Skill:FreezingPulse",
 			Tags: []map[string]any{{"type": "DistanceRamp", "ramp": []any{[]any{0.0, 1.0}, []any{15 * out["ProjectileSpeedMod"], 0.0}}}}})
+	case "Storm Burst":
+		freq, _ := num(data["repeatFrequency"])
+		dur := numOr(data["duration"], 0) * out["DurationMod"]
+		switch s.part {
+		case 2:
+			// duration * 10 / (jump * 10) avoids floating point issues; +1 tick on spawn.
+			mulDPS(1 + math.Floor(dur*10/(freq*10)))
+		case 3:
+			jumps := math.Floor((dur + 0.001) / freq)
+			per, _ := num(data["remainingDurationDamage"])
+			s.mods.Add(Mod{Name: "Damage", Type: "MORE", Value: math.Max(per*jumps-100, 0), Source: "Skill:StormBurst"})
+		}
 	case "Spark", "Spark of the Nova":
 		if s.part == 2 {
 			mulDPS(1 + math.Floor(out["Duration"]/0.66))
