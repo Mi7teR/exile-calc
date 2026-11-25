@@ -4,9 +4,10 @@ import (
 	"math"
 	"os"
 	"path/filepath"
-	"reflect"
 	"strings"
 	"testing"
+
+	"github.com/google/go-cmp/cmp"
 
 	"github.com/Mi7teR/poe-lib/pobcode"
 )
@@ -176,12 +177,8 @@ func TestCombatDoesNotMutateBuild(t *testing.T) {
 	if len(b.ActiveConfig().Inputs) != inputs {
 		t.Errorf("config inputs %d, were %d", len(b.ActiveConfig().Inputs), inputs)
 	}
-	if !reflect.DeepEqual(before.Stats, after.Stats) {
-		for k, v := range before.Stats {
-			if after.Stats[k] != v {
-				t.Errorf("%s: %v before Combat, %v after", k, v, after.Stats[k])
-			}
-		}
+	if diff := cmp.Diff(before.Stats, after.Stats); diff != "" {
+		t.Errorf("Stats changed by Combat (-before +after):\n%s", diff)
 	}
 }
 
@@ -226,8 +223,8 @@ func TestCombatDeterministic(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !reflect.DeepEqual(x, y) {
-		t.Errorf("two runs differ:\n%+v\n%+v", x, y)
+	if diff := cmp.Diff(x, y); diff != "" {
+		t.Errorf("two runs differ (-first +second):\n%s", diff)
 	}
 }
 
