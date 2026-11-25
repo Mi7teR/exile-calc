@@ -723,10 +723,11 @@ const (
 
 // configNum is env.configInput[name] as a number (0 when unset).
 func configNum(actor *ModDB, name string) float64 {
-	if actor.build == nil {
+	b := actor.theBuild()
+	if b == nil {
 		return 0
 	}
-	if in, ok := configInput(actor.build.ActiveConfig(), name); ok && in.Kind == pobcode.KindNumber {
+	if in, ok := configInput(b.ActiveConfig(), name); ok && in.Kind == pobcode.KindNumber {
 		return in.Number
 	}
 	return 0

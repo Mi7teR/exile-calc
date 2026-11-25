@@ -261,19 +261,19 @@ type activeSkill struct {
 	// extraSkillMods is activeSkill.extraSkillModList: the ExtraSkillMod mods
 	// added to the skill, also given to its minions.
 	extraSkillMods []Mod
-	active      *skillEffect
-	effects     []*skillEffect // the active effect, then compatible supports
-	types       map[int]bool
-	minionTypes map[int]bool
-	flags       map[string]bool
-	group       *pobcode.SocketGroup
-	gem         *pobcode.Gem // srcInstance: the gem of the active effect
-	cfg         *Cfg
-	mods        *ModDB // skillModList
-	data        map[string]any
-	buffs       []*skillBuff
-	disabled    bool
-	main        bool // env.player.mainSkill
+	active         *skillEffect
+	effects        []*skillEffect // the active effect, then compatible supports
+	types          map[int]bool
+	minionTypes    map[int]bool
+	flags          map[string]bool
+	group          *pobcode.SocketGroup
+	gem            *pobcode.Gem // srcInstance: the gem of the active effect
+	cfg            *Cfg
+	mods           *ModDB // skillModList
+	data           map[string]any
+	buffs          []*skillBuff
+	disabled       bool
+	main           bool // env.player.mainSkill
 	// weapons are the types of the equipped weapons (weaponData1/2.type),
 	// which supports with weaponTypes check for skills granted by supports.
 	weapons [2]string
@@ -1339,8 +1339,8 @@ func (c *Calculator) buildSkillMods(db *ModDB, s *activeSkill, res *Result) {
 	if flags["melee"] {
 		dist, distVar = 15, "meleeDistance"
 	}
-	if db.build != nil {
-		if in, ok := configInput(db.build.ActiveConfig(), distVar); ok && in.Kind == pobcode.KindNumber {
+	if b := db.theBuild(); b != nil {
+		if in, ok := configInput(b.ActiveConfig(), distVar); ok && in.Kind == pobcode.KindNumber {
 			dist = in.Number
 		}
 	}
