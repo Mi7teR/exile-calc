@@ -239,6 +239,9 @@ func (c *Calculator) offence(actor *ModDB, s *activeSkill, w1 hitSource, w2 *hit
 	preSkillTypeFunc(s)
 	chainStats(actor, s, out)
 	projectileStats(s, out)
+	if s.flags["area"] || s.data["radius"] != nil || (s.flags["mine"] && s.types[stAura]) {
+		areaOfEffect(s, out)
+	}
 	trapMineStats(actor, s, out)
 	offenceDuration(actor, s, out)
 	impaleDuration(actor, s, out)
@@ -1085,6 +1088,33 @@ func preDamageFunc(actor *ModDB, s *activeSkill, out map[string]float64) {
 			Tags: []map[string]any{{"type": "DistanceRamp", "ramp": []any{[]any{0.0, 0.0}, []any{r, 1.0}}}}})
 		s.mods.Add(Mod{Name: "EnemyFreezeChance", Type: "BASE", Value: 25.0, Source: "Skill:FreezingPulse",
 			Tags: []map[string]any{{"type": "DistanceRamp", "ramp": []any{[]any{0.0, 1.0}, []any{15 * out["ProjectileSpeedMod"], 0.0}}}}})
+	case "Molten Strike", "Molten Strike of the Zenith":
+		if s.part == 1 {
+			break
+		}
+		enemyRadius, ok := s.mods.OverrideCfg(s.cfg, "EnemyRadius")
+		if !ok {
+			enemyRadius = s.mods.SumCfg(s.cfg, "BASE", "EnemyRadius")
+		}
+		inner, outer := out["AreaOfEffectRadiusSecondary"], out["AreaOfEffectRadiusTertiary"]
+		overlap := math.Min(1, (enemyRadius+out["AreaOfEffectRadius"]-inner)/(outer-inner))
+		out["OverlapChance"] = overlap * 100
+		mult := 1.0
+		if s.part == 3 || s.part == 5 || s.part == 6 {
+			mult = overlap * proj
+			if s.part == 6 {
+				// Zenith: the weighted average of normal and 5th attack balls.
+				fifth := 1 + numOr(data["FifthStrikeDamage"], 0)/100
+				mult = 0.8*mult + 0.2*fifth*overlap*(proj+numOr(data["FifthStrikeProjectiles"], 0))
+			}
+		}
+		if mult != 1 {
+			mulDPS(mult)
+			if v, ok := out["SkillDPSMultiplier"]; ok {
+				mult *= v
+			}
+			out["SkillDPSMultiplier"] = mult
+		}
 	case "Avenging Flame":
 		// The trigger source's totem life (triggerSourceUUID's TotemLife).
 		add := numOr(data["triggerSourceTotemLife"], 0) * numOr(data["lifeDealtAsFire"], 0) / 100
@@ -1669,4 +1699,92 @@ func explodeSource(s *activeSkill, entries []ListEntry) string {
 		return sources[n]
 	}
 	return ""
+}
+
+// roundSymmetric is Common.lua roundSymmetric (no decimals).
+func roundSymmetric(v float64) float64 {
+	if v >= 0 {
+		return math.Floor(v + 0.5)
+	}
+	return math.Ceil(v - 0.5)
+}
+
+// calcAreaMod is CalcOffence.lua calcAreaMod.
+func calcAreaMod(inc, more float64) float64 {
+	p := roundSymmetric(inc*100) * roundSymmetric(math.Max(0, more)*100) / 100
+	if p >= 0 {
+		p = math.Floor(p)
+	} else {
+		p = math.Ceil(p)
+	}
+	return math.Max(0, p) / 100
+}
+
+// calcRadius is CalcOffence.lua calcRadius.
+func calcRadius(base, areaMod, radiusMod float64) float64 {
+	pct := math.Floor(100 * math.Sqrt(areaMod))
+	pct = math.Floor(pct * radiusMod)
+	return math.Floor(base * pct / 100)
+}
+
+// areaOfEffect is calcs.offence's calcAreaOfEffect: AreaOfEffectMod and
+// the primary, secondary and tertiary radii (Molten Strike's tertiary
+// radius from projectile speed; random base radius margins). The
+// weapon-range radius (radiusIsWeaponRange) is not ported.
+func areaOfEffect(s *activeSkill, out map[string]float64) {
+	list, cfg, data := s.mods, s.cfg, s.data
+	mods := func(names ...string) (float64, float64) {
+		return 1 + list.SumCfg(cfg, "INC", names...)/100, list.MoreCfg(cfg, names...)
+	}
+	inc, more := mods("AreaOfEffect", "AreaOfEffectPrimary")
+	out["AreaOfEffectMod"] = calcAreaMod(inc, more)
+	radiusMod := calcMod(list, cfg, "AreaOfEffectRadius")
+	radius, ok := num(data["radius"])
+	if !ok {
+		return
+	}
+	s.flags["area"] = true
+	extra := numOr(data["radiusExtra"], 0)
+	out["AreaOfEffectRadius"] = calcRadius(radius+extra+list.SumCfg(cfg, "BASE", "AreaOfEffect"), out["AreaOfEffectMod"], radiusMod)
+	out["AreaOfEffectRadiusMetres"] = out["AreaOfEffectRadius"] / 10
+	secondary, hasSecondary := num(data["radiusSecondary"])
+	if hasSecondary {
+		i, m := mods("AreaOfEffect", "AreaOfEffectSecondary")
+		out["AreaOfEffectModSecondary"] = calcAreaMod(i, m)
+		out["AreaOfEffectRadiusSecondary"] = calcRadius(secondary+extra, out["AreaOfEffectModSecondary"], radiusMod)
+		out["AreaOfEffectRadiusSecondaryMetres"] = out["AreaOfEffectRadiusSecondary"] / 10
+	}
+	tertiary, ok := num(data["radiusTertiary"])
+	if !ok {
+		return
+	}
+	i, m := mods("AreaOfEffect", "AreaOfEffectTertiary")
+	areaMod := calcAreaMod(i, m)
+	out["AreaOfEffectModTertiary"] = areaMod
+	base := tertiary + extra
+	switch {
+	case truthy(data["projectileSpeedAppliesToMSAreaOfEffect"]):
+		si, sm := mods("ProjectileSpeed")
+		speedMod := round(round(si*sm, 10), 2)
+		out["SpeedModTertiary"] = speedMod
+		// calcMoltenStrikeTertiaryRadius: the deadzone is the secondary radius.
+		maxDist := math.Sqrt(base*base*areaMod - secondary*secondary*(areaMod-1))
+		out["AreaOfEffectRadiusTertiary"] = math.Floor((maxDist-secondary)*speedMod + secondary)
+	case data["radiusTertiaryBaseMargin"] != nil:
+		marginPct := numOr(data["radiusTertiaryBaseMargin"], 0)
+		margin := marginPct / 100
+		width := marginPct*2 + 1
+		occ := map[float64]float64{}
+		for d := 1 - margin; d <= 1+margin+0.01; d += 0.01 {
+			occ[math.Floor(base*d)]++
+		}
+		sum := 0.0
+		for b, n := range occ {
+			sum += calcRadius(b, areaMod, radiusMod) * n
+		}
+		out["AreaOfEffectRadiusTertiary"] = sum / width
+	default:
+		out["AreaOfEffectRadiusTertiary"] = calcRadius(base, areaMod, radiusMod)
+	}
+	out["AreaOfEffectRadiusTertiaryMetres"] = out["AreaOfEffectRadiusTertiary"] / 10
 }

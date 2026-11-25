@@ -87,6 +87,13 @@ var hooks = map[string]Hook{
 		}
 		return []any{minionConvert(a, map[string]any{"type": "Multiplier", "var": "Socketed" + firstToUpper(colour) + "GemsIn{SlotName}"})}
 	},
+	// ["strength's damage bonus instead grants (%d+)%% increased melee physical damage per (%d+) strength"] = function(num, _, perStr) return {
+	//   mod("StrDmgBonusRatioOverride", "BASE", num / tonumber(perStr)) } end,
+	"specialModList[^strength's damage bonus instead grants (%d+)%% increased melee physical damage per (%d+) strength$]": func(p *Parser, a []any) any {
+		n, _ := toNumber(arg(a, 0)).(float64)
+		per, _ := toNumber(argS(a, 2)).(float64)
+		return []any{newMod("StrDmgBonusRatioOverride", "BASE", n/per, 0, 0)}
+	},
 	// ["every (%d+) seconds, gain (%d+)%% of physical damage as extra fire damage for (%d+) seconds"] = function(frequency, _, num, duration) return {
 	//   mod("PhysicalDamageGainAsFire", "BASE", tonumber(num), { type = "Condition", var = "NgamahuFlamesAdvance" }) } end,
 	"specialModList[^every (%d+) seconds, gain (%d+)%% of physical damage as extra fire damage for (%d+) seconds$]": func(p *Parser, a []any) any {
