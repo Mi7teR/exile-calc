@@ -101,13 +101,12 @@ func TestCombatSingleTargetInvariant(t *testing.T) {
 // (the boss hits, not the pack's, select: a collapsed shape hits the pack
 // less than once). Flags a
 // shape that collapses on the pack (area radius 0, explosions as rays).
-// pobOverlap shapes are left out: on the pack they start from one
-// projectile's damage (PoB / dpsMultiplier), which the geometry does not
-// repeat (orbiting balls, tornado stages), so they may fall below PoB.
+// pobOverlap shapes are included: the most-hit mob keeps PoB's
+// single-target overlap, so they must not fall below PoB either.
 func TestCombatPackSanity(t *testing.T) {
 	checked := 0
 	corpusCombat(t, func(id string, res *Result, cr *CombatResult) {
-		if sourcesOf(res.main, res.Stats).kind != "" || cr.Boss.HitsPerCast < 1 || shapeOf(res.main, res.Stats).pobOverlap {
+		if sourcesOf(res.main, res.Stats).kind != "" || cr.Boss.HitsPerCast < 1 {
 			return
 		}
 		if cr.Pack.Sustained < 0.9*cr.Pack.PoB {

@@ -268,16 +268,38 @@ func combatDPS(res *Result, m targetModel, isBoss bool, seed uint64) (CombatDPS,
 		hits[0] = 1
 	}
 
+	// ovs is each target's overlap factor for hits and stacking DoTs. On the
+	// pack each projectile counts once (unoverlap), but the most-hit mob is
+	// the target PoB's dpsMultiplier describes, so it gets at least PoB's
+	// single-target value: the pack sum never drops below PoB when anything
+	// is hit, and shapes whose geometry cannot repeat hits (singleHit,
+	// one area per use) are not cut to PoB / dpsMultiplier.
+	ovs := make([]float64, len(hits))
+	top := 0
+	for i, h := range hits {
+		ovs[i] = unoverlap
+		if h > hits[top] {
+			top = i
+		}
+	}
+	if unoverlap < 1 && hits[top] > 0 {
+		if h := hits[top]; h*unoverlap < math.Min(h, 1) {
+			ovs[top] = math.Min(h, 1) / h
+		}
+	}
+
 	d := CombatDPS{PoB: out["CombinedDPS"], Components: map[string]float64{}}
 	mult := combinedMult(s, out)
 	vals := make([]float64, len(combatComponents))
-	for _, h := range hits {
+	effHits := 0.0 // sum of hits × overlap factor, for the burst
+	for t, h := range hits {
 		d.HitsPerCast += h
+		effHits += h * ovs[t]
 		dots := 0.0
 		for i, cmp := range combatComponents {
 			v := componentBase(cmp.name, cmp.out, out) * src.sustain(cmp.out, s)
 			if cmp.hit || stackingDot(cmp.out, s) {
-				v *= unoverlap
+				v *= ovs[t]
 			}
 			switch {
 			case cmp.hit:
@@ -316,7 +338,7 @@ func combatDPS(res *Result, m targetModel, isBoss bool, seed uint64) (CombatDPS,
 	// apply as for Sustained.
 	if src.kind != "" {
 		if rate := hitSpeed(out); rate > 0 {
-			d.Burst = out["TotalDPS"] * unoverlap / rate * d.HitsPerCast * src.burstHits * mult
+			d.Burst = out["TotalDPS"] / rate * effHits * src.burstHits * mult
 		}
 	}
 
