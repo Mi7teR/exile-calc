@@ -255,6 +255,12 @@ func (c *Calculator) Calc(b *pobcode.Build) (*Result, error) {
 			if skipSlot(slot.Name, set.UseSecondWeaponSet) {
 				continue
 			}
+			// CalcSetup.lua: Graft slots exist on the 3.27 tree only, Wickerman
+			// slots on the 3.30 tree only.
+			if tree := spec.TreeVersion; (strings.HasPrefix(slot.Name, "Graft ") && !strings.Contains(tree, "3_27")) ||
+				(strings.HasPrefix(slot.Name, "Wickerman ") && !strings.Contains(tree, "3_30")) {
+				continue
+			}
 			// CalcSetup.lua: the active swap set's slots lose " Swap".
 			if set.UseSecondWeaponSet {
 				slot.Name = strings.Replace(slot.Name, " Swap", "", 1)

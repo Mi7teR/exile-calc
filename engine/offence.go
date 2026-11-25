@@ -246,8 +246,8 @@ func (c *Calculator) offence(actor *ModDB, s *activeSkill, w1 hitSource, w2 *hit
 	offenceDuration(actor, s, out)
 	// CalcPerform.lua's "maximum sustainable stages" block, from the
 	// skill's own cached outputs: Earthquake of Amplification's aftershock
-	// scales per 100ms of duration. Blight, Penance Brand of Dissipation
-	// and Scorching Ray stages there are not ported.
+	// scales per 100ms of duration (the rate-based stages are set after the
+	// speed, see sustainableStages).
 	if s.active.ge.Name == "Earthquake of Amplification" && s.part == 2 {
 		list.NewMod("Multiplier:100msEarthquakeDuration", "BASE", math.Floor(out["Duration"]*10), "Skill:EarthquakeAltX")
 	}
@@ -422,6 +422,7 @@ func (c *Calculator) offence(actor *ModDB, s *activeSkill, w1 hitSource, w2 *hit
 	if isAttack {
 		hitTime(s, out, true)
 	}
+	sustainableStages(s, out)
 	// skillData.dpsMultiplier is read when used: Ruthless (MAX) changes it
 	// in the damage passes.
 	dpsMod := (1 + list.SumCfg(cfg, "INC", "DPS")/100) * list.MoreCfg(cfg, "DPS")
@@ -1914,5 +1915,32 @@ func redirectAddedDamage(list *ModDB, cfg *Cfg) {
 				d.mods[from] = kept
 			}
 		}
+	}
+}
+
+// sustainableStages is the rest of CalcPerform.lua's "maximum sustainable
+// stages" block, from the skill's cached Speed, HitSpeed and Duration
+// (getCachedOutputValue; the cached run has no stage mods of its own, and
+// these do not depend on them): Blight's channelled stages, Penance Brand
+// of Dissipation's ticks and Scorching Ray's maximum, on skill part 2.
+func sustainableStages(s *activeSkill, out map[string]float64) {
+	if s.part != 2 {
+		return
+	}
+	name := s.active.ge.Name
+	stage := "Multiplier:" + strings.Join(strings.Fields(name), "")
+	set := func(n float64) {
+		s.mods.NewMod(stage+"MaxStages", "BASE", n, "Base")
+		s.mods.NewMod(stage+"StageAfterFirst", "BASE", n, "Base")
+	}
+	switch name {
+	case "Blight", "Blight of Contagion", "Blight of Atrophy":
+		base := s.mods.SumCfg(s.cfg, "BASE", "BlightBaseMaxStages")
+		set(math.Min(math.Floor(out["Speed"]*out["Duration"])-1, base-1))
+	case "Penance Brand of Dissipation":
+		// HitSpeed is the brand's activation frequency.
+		set(math.Max(math.Min(math.Floor(out["HitSpeed"]*out["Duration"])-1, 19), 0))
+	case "Scorching Ray", "Scorching Ray of Immolation":
+		set(7)
 	}
 }
