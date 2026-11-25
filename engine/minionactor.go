@@ -386,6 +386,11 @@ func (c *Calculator) mainMinion(db *ModDB, skills []*activeSkill, buffs map[stri
 		return nil
 	}
 	weapon, weaponType, weapon2, weapon2Type := c.minionWeapon(s, m, mdb, gear)
+	if !s.flags["spectre"] && s.mods.FlagCfg(s.cfg, "NonSpectreMinionsUseParentMainHandAttackTime") {
+		if pw, _ := playerWeapons(db, db.gearMods, -1); pw.attackRate > 0 {
+			weapon.attackRate = pw.attackRate
+		}
+	}
 	mskills := c.createMinionSkills(mdb, s, m, [2]string{weaponType, weapon2Type}, res)
 	ms := mskills[0]
 	mdb.activeSkills = mskills
