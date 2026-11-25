@@ -452,6 +452,7 @@ func (c *Calculator) Calc(b *pobcode.Build) (*Result, error) {
 	warcryPower(db)
 	playerEnemyMods := enemyModifiers{}
 	playerEnemyMods.apply(db)
+	c.earlyMinionEnemyMods(db, skills, b.Level)
 	// CalcPerform.lua: "gain maximum life instead of maximum energy shield
 	// from equipped armour items".
 	if db.Flag("ConvertArmourESToLife") {

@@ -414,6 +414,28 @@ var minionResultStats = []string{
 // calcs.perform does: its ModDB, the buffs and auras that reach it, then
 // calcs.defence. Minion items, flasks, curse, warcry and link buffs on
 // minions are not ported.
+// earlyMinionEnemyMods is applyEnemyModifiers(env.minion, true) of
+// calcs.perform: env.minion's modDB (base mods and items, set up by
+// initMinionModDB at the start of perform) gives its EnemyModifier mods to
+// the enemy before curses are assigned, e.g. the Animated Guardian's Dying
+// Breath "Nearby Enemies have X% increased Effect of Curses on them".
+// PoB differs from the game only in that env.minion exists only while the
+// minion's skill is the main skill; that is kept, as the corpus is built
+// the same way.
+func (c *Calculator) earlyMinionEnemyMods(db *ModDB, skills []*activeSkill, charLevel int) {
+	s := mainSkill(skills)
+	if s == nil || s.disabled || db.enemyEnv == nil {
+		return
+	}
+	m := c.minionOf(s, charLevel, db.enemyEnv.level)
+	if m == nil || m.data.Hostile {
+		return
+	}
+	if mdb, _ := c.initMinionDB(db, s, m, &Result{}); mdb != nil {
+		enemyModifiers{}.apply(mdb)
+	}
+}
+
 func (c *Calculator) mainMinion(db *ModDB, skills []*activeSkill, buffs map[string][]Mod, charLevel int, res *Result) *MinionResult {
 	s := mainSkill(skills)
 	if s == nil || s.disabled {
