@@ -46,10 +46,10 @@ const minBuildsWithoutTimeless = 2
 
 // Minion ratchet: oracle minions (each minion skill as the main skill,
 // output.Minion) whose minionResultStats are all within tolerance.
-const minMinionsWithinTolerance = 119
+const minMinionsWithinTolerance = 122
 
 // Minion offence ratchet: oracle minions whose TotalDPS is within tolerance.
-const minMinionDPSWithinTolerance = 119
+const minMinionDPSWithinTolerance = 122
 
 // Player offence ratchet: builds whose main skill playerRatchetStats are
 // each within tolerance.

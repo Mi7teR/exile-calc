@@ -693,7 +693,7 @@ var hooks = map[string]Hook{
 	//   mod("SkillData", "LIST", { key = "ignoreHexproof", value = true }, { type = "SkillId", skillId = gemIdLookup[name] }) } end
 	"specialModList[^([%a%s]+) can affect hexproof enemies$]": func(p *Parser, a []any) any {
 		tag := map[string]any{"type": "SkillId"}
-		if id, ok := p.t.exact["gemIdLookup"][argS(a, cap1)]; ok {
+		if id, ok := p.t.exact["gemIdLookup"][argS(a, cap1)].(string); ok {
 			tag[keySkillID] = id
 		}
 		v := map[string]any{"key": "ignoreHexproof", "value": true}

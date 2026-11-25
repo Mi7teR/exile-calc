@@ -429,7 +429,9 @@ func (c *Calculator) applyTinctures(db *ModDB, res *Result, slots []flaskSlot, t
 		if !sl.active {
 			continue
 		}
-		it, mods := c.itemMods(sl.item, res)
+		// applyFlasks already read every active slot and reported its
+		// unparsed lines; a scratch Result keeps them from being listed twice.
+		it, mods := c.itemMods(sl.item, &Result{})
 		if it == nil || it.Base == nil || it.Base.Tincture == nil {
 			continue
 		}
