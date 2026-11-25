@@ -693,6 +693,7 @@ func (c *Calculator) hitDamage(actor *ModDB, s *activeSkill, p *hitPass) {
 		warcry = 1
 	}
 	scaled *= out["RuthlessBlowHitEffect"] * out["FistOfWarDamageEffect"] * warcry
+	postCritFunc(s, out)
 
 	// Base hit damage.
 	baseMult, eff := 1.0, 1.0
@@ -1098,6 +1099,16 @@ func preDamageFunc(actor *ModDB, s *activeSkill, out map[string]float64) {
 			Tags: []map[string]any{{"type": "DistanceRamp", "ramp": []any{[]any{0.0, 0.0}, []any{r, 1.0}}}}})
 		s.mods.Add(Mod{Name: "EnemyFreezeChance", Type: "BASE", Value: 25.0, Source: "Skill:FreezingPulse",
 			Tags: []map[string]any{{"type": "DistanceRamp", "ramp": []any{[]any{0.0, 1.0}, []any{15 * out["ProjectileSpeedMod"], 0.0}}}}})
+	case "Lightning Tendrils of Eccentricity":
+		// The DPS of each pulse part.
+		interval := numOr(data["pulseInterval"], 0)
+		part := []map[string]any{{"type": "SkillPart", "skillPart": float64(s.part)}}
+		switch s.part {
+		case 2:
+			s.mods.Add(Mod{Name: "DPS", Type: "MORE", Value: -(1 / interval) * 100, Source: "Normal pulse", Tags: part})
+		case 3:
+			s.mods.Add(Mod{Name: "DPS", Type: "MORE", Value: -(interval - 1) / interval * 100, Source: "Stronger pulse", Tags: part})
+		}
 	case "Molten Strike", "Molten Strike of the Zenith":
 		if s.part == 1 {
 			break
@@ -1815,4 +1826,22 @@ func areaOfEffect(s *activeSkill, out map[string]float64) {
 		out["AreaOfEffectRadiusTertiary"] = calcRadius(base, areaMod, radiusMod)
 	}
 	out["AreaOfEffectRadiusTertiaryMetres"] = out["AreaOfEffectRadiusTertiary"] / 10
+}
+
+// postCritFunc ports the skills' postCritFunc (Data/Skills/*.lua), run
+// after the crit chance of a damage pass.
+func postCritFunc(s *activeSkill, out map[string]float64) {
+	switch s.active.ge.Name {
+	case "Lightning Tendrils of Eccentricity":
+		// The 5th pulse's more damage as an average over the interval.
+		if s.part != 1 {
+			return
+		}
+		interval := numOr(s.data["pulseInterval"], 0)
+		pulse := numOr(s.data["pulseDamage"], 0) / 100
+		crit, eff, multi := out["PreEffectiveCritChance"]/100, out["CritChance"]/100, out["CritMultiplier"]
+		avg := 100 * (((interval-1)*(1+crit*(multi-1))+(1+pulse)*multi)/(interval*((1-eff)+multi*eff)) - 1)
+		s.mods.Add(Mod{Name: "Damage", Type: "MORE", Value: avg, Source: "Average Pulse Damage", KeywordFlags: kfHit | kfAilment,
+			Tags: []map[string]any{{"type": "SkillPart", "skillPart": 1.0}}})
+	}
 }

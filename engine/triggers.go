@@ -83,6 +83,9 @@ var triggerConfigs = map[string]func(db *ModDB, main *activeSkill) *triggerConfi
 			triggerSkillCond:   func(main, s *activeSkill) bool { return s.types[20] }, // Melee
 			triggeredSkillCond: func(main, s *activeSkill) bool { return truthy(s.data["triggeredByCovetousDark"]) }}
 	},
+	"cast when stunned": func(_ *ModDB, main *activeSkill) *triggerConfig {
+		return &triggerConfig{selfSource: true, triggerChance: numOr(main.data["chanceToTriggerOnStun"], 0)}
+	},
 	"cast on ward break": func(_ *ModDB, main *activeSkill) *triggerConfig {
 		return &triggerConfig{selfSource: true, triggerChance: numOr(main.data["chanceToTriggerOnWardBreak"], 0)}
 	},
@@ -342,6 +345,9 @@ func (c *Calculator) defaultTrigger(db *ModDB, main *activeSkill, by *skillEffec
 			overlaps = 1
 		}
 		skillRate = math.Min(out["TriggerRateCap"], out["EffectiveSourceRate"]*overlaps)
+	case cfg.ignoreSourceRate && cfg.triggeredSkillCond == nil:
+		// skillFlags.globalTrigger: no source rate breakpoints.
+		skillRate = out["EffectiveSourceRate"]
 	default:
 		rot := triggered
 		if cfg.triggeredSkillCond == nil {
