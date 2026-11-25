@@ -245,15 +245,24 @@ func writeModParser(read func(string) (string, error), tree *gamedata.Tree, gems
 	if err != nil {
 		return err
 	}
-	tables, hooks, err := convertParserTables(parserSrc, globalSrc, clusterSrc, tree)
-	if err != nil {
-		return err
-	}
-	// Modules/Data.lua tables the engine's ItemCondition tag reads.
 	dataSrc, err := read("Modules/Data.lua")
 	if err != nil {
 		return err
 	}
+	// data.keystones: the keystones ModParser turns into special mods.
+	ksv, err := luadata.ExtractAssignment(dataSrc, "data.keystones", nil)
+	if err != nil {
+		return fmt.Errorf("Data.lua: %w", err)
+	}
+	var keystones []string
+	if err := luadata.Decode(ksv, &keystones); err != nil {
+		return fmt.Errorf("Data.lua keystones: %w", err)
+	}
+	tables, hooks, err := convertParserTables(parserSrc, globalSrc, clusterSrc, keystones)
+	if err != nil {
+		return err
+	}
+	// Modules/Data.lua tables the engine's ItemCondition tag reads.
 	for _, name := range []string{"itemTagSpecial", "itemTagSpecialExclusionPattern"} {
 		v, err := luadata.ExtractAssignment(dataSrc, "data."+name, nil)
 		if err != nil {

@@ -8,7 +8,6 @@ import (
 	"strings"
 	"unicode"
 
-	"github.com/Mi7teR/poe-lib/gamedata"
 	"github.com/Mi7teR/poe-lib/internal/luadata"
 )
 
@@ -143,7 +142,7 @@ func listMod(args ...luadata.Value) *luadata.Table {
 // source so the rest of data stays unresolved.
 var ailmentDefaults = map[string]string{"Chill": "10", "Shock": "15", "Scorch": "10", "Brittle": "2", "Sap": "6"}
 
-func convertParserTables(modParserSrc, globalSrc, clusterSrc string, tree *gamedata.Tree) (map[string]any, []string, error) {
+func convertParserTables(modParserSrc, globalSrc, clusterSrc string, keystones []string) (map[string]any, []string, error) {
 	for name, v := range ailmentDefaults {
 		modParserSrc = strings.ReplaceAll(modParserSrc, `data.nonDamagingAilment["`+name+`"].default`, v)
 	}
@@ -164,15 +163,8 @@ func convertParserTables(modParserSrc, globalSrc, clusterSrc string, tree *gamed
 		tables[name] = t
 	}
 
-	// ModParser.lua: keystones become special mods, then every special
-	// pattern is anchored ("^"..k.."$").
-	var keystones []string
-	for _, n := range tree.Nodes {
-		if n.IsKeystone {
-			keystones = append(keystones, n.Name)
-		}
-	}
-	sort.Strings(keystones)
+	// ModParser.lua: the keystones of data.keystones become special mods,
+	// then every special pattern is anchored ("^"..k.."$").
 	special := tables["specialModList"]
 	for _, name := range keystones {
 		ks, _ := createMod([]luadata.Value{luadata.String("Keystone"), luadata.String("LIST"), luadata.String(name)})

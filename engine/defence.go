@@ -118,6 +118,23 @@ func (c *Calculator) defence(db *ModDB, gearMods map[string][]modparser.Mod, key
 		out["DamageTakenOnBlock"] = 100 - out["BlockEffect"]
 	}
 
+	// Light Radius increases to Life Regeneration and Mana Regeneration
+	// increases to ES Recharge (regenerationConversions), then Armour
+	// increases to ES Recharge (Armour and Energy Shield Mastery).
+	for _, x := range [][3]string{{"LightRadius", "LifeRegen", "LightRadiusAppliesToLifeRegen"},
+		{"ManaRegen", "EnergyShieldRecharge", "ManaRegenAppliesToEnergyShieldRecharge"}} {
+		if v, ok := db.MaxCfg(nil, x[2]); ok && v != 0 {
+			convertIncMods(db, []string{x[0]}, x[1], v/100)
+		}
+	}
+	if db.Flag("ArmourAppliesToEnergyShieldRecharge") {
+		mult := 100.0
+		if v, ok := db.MaxCfg(nil, "ImprovedArmourAppliesToEnergyShieldRecharge"); ok {
+			mult = v
+		}
+		convertIncMods(db, []string{"Armour", "ArmourAndEvasion", "Defences"}, "EnergyShieldRecharge", mult/100)
+	}
+
 	// Defences increased by resistances and block.
 	for _, x := range []struct{ flag, name, stat string }{
 		{"ArmourIncreasedByUncappedFireRes", "Armour", "FireResistTotal"},

@@ -451,20 +451,28 @@ func manaAppliesToShock(db *ModDB) {
 	if v, ok := db.MaxCfg(nil, "ImprovedManaAppliesToShockEffect"); ok {
 		mult = v
 	}
-	mult /= 100
+	convertIncMods(db, []string{"Mana"}, "EnemyShockEffect", mult/100)
+}
+
+// convertIncMods adds, for each applicable INC mod of the names, an INC mod
+// of to at mult of its value (floored), as the "X also applies to Y"
+// conversions of calcs.perform and calcs.defence do.
+func convertIncMods(db *ModDB, names []string, to string, mult float64) {
 	var add []Mod
 	for d := db; d != nil; d = d.parent {
-		for i := range d.mods["Mana"] {
-			m := &d.mods["Mana"][i]
-			if !eligible(m, "INC", nil) {
-				continue
+		for _, name := range names {
+			for i := range d.mods[name] {
+				m := &d.mods[name][i]
+				if !eligible(m, "INC", nil) {
+					continue
+				}
+				if _, ok := db.eval(m, nil); !ok {
+					continue
+				}
+				v, _ := num(m.Value)
+				add = append(add, Mod{Name: to, Type: "INC", Value: math.Floor(v * mult), Source: m.Source,
+					Flags: m.Flags, KeywordFlags: m.KeywordFlags, Tags: convertedModTags(m.Tags, mult, false)})
 			}
-			if _, ok := db.eval(m, nil); !ok {
-				continue
-			}
-			v, _ := num(m.Value)
-			add = append(add, Mod{Name: "EnemyShockEffect", Type: "INC", Value: math.Floor(v * mult), Source: m.Source,
-				Flags: m.Flags, KeywordFlags: m.KeywordFlags, Tags: convertedModTags(m.Tags, mult, false)})
 		}
 	}
 	for _, m := range add {

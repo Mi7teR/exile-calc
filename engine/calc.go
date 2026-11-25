@@ -25,7 +25,7 @@ type Calculator struct {
 	gemIdx *gemIndex
 
 	keystoneOnce sync.Once
-	keystones    map[string]*gamedata.Node // PassiveTree.lua keystoneMap
+	keystones    map[string]keystone // PassiveTree.lua keystoneMap
 }
 
 func New() (*Calculator, error) {
@@ -1151,28 +1151,44 @@ func weaponHandLocal(sm Mod, m modparser.Mod, slotNum int) Mod {
 // such as "Blood Magic") adds that keystone's node mods once, with the
 // source of the line unless it comes from the tree. PoB runs it at the
 // start of calcs.perform, after flasks and after buffs.
+// keystone is an entry of the keystone map: its mod source and stat lines.
+type keystone struct {
+	source string
+	stats  []string
+}
+
 func (c *Calculator) mergeKeystones(db *ModDB, added map[string]bool, res *Result) {
 	c.keystoneOnce.Do(func() {
-		c.keystones = map[string]*gamedata.Node{}
+		c.keystones = map[string]keystone{}
 		for _, n := range c.data.Tree.Nodes {
 			if n.IsKeystone && n.Group != 0 {
-				c.keystones[n.Name] = n
-				c.keystones[strings.ToLower(n.Name)] = n
+				k := keystone{fmt.Sprintf("Tree:%d", n.ID), n.Stats}
+				c.keystones[n.Name] = k
+				c.keystones[strings.ToLower(n.Name)] = k
+			}
+		}
+		// Legacy keystones of the legion data (Corrupted Soul...), unless
+		// the tree has one of that name.
+		if t := c.data.Timeless; t != nil {
+			for _, n := range t.Nodes {
+				if _, ok := c.keystones[n.Name]; n.Keystone && !ok {
+					c.keystones[n.Name] = keystone{"Tree:" + n.ID, n.Stats}
+				}
 			}
 		}
 	})
 	for _, e := range db.List(nil, "Keystone") {
 		name, _ := e.Value.(string)
-		node := c.keystones[name]
-		if added[name] || node == nil {
+		node, ok := c.keystones[name]
+		if added[name] || !ok {
 			continue
 		}
 		added[name] = true
-		source := fmt.Sprintf("Tree:%d", node.ID)
+		source := node.source
 		if e.Mod.Source != "" && !strings.Contains(strings.ToLower(e.Mod.Source), "tree") {
 			source = e.Mod.Source
 		}
-		for _, m := range c.nodeLines(node.Stats, res) {
+		for _, m := range c.nodeLines(node.stats, res) {
 			db.Add(fromParsed(m, source))
 		}
 	}
