@@ -245,6 +245,7 @@ func (c *Calculator) offence(actor *ModDB, s *activeSkill, w1 hitSource, w2 *hit
 	preSkillTypeFunc(s)
 	chainStats(actor, s, out)
 	projectileStats(s, out)
+	pierceForkStats(actor, s, out)
 	weaponRange(s, w1, w2, out)
 	if s.flags["area"] || s.data["radius"] != nil || (s.flags["mine"] && s.types[stAura]) {
 		areaOfEffect(s, out)
@@ -1556,6 +1557,32 @@ func projectileStats(s *activeSkill, out map[string]float64) {
 	}
 	proj := math.Floor(list.SumCfg(cfg, "BASE", "ProjectileCount") * list.MoreCfg(cfg, "ProjectileCount"))
 	out["ProjectileCount"] = math.Max(math.Min(proj, projMax), projMin)
+}
+
+// pierceForkStats is the fork and pierce part of calcs.offence's projectile
+// skill type stats: ForkCountMax and PierceCount (100 means all targets).
+// Skills that cannot fork or pierce leave the output at 0.
+func pierceForkStats(actor *ModDB, s *activeSkill, out map[string]float64) {
+	if !s.flags["projectile"] {
+		return
+	}
+	list, cfg := s.mods, s.cfg
+	if !list.FlagCfg(cfg, "CannotFork") && list.FlagCfg(cfg, "ForkOnce") {
+		limit := 1.0
+		if list.FlagCfg(cfg, "ForkTwice") {
+			limit = 2
+		}
+		out["ForkCountMax"] = math.Min(list.SumCfg(cfg, "BASE", "ForkCountMax"), limit)
+	}
+	if list.FlagCfg(cfg, "CannotPierce") {
+		out["PierceCount"] = 0
+		return
+	}
+	if list.FlagCfg(cfg, "PierceAllTargets") || actor.enemy.Flag("AlwaysPierceSelf") {
+		out["PierceCount"] = 100
+		return
+	}
+	out["PierceCount"] = list.SumCfg(cfg, "BASE", "PierceCount")
 }
 
 // chainStats is the chaining part of calcs.offence's skill type stats:

@@ -59,13 +59,13 @@ const minPlayerDPSWithinTolerance = 85
 var playerOffenceStats = []string{"Speed", "HitChance", "CritChance", "CritMultiplier", "AverageDamage", "TotalDPS",
 	"IgniteChance", "IgniteDPS", "TotalDot", "WithIgniteDPS", "TotalDotDPS", "CombinedDPS", "MirageDPS",
 	"BleedChance", "BleedDPS", "WithBleedDPS", "PoisonChance", "PoisonDPS", "TotalPoisonDPS", "WithPoisonDPS",
-	"ImpaleChance", "ImpaleModifier", "ImpaleDPS", "WithImpaleDPS", "ImpaleDuration", "WeaponRange", "StrikeTargets", "AreaOfEffectRadius", "AreaOfEffectMod"}
+	"ImpaleChance", "ImpaleModifier", "ImpaleDPS", "WithImpaleDPS", "ImpaleDuration", "WeaponRange", "StrikeTargets", "AreaOfEffectRadius", "AreaOfEffectMod", "PierceCount", "ForkCountMax"}
 
 // playerRatchetStats are the playerOffenceStats each held at
 // minPlayerDPSWithinTolerance.
 var playerRatchetStats = []string{"TotalDPS", "IgniteChance", "IgniteDPS", "TotalDot", "WithIgniteDPS", "TotalDotDPS", "CombinedDPS", "MirageDPS",
 	"BleedChance", "BleedDPS", "WithBleedDPS", "PoisonChance", "PoisonDPS", "TotalPoisonDPS", "WithPoisonDPS",
-	"ImpaleChance", "ImpaleModifier", "ImpaleDPS", "WithImpaleDPS", "ImpaleDuration", "WeaponRange", "StrikeTargets", "AreaOfEffectRadius", "AreaOfEffectMod"}
+	"ImpaleChance", "ImpaleModifier", "ImpaleDPS", "WithImpaleDPS", "ImpaleDuration", "WeaponRange", "StrikeTargets", "AreaOfEffectRadius", "AreaOfEffectMod", "PierceCount", "ForkCountMax"}
 
 // goldenMinion is one entry of the oracle's "Minions" list.
 type goldenMinion struct {
