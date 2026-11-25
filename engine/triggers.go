@@ -29,6 +29,9 @@ type triggerConfig struct {
 	sourceValue func(o map[string]float64) float64
 	// ignoreSourceRate: the source rate is the trigger rate cap.
 	ignoreSourceRate bool
+	// selfSource is config.source = mainSkill (a global trigger): no
+	// source search, and the source rate is the trigger rate cap.
+	selfSource bool
 }
 
 func isTriggered(s *activeSkill) bool {
@@ -79,6 +82,9 @@ var triggerConfigs = map[string]func(db *ModDB, main *activeSkill) *triggerConfi
 		return &triggerConfig{
 			triggerSkillCond:   func(main, s *activeSkill) bool { return s.types[20] }, // Melee
 			triggeredSkillCond: func(main, s *activeSkill) bool { return truthy(s.data["triggeredByCovetousDark"]) }}
+	},
+	"cast on ward break": func(_ *ModDB, main *activeSkill) *triggerConfig {
+		return &triggerConfig{selfSource: true, triggerChance: numOr(main.data["chanceToTriggerOnWardBreak"], 0)}
 	},
 	"avenging flame": func(*ModDB, *activeSkill) *triggerConfig {
 		return &triggerConfig{ignoreSourceRate: true,
@@ -254,6 +260,10 @@ func (c *Calculator) defaultTrigger(db *ModDB, main *activeSkill, by *skillEffec
 	}
 	if len(triggered) == 0 && cfg.triggeredSkillCond != nil {
 		return
+	}
+	if cfg.selfSource {
+		source, sourceOut = main, map[string]float64{}
+		cfg.ignoreSourceRate = true
 	}
 	if source == nil {
 		delete(main.data, "triggered")

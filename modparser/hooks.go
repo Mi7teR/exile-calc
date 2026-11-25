@@ -69,6 +69,24 @@ var hooks = map[string]Hook{
 		n, _ := toNumber(arg(a, 0)).(float64)
 		return wiseOakMods(func(e string) map[string]any { return newMod(e+"Penetration", "BASE", n, 0, 0) }, false)
 	},
+	// ["minions convert (%d+)%% of (.+) damage to (.+) damage"] = function(num, _, source, target) return {
+	//   mod("MinionModifier", "LIST", { mod = mod(Source.."DamageConvertTo"..Target, "BASE", num) }) } end,
+	"specialModList[^minions convert (%d+)%% of (.+) damage to (.+) damage$]": func(p *Parser, a []any) any {
+		return []any{minionConvert(a, nil)}
+	},
+	// ["minions convert (%d+)%% of (.+) damage to (.+) damage per (.+) socket"]: { type = "Multiplier", var = Colour.."SocketIn{SlotName}" }
+	"specialModList[^minions convert (%d+)%% of (.+) damage to (.+) damage per (.+) socket$]": func(p *Parser, a []any) any {
+		return []any{minionConvert(a, map[string]any{"type": "Multiplier", "var": firstToUpper(argS(a, 4)) + "SocketIn{SlotName}"})}
+	},
+	// ["minions convert (%d+)%% of (.+) damage to (.+) damage per socketed (%a+) gem"]: red, green or blue only,
+	//   { type = "Multiplier", var = "Socketed"..Colour.."GemsIn{SlotName}" }
+	"specialModList[^minions convert (%d+)%% of (.+) damage to (.+) damage per socketed (%a+) gem$]": func(p *Parser, a []any) any {
+		colour := argS(a, 4)
+		if colour != "red" && colour != "green" && colour != "blue" {
+			return nil
+		}
+		return []any{minionConvert(a, map[string]any{"type": "Multiplier", "var": "Socketed" + firstToUpper(colour) + "GemsIn{SlotName}"})}
+	},
 	// ["every (%d+) seconds, gain (%d+)%% of physical damage as extra fire damage for (%d+) seconds"] = function(frequency, _, num, duration) return {
 	//   mod("PhysicalDamageGainAsFire", "BASE", tonumber(num), { type = "Condition", var = "NgamahuFlamesAdvance" }) } end,
 	"specialModList[^every (%d+) seconds, gain (%d+)%% of physical damage as extra fire damage for (%d+) seconds$]": func(p *Parser, a []any) any {
@@ -1077,4 +1095,17 @@ func wiseOakMods(mk func(elem string) map[string]any, upper bool) []any {
 		out = append(out, withTags(mk(e), tags...))
 	}
 	return out
+}
+
+// minionConvert is the MinionModifier conversion of the "minions convert
+// N% of X damage to Y damage" lines, with an optional outer tag.
+func minionConvert(a []any, tag map[string]any) map[string]any {
+	n, _ := toNumber(arg(a, 0)).(float64)
+	// Lua arguments: num, cap1, source, target[, colour] (a[0] is num).
+	name := firstToUpper(argS(a, 2)) + "DamageConvertTo" + firstToUpper(argS(a, 3))
+	m := newMod("MinionModifier", "LIST", map[string]any{"mod": newMod(name, "BASE", n, 0, 0)}, 0, 0)
+	if tag != nil {
+		m = withTags(m, tag)
+	}
+	return m
 }
