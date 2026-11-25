@@ -96,14 +96,46 @@ func (c *Calculator) initMinionDB(db *ModDB, s *activeSkill, m *skillMinion, res
 	for _, em := range s.extraSkillMods {
 		mdb.Add(em)
 	}
-	if truthy(s.data["minionUseBowAndQuiver"]) || truthy(s.data["minionUseMainHandWeapon"]) {
-		res.Incomplete = append(res.Incomplete, "minion weapons not applied: "+m.data.Name)
-	}
+	c.minionPlayerGear(db, mdb, s, res)
 	gear := c.minionItems(db, mdb, s, res)
 	if db.Sum("BASE", "StrengthAddedToMinions") > 0 {
 		mdb.NewMod("Str", "BASE", round(val(db, "Str")*db.Sum("BASE", "StrengthAddedToMinions")/100, 0), "Player")
 	}
 	return mdb, gear
+}
+
+// minionPlayerGear is the part of initMinionModDB that gives a minion the
+// player's gear: the bow and quiver (minionUseBowAndQuiver, the quiver
+// scaled by WidowHailMultiplier), the gloves (BlinkAndMirrorUseGloves) and
+// the main hand weapon (minionUseMainHandWeapon).
+func (c *Calculator) minionPlayerGear(db, mdb *ModDB, s *activeSkill, res *Result) {
+	b := db.theBuild()
+	if b == nil || b.ActiveItems() == nil {
+		return
+	}
+	add := func(slot string, scale float64) {
+		c.addItem(mdb, res, b.Item(b.ActiveItems().SlotItem(slot)), scale, slot)
+	}
+	baseType := func(slot string) string {
+		if it := db.items[slot]; it != nil && it.Base != nil {
+			return it.Base.Type
+		}
+		return ""
+	}
+	if truthy(s.data["minionUseBowAndQuiver"]) {
+		if baseType("Weapon 1") == "Bow" {
+			add("Weapon 1", 1)
+		}
+		if baseType("Weapon 2") == "Quiver" {
+			add("Weapon 2", math.Max(db.Sum("BASE", "WidowHailMultiplier"), 1))
+		}
+		if db.Flag("BlinkAndMirrorUseGloves") && db.items["Gloves"] != nil {
+			add("Gloves", 1)
+		}
+	}
+	if truthy(s.data["minionUseMainHandWeapon"]) {
+		add("Weapon 1", 1)
+	}
 }
 
 // minionItems is the minion.uses part of initMinionModDB: the items in the
@@ -389,6 +421,12 @@ func (c *Calculator) mainMinion(db *ModDB, skills []*activeSkill, buffs map[stri
 		return nil
 	}
 	weapon, weaponType, weapon2, weapon2Type := c.minionWeapon(s, m, mdb, gear)
+	// minionUseBowAndQuiver (with a bow) and minionUseMainHandWeapon: the
+	// minion's weaponData1 is the player's.
+	if pw, ptyp, ok := itemWeapon(db.items["Weapon 1"], db.gearMods["Weapon 1"]); ok &&
+		((truthy(s.data["minionUseBowAndQuiver"]) && ptyp == "Bow") || truthy(s.data["minionUseMainHandWeapon"])) {
+		weapon, weaponType = pw, ptyp
+	}
 	if !s.flags["spectre"] && s.mods.FlagCfg(s.cfg, "NonSpectreMinionsUseParentMainHandAttackTime") {
 		if pw, _ := playerWeapons(db, db.gearMods, -1); pw.attackRate > 0 {
 			weapon.attackRate = pw.attackRate
