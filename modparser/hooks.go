@@ -652,6 +652,144 @@ var hooks = map[string]Hook{
 	"modTagList[if (%d+) (%a+) items are equipped]": func(p *Parser, a []any) any {
 		return map[string]any{"tag": map[string]any{"type": "MultiplierThreshold", "var": firstToUpper(argS(a, 2)) + "Item", "threshold": arg(a, 0)}}
 	},
+	// The "Extra skill/support" block of ModParser.lua specialModList: one-line
+	// functions that return triggerExtraSkill, as named by the helper used.
+	"specialModList[^[ct][ar][si][tg]g?e?r?s? level (%d+) (.+) when equipped$]":                                                           numSkill,
+	"specialModList[^[ct][ar][si][tg]g?e?r?s? level (%d+) (.+) on %a+$]":                                                                  numSkill,
+	"specialModList[^use level (%d+) (.+) on %a+$]":                                                                                       numSkill,
+	"specialModList[^[ct][ar][si][tg]g?e?r?s? level (%d+) (.+) when you attack$]":                                                         numSkill,
+	"specialModList[^[ct][ar][si][tg]g?e?r?s? level (%d+) (.+) when you deal a critical strike$]":                                         numSkill,
+	"specialModList[^[ct][ar][si][tg]g?e?r?s? level (%d+) (.+) when hit$]":                                                                numSkill,
+	"specialModList[^[ct][ar][si][tg]g?e?r?s? level (%d+) (.+) when you kill an enemy$]":                                                  numSkill,
+	"specialModList[^[ct][ar][si][tg]g?e?r?s? level (%d+) (.+) when you use a skill$]":                                                    numSkill,
+	"specialModList[^trigger level (%d+) (.+) when you use a skill while you have a spirit charge$]":                                      numSkill,
+	"specialModList[^trigger level (%d+) (.+) when you hit an enemy while cursed$]":                                                       numSkill,
+	"specialModList[^trigger level (%d+) (.+) when you hit a bleeding enemy$]":                                                            numSkill,
+	"specialModList[^trigger level (%d+) (.+) when you attack with this weapon$]":                                                         numSkill,
+	"specialModList[^trigger level (%d+) (.+) when you hit a rare or unique enemy$]":                                                      numSkill,
+	"specialModList[^trigger level (%d+) (.+) when you hit a rare or unique enemy and have no mark$]":                                     numSkill,
+	"specialModList[^trigger level (%d+) (.+) when you hit a frozen enemy$]":                                                              numSkill,
+	"specialModList[^trigger level (%d+) (.+) when you kill a frozen enemy$]":                                                             numSkill,
+	"specialModList[^trigger level (%d+) (.+) when you attack with a bow$]":                                                               numSkill,
+	"specialModList[^trigger level (%d+) (.+) when you block$]":                                                                           numSkill,
+	"specialModList[^trigger level (%d+) (.+) when animated guardian kills an enemy$]":                                                    numSkill,
+	"specialModList[^trigger level (%d+) (.+) when you lose cat's stealth$]":                                                              numSkill,
+	"specialModList[^trigger level (%d+) (.+) when your trap is triggered$]":                                                              numSkill,
+	"specialModList[^trigger level (%d+) (.+) on hit with this weapon$]":                                                                  numSkill,
+	"specialModList[^trigger level (%d+) (.+) on melee hit$]":                                                                             numSkill,
+	"specialModList[^trigger level (%d+) (.+) on melee hit while cursed$]":                                                                numSkill,
+	"specialModList[^trigger level (%d+) (.+) on melee hit with this weapon$]":                                                            numSkill,
+	"specialModList[^trigger level (%d+) (.+) every [%d%.]+ seconds while phasing$]":                                                      numSkill,
+	"specialModList[^trigger level (%d+) (.+) when you gain avian's might or avian's flight$]":                                            numSkill,
+	"specialModList[^trigger level (%d+) (.+) on melee hit if you have at least (%d+) strength$]":                                         numSkill,
+	"specialModList[^trigger level (%d+) (.+) on critical strike with cleave or reave$]":                                                  numSkillCrit,
+	"specialModList[^trigger level (%d+) (.+) on melee critical strike$]":                                                                 numSkillCrit,
+	"specialModList[^trigger level (%d+) (.+) on critical strike against marked unique enemy$]":                                           numSkillCrit,
+	"specialModList[^trigger level (%d+) (.+) on critical strike$]":                                                                       numSkillCrit,
+	"specialModList[^trigger level (%d+) (.+) when you take a critical strike from a unique enemy$]":                                      numSkill,
+	"specialModList[^trigger level (%d+) (.+) when you suppress spell damage from a unique enemy$]":                                       numSkill,
+	"specialModList[^trigger level (%d+) (.+) when you block damage from a unique enemy$]":                                                numSkill,
+	"specialModList[^trigger level (%d+) (.+) on taking a savage hit from a unique enemy$]":                                               numSkill,
+	"specialModList[^trigger level (%d+) (.+) when a totem dies while a unique enemy is in your presence$]":                               numSkill,
+	"specialModList[^trigger level (%d+) (.+) when you use a travel skill while a unique enemy is in your presence$]":                     numSkill,
+	"specialModList[^trigger level (%d+) (.+) when you reach maximum rage while a unique enemy is in your presence$]":                     numSkill,
+	"specialModList[^trigger level (%d+) (.+) when you reach low life while a unique enemy is in your presence$]":                         numSkill,
+	"specialModList[^trigger level (%d+) (.+) when energy shield recharge starts while a unique enemy is in your presence$]":              numSkill,
+	"specialModList[^trigger level (%d+) (.+) when your ward breaks$]":                                                                    numSkill,
+	"specialModList[^trigger level (%d+) (.+) once every second$]":                                                                        numSkill,
+	"specialModList[^triggers level (%d+) (.+)$]":                                                                                         numSkill,
+	"specialModList[^trigger level (%d+) (.+) on attack critical strike against a rare or unique enemy and y?o?u? ?have no mark$]":        numSkillCrit,
+	"specialModList[^triggers level (%d+) (.+) when equipped$]":                                                                           numSkill,
+	"specialModList[^triggers level (%d+) (.+) when allocated$]":                                                                          numSkill,
+	"specialModList[^attack with level (%d+) (.+) when you kill a bleeding enemy$]":                                                       numSkill,
+	"specialModList[^triggers? level (%d+) (.+) when you kill a bleeding enemy$]":                                                         numSkill,
+	"specialModList[^trigger level (%d+) (.+) when you attack with a non%-vaal slam or strike skill near an enemy$]":                      numSkill,
+	"specialModList[^trigger level (%d+) (.+) every (%d+) seconds$]":                                                                      numSkill,
+	"specialModList[^trigger level (%d+) (.+) after spending a total of (%d+) mana$]":                                                     numSkill,
+	"specialModList[^trigger level (%d+) (.+) after spending (%d+)%% of your maximum life on spells$]":                                    numSkill,
+	"specialModList[^consumes a void charge to trigger level (%d+) (.+) when you fire arrows$]":                                           numSkill,
+	"specialModList[^consumes a void charge to trigger level (%d+) (.+) when you fire arrows with a non%-triggered skill$]":               numSkill,
+	"specialModList[^curse enemies with level (%d+) (.+) on %a+$]":                                                                        numSkillCurse,
+	"specialModList[^curse enemies with level (%d+) (%D+) on %a+, which can apply to hexproof enemies$]":                                  numSkillHexproof,
+	"specialModList[^(%d+)%% chance to attack with level (%d+) (.+) on melee hit$]":                                                       chanceLevelSkill,
+	"specialModList[^(%d+)%% chance to trigger level (%d+) (.+) when animated weapon kills an enemy$]":                                    chanceLevelSkill,
+	"specialModList[^(%d+)%% chance to trigger level (%d+) (.+) on melee hit$]":                                                           chanceLevelSkill,
+	"specialModList[^(%d+)%% chance to trigger level (%d+) (.+) [ow][nh]e?n? ?y?o?u? kill ?a?n? ?e?n?e?m?y?$]":                            chanceLevelSkill,
+	"specialModList[^(%d+)%% chance to trigger level (%d+) (.+) when you use a socketed skill$]":                                          chanceLevelSkill,
+	"specialModList[^(%d+)%% chance to trigger level (%d+) (.+) when you gain avian's might or avian's flight$]":                          chanceLevelSkill,
+	"specialModList[^(%d+)%% chance to trigger level (%d+) (.+) on critical strike with this weapon$]":                                    chanceLevelSkillCrit,
+	"specialModList[^(%d+)%% chance to trigger level (%d+) (.+) when you or a nearby ally kill an enemy, or hit a rare or unique enemy$]": chanceLevelSkill,
+	"specialModList[^(%d+)%% chance to [ct][ar][si][tg]g?e?r? level (%d+) (.+) on %a+$]":                                                  chanceLevelSkill,
+	"specialModList[^(%d+)%% chance to trigger (.+) when you kill an enemy$]":                                                             chanceSkill,
+	"specialModList[^(.+) can trigger level (%d+) (.+)$]":                                                                                 sourceSkill,
+	"specialModList[^curse enemies with (%D+) on %a+$]":                                                                                   skillOnly,
+	"specialModList[^[ct][ar][si][tg]g?e?r?s? (.+) on %a+$]":                                                                              skillOnly,
+	"specialModList[^[at][tr][ti][ag][cg][ke]r? (.+) on %a+$]":                                                                            skillOnly,
+	"specialModList[^[at][tr][ti][ag][cg][ke]r? with (.+) on %a+$]":                                                                       skillOnly,
+	"specialModList[^[ct][ar][si][tg]g?e?r?s? (.+) when hit$]":                                                                            skillOnly,
+	"specialModList[^[at][tr][ti][ag][cg][ke]r? (.+) when hit$]":                                                                          skillOnly,
+	"specialModList[^[at][tr][ti][ag][cg][ke]r? with (.+) when hit$]":                                                                     skillOnly,
+	"specialModList[^[ct][ar][si][tg]g?e?r?s? (.+) when your skills or minions kill$]":                                                    skillOnly,
+	"specialModList[^[at][tr][ti][ag][cg][ke]r? (.+) when you take a critical strike$]":                                                   skillOnly,
+	"specialModList[^[at][tr][ti][ag][cg][ke]r? with (.+) when you take a critical strike$]":                                              skillOnly,
+	"specialModList[^trigger (.+) on critical strike$]":                                                                                   skillOnlyCrit,
+	"specialModList[^triggers? (.+) when you take a critical strike$]":                                                                    skillOnly,
+	// ["grants (%D+)"] = function(_, skill) return grantedExtraSkill(skill, 1) end
+	"specialModList[^grants (%D+)$]": func(p *Parser, a []any) any {
+		return p.grantedExtraSkill(argS(a, cap1), 1.0, nil)
+	},
+	// ["grants level (%d+) (.+), which will be used by shaper memory"] = function(num, _, skill) return grantedExtraSkill(skill, num) end
+	"specialModList[^grants level (%d+) (.+), which will be used by shaper memory$]": func(p *Parser, a []any) any {
+		return p.grantedExtraSkill(argS(a, cap2), arg(a, argNum), nil)
+	},
+	// ["trigger level (%d+) (.+) when you consume a corpse"] = function(num, _, skill) return skill == "summon phantasm skill"
+	//   and triggerExtraSkill("triggered summon phantasm skill", num) or triggerExtraSkill(skill, num) end
+	// (triggerExtraSkill returns a table, always truthy, so the "and" branch wins.)
+	"specialModList[^trigger level (%d+) (.+) when you consume a corpse$]": func(p *Parser, a []any) any {
+		skill := argS(a, cap2)
+		if skill == "summon phantasm skill" {
+			skill = "triggered summon phantasm skill"
+		}
+		return p.triggerExtraSkill(skill, arg(a, argNum), triggerOpts{})
+	},
+	// ["trigger level (%d+) (.+), (.+) or (.+) every (%d+) seconds"] = function(num, _, skill1, skill2, skill3) return {
+	//   mod("ExtraSkill", "LIST", { skillId = gemIdLookup[skill1], level = num, triggered = true }), ...skill2, skill3 } end
+	"specialModList[^trigger level (%d+) (.+), (.+) or (.+) every (%d+) seconds$]": func(p *Parser, a []any) any {
+		var mods []any
+		for _, i := range []int{cap2, cap3, cap4} {
+			v := map[string]any{"level": arg(a, argNum), keyTriggered: true}
+			if id, ok := p.t.exact["gemIdLookup"][argS(a, i)].(string); ok {
+				v["skillId"] = id
+			}
+			mods = append(mods, newMod("ExtraSkill", "LIST", v, 0, 0))
+		}
+		return mods
+	},
+	// ["curse enemies with (.-) on hit if (%d+) (%a+) items are equipped"] = function(_, curse, count, influence)
+	//   local mods = triggerExtraSkill(curse, 1, { noSupports = true })
+	//   if mods[1] then mods[1].value.itemRequirement = { multiplier = firstToUpper(influence).."Item", count = tonumber(count) } end
+	//   return mods end
+	"specialModList[^curse enemies with (.-) on hit if (%d+) (%a+) items are equipped$]": func(p *Parser, a []any) any {
+		mods := p.triggerExtraSkill(argS(a, cap1), 1.0, triggerOpts{noSupports: true})
+		if len(mods) > 0 {
+			if m, isMap := mods[0].(map[string]any); isMap {
+				if v, ok := m["value"].(map[string]any); ok {
+					v["itemRequirement"] = map[string]any{
+						"multiplier": firstToUpper(argS(a, cap3)) + "Item", "count": toNumber(argS(a, cap2)),
+					}
+				}
+			}
+		}
+		return mods
+	},
+	"specialModList[^curse enemies with (%D+) on %a+, with (%d+)%% increased effect$]":                                        curseIncreasedEffect,
+	"specialModList[^curse enemies with (%D+) on %a+, with (%d+)%% reduced effect$]":                                          curseReducedEffect,
+	"specialModList[^%d+%% chance to curse n?o?n?%-?c?u?r?s?e?d? ?enemies with (%D+) on %a+, with (%d+)%% increased effect$]": curseIncreasedEffect,
+	// ["%d+%% chance to curse n?o?n?%-?c?u?r?s?e?d? ?enemies with (%D+) on %a+"] = function(_, skill) return {
+	//   mod("ExtraSkill", "LIST", { skillId = gemIdLookup[skill], level = 1, noSupports = true, triggered = true }) } end
+	"specialModList[^%d+%% chance to curse n?o?n?%-?c?u?r?s?e?d? ?enemies with (%D+) on %a+$]": func(p *Parser, a []any) any {
+		return []any{p.curseSkill(argS(a, cap1))}
+	},
 }
 
 // enemyModifier builds the hooks that give the enemy "num% reduced <name>".
@@ -848,6 +986,156 @@ func (p *Parser) grantedExtraSkill(name string, level, noSupports any) any {
 		v["noSupports"] = noSupports
 	}
 	return []any{newMod("ExtraSkill", "LIST", v, 0, 0)}
+}
+
+// triggerOpts are the options table of ModParser.lua triggerExtraSkill.
+type triggerOpts struct {
+	noSupports, onCrit, ignoreHexproof bool
+	triggerChance, sourceSkill         any
+}
+
+// triggerExtraSkill ports ModParser.lua triggerExtraSkill(name, level, options):
+// a triggered ExtraSkill for a known skill, plus the ignoreHexproof and
+// onCrit SkillData mods when asked. An unknown skill gives an empty list.
+func (p *Parser) triggerExtraSkill(name string, level any, o triggerOpts) []any {
+	name = strings.ReplaceAll(name, " skill", "")
+	id, known := p.t.exact["gemIdLookup"][name].(string)
+	idTag := func() map[string]any {
+		t := map[string]any{"type": "SkillId"}
+		if known {
+			t["skillId"] = id
+		}
+		return t
+	}
+	mods := []any{}
+	if known {
+		v := map[string]any{"skillId": id, keyTriggered: true}
+		if l := toNumber(level); l != nil {
+			v["level"] = l
+		}
+		if o.noSupports {
+			v["noSupports"] = true
+		}
+		if s, ok := o.sourceSkill.(string); ok {
+			v["source"] = strings.ReplaceAll(s, " skill", "")
+		}
+		if c := toNumber(o.triggerChance); c != nil {
+			v["triggerChance"] = c
+		}
+		mods = append(mods, newMod("ExtraSkill", "LIST", v, 0, 0))
+	}
+	if o.ignoreHexproof {
+		v := map[string]any{"key": "ignoreHexproof", "value": true}
+		mods = append(mods, withTags(newMod("SkillData", "LIST", v, 0, 0), idTag()))
+	}
+	if o.onCrit {
+		onCrit := newMod("SkillData", "LIST", map[string]any{"key": "triggerOnCrit", "value": true}, 0, 0)
+		mods = append(mods, withTags(newMod("ExtraSkillMod", "LIST", map[string]any{"mod": onCrit}, 0, 0), idTag()))
+	}
+	return mods
+}
+
+// curseSkill is the ExtraSkill of the "curse enemies with <curse> on <event>,
+// with N% effect" lines, which look the curse up without triggerExtraSkill.
+func (p *Parser) curseSkill(name string) map[string]any {
+	v := map[string]any{"level": 1.0, "noSupports": true, keyTriggered: true}
+	if id, ok := p.t.exact["gemIdLookup"][name].(string); ok {
+		v["skillId"] = id
+	}
+	return newMod("ExtraSkill", "LIST", v, 0, 0)
+}
+
+// curseEffect is mod("CurseEffect", "INC", n, { type = "SkillName",
+// skillName = string.gsub(" "..skill, "%W%l", string.upper):sub(2) }).
+func curseEffect(skill string, n float64) map[string]any {
+	name := slotWordRe.ReplaceAllStringFunc(" "+skill, strings.ToUpper)[1:]
+	return withTags(newMod("CurseEffect", "INC", n, 0, 0), map[string]any{"type": "SkillName", "skillName": name})
+}
+
+// Capture positions in a hook's argument list: num (tonumber of the first
+// capture) comes first, then the captures.
+const (
+	argNum = 0
+	cap1   = 1
+	cap2   = 2
+	cap3   = 3
+	cap4   = 4
+)
+
+// keyTriggered is the ExtraSkill value key for a triggered skill.
+const keyTriggered = "triggered"
+
+// The one-line triggerExtraSkill functions of ModParser.lua specialModList,
+// by argument shape and options.
+
+// numSkill is function(num, _, skill) return triggerExtraSkill(skill, num) end.
+func numSkill(p *Parser, a []any) any {
+	return p.triggerExtraSkill(argS(a, cap2), arg(a, argNum), triggerOpts{})
+}
+
+// numSkillCrit is function(num, _, skill) return triggerExtraSkill(skill, num, {onCrit = true}) end.
+func numSkillCrit(p *Parser, a []any) any {
+	return p.triggerExtraSkill(argS(a, cap2), arg(a, argNum), triggerOpts{onCrit: true})
+}
+
+// numSkillCurse is function(num, _, skill) return triggerExtraSkill(skill, num, {noSupports = true}) end.
+func numSkillCurse(p *Parser, a []any) any {
+	return p.triggerExtraSkill(argS(a, cap2), arg(a, argNum), triggerOpts{noSupports: true})
+}
+
+// numSkillHexproof is function(num, _, skill)
+// return triggerExtraSkill(skill, num, {noSupports = true, ignoreHexproof = true}) end.
+func numSkillHexproof(p *Parser, a []any) any {
+	return p.triggerExtraSkill(argS(a, cap2), arg(a, argNum), triggerOpts{noSupports: true, ignoreHexproof: true})
+}
+
+// skillOnly is function(_, skill) return triggerExtraSkill(skill, 1, {noSupports = true}) end.
+func skillOnly(p *Parser, a []any) any {
+	return p.triggerExtraSkill(argS(a, cap1), 1.0, triggerOpts{noSupports: true})
+}
+
+// skillOnlyCrit is function(_, skill) return triggerExtraSkill(skill, 1, {noSupports = true, onCrit = true}) end.
+func skillOnlyCrit(p *Parser, a []any) any {
+	return p.triggerExtraSkill(argS(a, cap1), 1.0, triggerOpts{noSupports: true, onCrit: true})
+}
+
+// chanceLevelSkill is function(chance, _, level, skill)
+// return triggerExtraSkill(skill, level, {triggerChance = chance}) end.
+func chanceLevelSkill(p *Parser, a []any) any {
+	return p.triggerExtraSkill(argS(a, cap3), arg(a, cap2), triggerOpts{triggerChance: arg(a, argNum)})
+}
+
+// chanceLevelSkillCrit is chanceLevelSkill with onCrit = true.
+func chanceLevelSkillCrit(p *Parser, a []any) any {
+	return p.triggerExtraSkill(argS(a, cap3), arg(a, cap2), triggerOpts{triggerChance: arg(a, argNum), onCrit: true})
+}
+
+// chanceSkill is function(chance, _, skill) return triggerExtraSkill(skill, 1, {triggerChance = chance}) end.
+func chanceSkill(p *Parser, a []any) any {
+	return p.triggerExtraSkill(argS(a, cap2), 1.0, triggerOpts{triggerChance: arg(a, argNum)})
+}
+
+// sourceSkill is function(_, sourceSkill, num, skill)
+// return triggerExtraSkill(skill, tonumber(num), {sourceSkill = sourceSkill}) end.
+func sourceSkill(p *Parser, a []any) any {
+	return p.triggerExtraSkill(argS(a, cap3), arg(a, cap2), triggerOpts{sourceSkill: arg(a, cap1)})
+}
+
+// curseIncreasedEffect is ["curse enemies with (%D+) on %a+, with (%d+)%% increased effect"] = function(_, skill, num) return {
+//
+//	mod("ExtraSkill", "LIST", { skillId = gemIdLookup[skill], level = 1, noSupports = true, triggered = true }),
+//	mod("CurseEffect", "INC", tonumber(num), { type = "SkillName", skillName = <Skill Name> }) } end
+//
+// and the "reduced" form (-tonumber(num)) and the "%d+%% chance to curse
+// n?o?n?%-?c?u?r?s?e?d? ?enemies with ..." form, which drops the chance.
+func curseIncreasedEffect(p *Parser, a []any) any { return curseWithEffect(p, a, 1) }
+
+// curseReducedEffect is the "reduced" form of curseIncreasedEffect.
+func curseReducedEffect(p *Parser, a []any) any { return curseWithEffect(p, a, -1) }
+
+func curseWithEffect(p *Parser, a []any, sign float64) []any {
+	n, _ := toNumber(argS(a, cap2)).(float64)
+	return []any{p.curseSkill(argS(a, cap1)), curseEffect(argS(a, cap1), sign*n)}
 }
 
 // call evaluates a table value that came from a Lua function: a template
