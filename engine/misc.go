@@ -265,14 +265,19 @@ func actorMisc(db *ModDB, main *activeSkill, silverFlask bool, silverFlaskInc fl
 
 // selfAilment is the effect of Chill, Shock or Scorch on the actor;
 // shockAvoid says whether ShockAvoidAppliesToElementalAilments counts.
-// PoB quirk: m_max(Sum(Self<X>Override), Override(<X>Val)) or default: with
-// no override the call returns no values, so m_max gets the sum alone, and
-// a number is never nil, so the default never applies.
+// The effect is the larger of Self<X>Override and the <X>Val override, or,
+// for the player, the ailment's default effect when neither is set (the
+// enemy's ailments come from enemyAilments, which already applied them).
+// PoB differs: its m_max(Sum, Override()) or default never reaches the
+// default (Lua passes one argument when there is no override, and a number
+// is never nil), so a configured ailment without a value has no effect.
 func selfAilment(db *ModDB, name string, shockAvoid bool) (float64, bool) {
 	a := nonDamagingAilment[name]
 	value := db.Sum("BASE", "Self"+name+"Override")
 	if o, ok := db.Override(name + "Val"); ok {
 		value = math.Max(value, o)
+	} else if value == 0 && db.build != nil && db.owner == nil { // the player
+		value = a.def
 	}
 	if db.Flag(name+"Immune", "ElementalAilmentImmune") {
 		return 0, true

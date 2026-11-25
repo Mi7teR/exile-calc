@@ -13,6 +13,9 @@ energy shield, ward, block) within 0.5% for every build.
   tree, level.
 - `expected/*.json` — `mainOutput` of headless PoB v2.68.1 from
   [poe-pob-oracle](https://github.com/Mi7teR/poe-pob-oracle) at commit b266ae7.
+- `quirks.json` — expected values that deliberately differ from PoB, where
+  the engine fixes a PoB bug (build → stat → value and reason). The test
+  applies them over `expected/`, so regenerating keeps them.
 
 Regenerate:
 

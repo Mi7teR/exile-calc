@@ -154,6 +154,7 @@ func TestGoldenCorpus(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	quirks := loadQuirks(t)
 	perStat := map[string]int{}
 	allOK := 0
 	minionPerStat := map[string]int{}
@@ -185,6 +186,9 @@ func TestGoldenCorpus(t *testing.T) {
 			if f, ok := v.(float64); ok {
 				want[k] = f
 			}
+		}
+		for stat, q := range quirks[name] {
+			want[stat] = q.Value
 		}
 		b, err := pobcode.FromCode(string(raw))
 		if err != nil {
@@ -284,4 +288,25 @@ func TestGoldenCorpus(t *testing.T) {
 	if ratchet == minBuildsWithinTolerance && minionsOK < minMinionsWithinTolerance {
 		t.Errorf("minions within tolerance %d < ratchet %d", minionsOK, minMinionsWithinTolerance)
 	}
+}
+
+// goldenQuirk is an entry of testdata/golden/quirks.json: an expected value
+// that deliberately differs from the oracle because the engine fixes a PoB
+// bug there. Regenerating the expected JSON from the oracle keeps these.
+type goldenQuirk struct {
+	Value  float64 `json:"value"`
+	Reason string  `json:"reason"`
+}
+
+// loadQuirks reads quirks.json: build code -> stat -> expected value.
+func loadQuirks(t *testing.T) map[string]map[string]goldenQuirk {
+	raw, err := os.ReadFile("../testdata/golden/quirks.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var q map[string]map[string]goldenQuirk
+	if err := json.Unmarshal(raw, &q); err != nil {
+		t.Fatal(err)
+	}
+	return q
 }

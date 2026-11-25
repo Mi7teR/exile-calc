@@ -1,0 +1,30 @@
+{
+  "Uj4J57WyPC4k": {
+    "CombinedDPS": {
+      "reason": "Ailment source damage uses the hand's conversion table (PoB uses skillCfg's, so the main hand's gain-as-fire misses ignite).",
+      "value": 1599235.7063817822
+    },
+    "IgniteDPS": {
+      "reason": "Ailment source damage uses the hand's conversion table (PoB uses skillCfg's, so the main hand's gain-as-fire misses ignite).",
+      "value": 65891.19409731735
+    },
+    "TotalDotDPS": {
+      "reason": "Ailment source damage uses the hand's conversion table (PoB uses skillCfg's, so the main hand's gain-as-fire misses ignite).",
+      "value": 65891.19409731735
+    },
+    "WithIgniteDPS": {
+      "reason": "Ailment source damage uses the hand's conversion table (PoB uses skillCfg's, so the main hand's gain-as-fire misses ignite).",
+      "value": 1599235.7063817822
+    }
+  },
+  "gzVTJCkWXFan": {
+    "CombinedDPS": {
+      "reason": "Mirage copy keeps +gem levels from items, and a stronger mirage ignite/bleed counts in CombinedDPS (PoB: raw gem level; drops it from CombinedDPS).",
+      "value": 30540903.612148564
+    },
+    "MirageDPS": {
+      "reason": "Mirage copy keeps +gem levels from items, and a stronger mirage ignite/bleed counts in CombinedDPS (PoB: raw gem level; drops it from CombinedDPS).",
+      "value": 6918794.71397955
+    }
+  }
+}

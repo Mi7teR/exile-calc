@@ -153,7 +153,9 @@ func (c *Calculator) mirages(db *ModDB, s *activeSkill, w1 hitSource, w2 *hitSou
 	delete(m.flags, "multiPart")
 	m.data["mirageUses"] = s.data["storedUses"]
 	m.types[stOtherThingUsesSkill] = true
-	// PoB quirk: mainSkill.ModFlags/KeywordFlags do not exist, so the mods have no flags.
+	// The less damage and speed mods have no flags, so they also reach the
+	// mirage's ailments, as in game (PoB reads mainSkill.ModFlags, which do
+	// not exist, and gets the same result).
 	var count float64
 	switch {
 	case truthy(s.data["triggeredByMirageArcher"]):
@@ -201,11 +203,13 @@ func addMirageDPS(s *activeSkill, out map[string]float64) float64 {
 	if v, ok := mo["CausticGroundDPS"]; ok {
 		out["MirageCausticGroundDPS"] = v
 	}
-	// PoB quirk: a stronger mirage ignite/bleed zeroes the player's but is
-	// added to MirageDPS only, so CombinedDPS loses it.
+	// A stronger mirage ignite/bleed replaces the player's. PoB differs: it
+	// zeroes the player's and adds the mirage's to MirageDPS only, so its
+	// CombinedDPS loses both.
 	for _, k := range []string{"IgniteDPS", "BleedDPS"} {
 		if v, ok := mo[k]; ok && v > out[k] {
 			out["MirageDPS"] += v
+			out["CombinedDPS"] += v
 			out[k] = 0
 		}
 	}
@@ -230,15 +234,14 @@ func addMirageDPS(s *activeSkill, out map[string]float64) float64 {
 }
 
 // copyActiveSkill is calcs.copyActiveSkill: a new skill from the same
-// effects. PoB quirk: the active effect takes the gem's own level and
-// quality (srcInstance), so +level and +quality from items (GemProperty)
-// are lost; supports keep theirs.
+// effects, at the active effect's level and quality including +level and
+// +quality from items. PoB differs: it takes the gem's own level and
+// quality (srcInstance), so the mirage loses the item bonuses.
 func (c *Calculator) copyActiveSkill(db *ModDB, s *activeSkill, res *Result) *activeSkill {
 	if !s.active.hasSrc {
 		return cloneSkill(s)
 	}
 	eff := *s.active
-	eff.level, eff.quality, eff.props = eff.srcLevel, eff.srcQuality, nil
 	m := c.createActiveSkill(&eff, s.supportList, s.group, s.weapons, s.summon)
 	m.cfg, m.gem, m.main = &Cfg{SlotName: s.cfg.SlotName}, s.gem, s.main
 	c.buildSkillMods(db, m, res)
