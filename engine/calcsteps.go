@@ -58,9 +58,11 @@ type calcStep struct {
 }
 
 // calcSteps is Calc's pipeline. The order is PoB's CalcSetup.lua initEnv
-// order followed by CalcPerform.lua calcs.perform order (with this port's
-// known reorderings noted on the steps); MORE mods round per layer, so
-// moving a step changes numbers. TestCalcStepOrder pins the names.
+// order followed by CalcPerform.lua calcs.perform order, except where the
+// port orders differently: that is noted on the step ("Port ordering",
+// e.g. stepCustomMods, stepConfig; not an exhaustive audit). MORE mods round
+// per layer, so moving a step changes numbers. TestCalcStepOrder pins the
+// names.
 var calcSteps = []calcStep{
 	{"initEnv", stepInitEnv},
 	{"baseMods", stepBaseMods},
@@ -455,6 +457,9 @@ func stepJewelSockets(c *Calculator, st *calcState) error {
 // stepCustomMods: CalcSetup.lua "Add mods from the config tab". The config
 // tab's mod list (custom modifiers) joins env.modDB before the granted
 // passives are added, so "Allocates X" custom lines grant their node.
+// Port ordering, differs from PoB: CalcSetup.lua adds the config tab mods
+// (692) before the tree nodes (786) and items (811); here they come after
+// items and tree jewels.
 func stepCustomMods(c *Calculator, st *calcState) error {
 	c.customMods(st.db, st.res, st.config)
 	return nil
@@ -519,6 +524,9 @@ func stepItemConditions(c *Calculator, st *calcState) error {
 
 // stepConfig: the config tab's conditions (ConfigOptions.lua apply), buff
 // mode and the enemy environment (CalcSetup.lua enemy level, accuracy).
+// Port ordering, differs from PoB: CalcSetup.lua adds the enemy Accuracy
+// (689) and config tab mods (692) before the tree nodes (786) and items
+// (811); here they come after items, jewels and granted passives.
 func stepConfig(c *Calculator, st *calcState) error {
 	db, b, res := st.db, st.b, st.res
 	buffMode(db)
@@ -665,8 +673,8 @@ func stepBuffs(c *Calculator, st *calcState) error {
 // stepCurses: CalcPerform.lua "Check for extra curses", then the curse
 // slots.
 func stepCurses(c *Calculator, st *calcState) error {
-	curses := c.extraCurses(st.db, st.curses, st.res)
-	c.applyCurses(st.db, st.skills, curses, st.res)
+	st.curses = c.extraCurses(st.db, st.curses, st.res)
+	c.applyCurses(st.db, st.skills, st.curses, st.res)
 	return nil
 }
 
