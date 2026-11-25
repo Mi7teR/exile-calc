@@ -492,6 +492,7 @@ func (c *Calculator) Calc(b *pobcode.Build) (*Result, error) {
 	defenceForConditionals(db, gearMods)
 	charges(db)
 	flaskRecovery(db, flaskSt)
+	alternateCharges(db)
 	actorMisc(db, mainSkill(skills), flaskSt.silver, flaskSt.silverInc)
 	rage(db, mainCfg(skills))
 	playerEnemyMods.apply(db)

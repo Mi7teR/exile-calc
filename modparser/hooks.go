@@ -384,6 +384,17 @@ var hooks = map[string]Hook{
 		slot := argS(a, 1)
 		return p.extraSupport(argS(a, 3), arg(a, 2), &slot, true)
 	},
+	// ["skills from equipped (.+) are supported by level (%d+) (.+)"] =
+	//   function(_, slot, level, support) return extraSupport(support, level, slot) end
+	"specialModList[^skills from equipped (.+) are supported by level (%d+) (.+)$]": func(p *Parser, a []any) any {
+		slot := argS(a, 1)
+		return p.extraSupport(argS(a, 3), arg(a, 2), &slot, nil)
+	},
+	// ["socketed [%a+]* ?spells a?r?e? ?supported by level (%d+) (.+)"] =
+	//   function(num, _, support) return extraSupport(support, num, nil) end
+	"specialModList[^socketed [%a+]* ?spells a?r?e? ?supported by level (%d+) (.+)$]": func(p *Parser, a []any) any {
+		return p.extraSupport(argS(a, 2), arg(a, 0), nil, nil)
+	},
 	// ["skills granted by your passive tree are supported by level (%d+) (.+)"] =
 	//   function(_, level, support) return extraSupport(support, level, "passive tree", true) end
 	"specialModList[^skills granted by your passive tree are supported by level (%d+) (.+)$]": func(p *Parser, a []any) any {

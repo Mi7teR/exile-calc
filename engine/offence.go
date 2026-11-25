@@ -244,6 +244,13 @@ func (c *Calculator) offence(actor *ModDB, s *activeSkill, w1 hitSource, w2 *hit
 	}
 	trapMineStats(actor, s, out)
 	offenceDuration(actor, s, out)
+	// CalcPerform.lua's "maximum sustainable stages" block, from the
+	// skill's own cached outputs: Earthquake of Amplification's aftershock
+	// scales per 100ms of duration. Blight, Penance Brand of Dissipation
+	// and Scorching Ray stages there are not ported.
+	if s.active.ge.Name == "Earthquake of Amplification" && s.part == 2 {
+		list.NewMod("Multiplier:100msEarthquakeDuration", "BASE", math.Floor(out["Duration"]*10), "Skill:EarthquakeAltX")
+	}
 	impaleDuration(actor, s, out)
 	costs := map[string]float64{}
 	skillCosts(actor, s, costs)
@@ -415,16 +422,16 @@ func (c *Calculator) offence(actor *ModDB, s *activeSkill, w1 hitSource, w2 *hit
 	if isAttack {
 		hitTime(s, out, true)
 	}
-	dpsMult := 1.0
-	if v, ok := num(data["dpsMultiplier"]); ok {
-		dpsMult = v
-	}
-	dpsMult *= (1 + list.SumCfg(cfg, "INC", "DPS")/100) * list.MoreCfg(cfg, "DPS")
+	// skillData.dpsMultiplier is read when used: Ruthless (MAX) changes it
+	// in the damage passes.
+	dpsMod := (1 + list.SumCfg(cfg, "INC", "DPS")/100) * list.MoreCfg(cfg, "DPS")
+	dpsMult := numOr(data["dpsMultiplier"], 1) * dpsMod
 	quantity := math.Max(list.SumCfg(cfg, "BASE", "QuantityMultiplier"), 1)
 	warcries(actor, s, passes[0].cfg, out)
 	pacts(actor, s, out)
 	for _, p := range passes {
 		ruthlessAndFistOfWar(s, p, out)
+		dpsMult = numOr(data["dpsMultiplier"], 1) * dpsMod
 		p.global = out
 		c.hitDamage(actor, s, p)
 		speed := out["Speed"]
@@ -1388,15 +1395,29 @@ func warcries(actor *ModDB, s *activeSkill, cfg *Cfg, out map[string]float64) {
 }
 
 // ruthlessAndFistOfWar is the Ruthless and Fist of War part of the damage
-// pass (mode_combat), ruthlessSupportMode AVERAGE: the hit effects.
+// pass (mode_combat): the hit effects, with ruthlessSupportMode AVERAGE (a
+// 1 in N chance) or MAX (every hit, at 1/N of the rate).
 func ruthlessAndFistOfWar(s *activeSkill, p *hitPass, global map[string]float64) {
 	const stSlam, stOtherThingUsesSkill = 92, 95
 	list, cfg, out := s.mods, p.cfg, p.out
 	out["RuthlessBlowHitEffect"], out["FistOfWarDamageEffect"] = 1, 1
-	chance := 0.0
-	if n := list.SumCfg(cfg, "BASE", "RuthlessBlowMaxCount"); n > 0 && !cfg.SkillCond["usedByMirage"] {
-		chance = round(100/n, 0)
+	mode := "AVERAGE"
+	if b := list.theBuild(); b != nil {
+		mode = configString(b.ActiveConfig(), "ruthlessSupportMode", "AVERAGE")
 	}
+	chance := 0.0
+	n := list.SumCfg(cfg, "BASE", "RuthlessBlowMaxCount")
+	out["RuthlessBlowMaxCount"] = n
+	if n > 0 && (!cfg.SkillCond["usedByMirage"] || numOr(s.data["mirageUses"], 0) > n) {
+		switch mode {
+		case "AVERAGE":
+			chance = round(100/n, 0)
+		case "MAX":
+			chance = 100
+			s.data["dpsMultiplier"] = numOr(s.data["dpsMultiplier"], 1) / n
+		}
+	}
+	out["RuthlessBlowChance"] = chance
 	hitMult := 1 + list.SumCfg(cfg, "BASE", "RuthlessBlowHitMultiplier")/100
 	out["RuthlessBlowHitEffect"] = 1 - chance/100 + chance/100*hitMult
 	ailmentMult := 1 + list.SumCfg(cfg, "BASE", "RuthlessBlowAilmentMultiplier")/100
@@ -1405,11 +1426,15 @@ func ruthlessAndFistOfWar(s *activeSkill, p *hitPass, global map[string]float64)
 	if cd != 0 && s.types[stSlam] && !s.types[stVaal] && !s.types[stOtherThingUsesSkill] && global["Speed"] != 0 {
 		mult := list.Sum("BASE", "FistOfWarDamageMultiplier") / 100
 		up := math.Min((1/global["Speed"])/cd, 1) * 100
+		incAoE := list.Sum("BASE", "FistOfWarIncAoE")
 		if list.Flag("Condition:WarcryMaxHit") {
 			out["FistOfWarDamageEffect"] = 1 + mult
+			list.NewMod("AreaOfEffect", "INC", incAoE, "Max Fist of War Boosted AoE")
 		} else {
 			out["FistOfWarDamageEffect"] = 1 + mult*up/100
+			list.NewMod("AreaOfEffect", "INC", math.Floor(incAoE/100*up), "Avg Fist Of War Boosted AoE")
 		}
+		areaOfEffect(s, global)
 	}
 }
 

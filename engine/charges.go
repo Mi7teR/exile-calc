@@ -207,3 +207,22 @@ func rage(db *ModDB, mainCfg *Cfg) {
 		db.Add(Mod{Name: "Condition:HaveMaximumRage", Type: "FLAG", Value: true})
 	}
 }
+
+// alternateCharges is calcs.perform's "Process stats from alternate
+// charges" (mode_combat): Brutal Charges grant triple damage chance and
+// Affliction Charges ailment damage and non-damaging ailment effect.
+func alternateCharges(db *ModDB) {
+	if db.Flag("UseEnduranceCharges") && db.Flag("EnduranceChargesConvertToBrutalCharges") {
+		db.NewMod("TripleDamageChance", "BASE", db.Sum("BASE", "PerBrutalTripleDamageChance"), "",
+			map[string]any{"type": "Multiplier", "var": "BrutalCharge"})
+	}
+	if db.Flag("UseFrenzyCharges") && db.Flag("FrenzyChargesConvertToAfflictionCharges") {
+		per := map[string]any{"type": "Multiplier", "var": "AfflictionCharge"}
+		db.Add(Mod{Name: "Damage", Type: "MORE", Value: db.Sum("BASE", "PerAfflictionAilmentDamage"), Source: "Affliction Charges",
+			KeywordFlags: kfAilment, Tags: []map[string]any{per}})
+		effect := db.Sum("BASE", "PerAfflictionNonDamageEffect")
+		for _, n := range []string{"EnemyChillEffect", "EnemyShockEffect", "EnemyFreezeEffect", "EnemyScorchEffect", "EnemyBrittleEffect", "EnemySapEffect"} {
+			db.NewMod(n, "MORE", effect, "Affliction Charges", per)
+		}
+	}
+}
