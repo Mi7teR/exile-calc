@@ -135,7 +135,9 @@ func charges(db *ModDB) {
 			out[k+"Charges"] = overrideOr(db, k+"Charges", out[k+"ChargesMax"])
 		}
 	}
-	out["InspirationCharges"] = overrideOr(db, "InspirationCharges", out["InspirationChargesMax"])
+	if db.owner == nil { // actor == env.player: minions do not gain inspiration charges
+		out["InspirationCharges"] = overrideOr(db, "InspirationCharges", out["InspirationChargesMax"])
+	}
 	if db.Flag("UseGhostShrouds") {
 		out["GhostShrouds"] = overrideOr(db, "GhostShrouds", 3)
 	}
