@@ -1107,6 +1107,9 @@ func preDamageFunc(actor *ModDB, s *activeSkill, out map[string]float64) {
 	data := s.data
 	proj := out["ProjectileCount"]
 	mulDPS := func(m float64) { data["dpsMultiplier"] = numOr(data["dpsMultiplier"], 1) * m }
+	if h := hooksOf(s); h != nil && h.preDamage != nil {
+		h.preDamage(actor, s, out)
+	}
 	switch s.active.ge.Name {
 	case "On Kill Monster Explosion":
 		enemyExplode(s, out)
@@ -1235,44 +1238,6 @@ func preDamageFunc(actor *ModDB, s *activeSkill, out map[string]float64) {
 					data["dpsMultiplier"] = numOr(data["dpsMultiplier"], 1) * n
 				}
 			}
-		}
-	case "Arcanist Brand", "Armageddon Brand", "Armageddon Brand of Recall", "Penance Brand",
-		"Penance Brand of Dissipation", "Penance Brand of Conduction", "Storm Brand", "Storm Brand of Indecision":
-		// Brands hit once per activation: repeatFrequency / (1 + inc Speed and
-		// BrandActivationFrequency) / more BrandActivationFrequency. Penance Brand
-		// activates once per its max energy.
-		f, _ := num(data["repeatFrequency"])
-		if s.active.ge.Name == "Penance Brand" {
-			f *= s.mods.SumCfg(s.cfg, "BASE", "Multiplier:PenanceBrandMaxEnergy")
-		}
-		data["hitTimeOverride"] = f / (1 + s.mods.SumCfg(s.cfg, "INC", "Speed", "BrandActivationFrequency")/100) / s.mods.MoreCfg(s.cfg, "BrandActivationFrequency")
-	case "Wintertide Brand":
-		// act_int.lua WintertideBrand preDamageFunc: part 1 averages the stages
-		// gained per activation over the attached duration, plus the
-		// strongest maximum-stage Wintertide's End debuff for its uptime.
-		data["countsAttachedBrandsInDamage"] = s.part == 1
-		f, _ := num(data["repeatFrequency"])
-		hitTime := f / (1 + s.mods.SumCfg(s.cfg, "INC", "Speed", "BrandActivationFrequency")/100) / s.mods.MoreCfg(s.cfg, "BrandActivationFrequency")
-		data["hitTimeOverride"] = hitTime
-		if s.part == 1 && hitTime > 0 {
-			list, cfg := s.mods, s.cfg
-			skillMaxStages := list.SumCfg(cfg, "BASE", "Multiplier:WintertideBrandMaxStages")
-			debuffDurationMult := 1 / math.Max(buffExpirationSlowCap, calcMod(actor.enemy, cfg, "BuffExpireFaster"))
-			duration := skillDuration(list, cfg, data, nil) * debuffDurationMult
-			if duration <= 0 {
-				break
-			}
-			maxStages := math.Min(math.Floor(duration/hitTime), skillMaxStages)
-			timeAtMaxStages := math.Max(duration-maxStages*hitTime, 0)
-			damagePerStage := list.SumCfg(cfg, "BASE", "Multiplier:WintertideBrandDamagePerStage")
-			averageStages := (maxStages*(maxStages-1)/2*hitTime + maxStages*timeAtMaxStages) / duration
-			endBase := numOr(data["durationTertiary"], 0) + list.SumCfg(cfg, "BASE", "Duration", "TertiaryDuration")
-			endMod := math.Max(calcMod(list, cfg, "Duration", "TertiaryDuration"), 0)
-			endDuration := math.Ceil(endBase*endMod*debuffDurationMult*serverTickRate) / serverTickRate
-			endUptime := math.Min(endDuration/duration, 1)
-			attached := numOr(data["attachedBrandCount"], 0)
-			mult := attached*(100+averageStages*damagePerStage) + endUptime*(100+maxStages*damagePerStage) - 100
-			list.NewMod("Damage", "MORE", mult, "Wintertide Brand Average Multiplier")
 		}
 	case "Flameblast", "Flameblast of Celerity", "Flameblast of Contraction":
 		// One release per channelled stage beyond the starting stages.
