@@ -144,6 +144,7 @@ var radiusPatterns = func() []radiusPattern {
 				return []Mod{m}
 			}
 		}},
+		{`^melee and melee weapon type modifiers in radius are transformed to bow modifiers$`, bowTransform},
 		{`^notable passive skills in radius grant nothing$`, flagFor("PassiveSkillHasNoEffect", "Notable")},
 		{`^allocated small passive skills in radius grant nothing$`, flagFor("AllocatedPassiveSkillHasNoEffect", "Normal")},
 		{`^allocated notable passive skills in radius grant nothing$`, flagFor("AllocatedPassiveSkillHasNoEffect", "Notable")},
@@ -297,4 +298,47 @@ func (c *Calculator) radiusFuncs(spec *pobcode.Spec, b *pobcode.Build, alloc map
 		}
 	}
 	return out
+}
+
+// bowTransform is Lioneye's Fall: melee and melee weapon type mods of the
+// nodes in radius become bow mods, and Using<melee weapon> conditions
+// become UsingBow.
+func bowTransform(_ []string, _ string) radiusFunc {
+	f := modFlagByName
+	mask1 := f["Axe"] | f["Claw"] | f["Dagger"] | f["Mace"] | f["Staff"] | f["Sword"] | uint64(mfMelee)
+	mask2 := uint64(mfWeapon1H | mfWeaponMelee)
+	mask3 := uint64(mfWeapon2H | mfWeaponMelee)
+	using := map[string]bool{"UsingAxe": true, "UsingClaw": true, "UsingDagger": true, "UsingMace": true, "UsingStaff": true, "UsingSword": true, "UsingMeleeWeapon": true}
+	return func(_ *gamedata.Node, own, _ []Mod) []Mod {
+		var out []Mod
+		for _, m := range own {
+			v, ok := num(m.Value)
+			if !ok {
+				continue
+			}
+			neg := m
+			neg.Value = -v
+			if m.Flags&mask1 != 0 || m.Flags&mask2 == mask2 || m.Flags&mask3 == mask3 {
+				bow := m
+				bow.Flags = m.Flags&^(mask1|mask2|mask3) | f["Bow"]
+				out = append(out, neg, bow)
+				continue
+			}
+			for i, t := range m.Tags {
+				if tagStr(t, "type") == "Condition" && using[tagStr(t, "var")] {
+					conv := m
+					conv.Tags = append([]map[string]any(nil), m.Tags...)
+					nt := map[string]any{}
+					for k, x := range t {
+						nt[k] = x
+					}
+					nt["var"] = "UsingBow"
+					conv.Tags[i] = nt
+					out = append(out, neg, conv)
+					break
+				}
+			}
+		}
+		return out
+	}
 }

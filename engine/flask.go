@@ -105,13 +105,16 @@ func (c *Calculator) applyFlasks(db *ModDB, res *Result, slots []flaskSlot) *fla
 		}
 		base := it.Base.Flask
 		recovery := base.Life > 0 || base.Mana > 0
-		db.conditions["UsingFlask"] = true
-		db.conditions["Using"+strings.ReplaceAll(it.BaseName, " ", "")] = true
-		if base.Life > 0 {
-			db.conditions["UsingLifeFlask"] = true
-		}
-		if base.Mana > 0 {
-			db.conditions["UsingManaFlask"] = true
+		// mergeFlasks: only flasks that are not fully instant count as used.
+		if flaskInstant(db, calcLocal(mods, "FlaskInstantRecovery", "BASE"), calcLocal(mods, "FlaskLowLifeInstantRecovery", "BASE"), base.Life > 0, base.Mana > 0) < 100 {
+			db.conditions["UsingFlask"] = true
+			db.conditions["Using"+strings.ReplaceAll(it.BaseName, " ", "")] = true
+			if base.Life > 0 && !db.Flag("CannotRecoverLifeOutsideLeech") {
+				db.conditions["UsingLifeFlask"] = true
+			}
+			if base.Mana > 0 {
+				db.conditions["UsingManaFlask"] = true
+			}
 		}
 
 		// Item.lua: flaskData.effectInc from the flask's own mods.
@@ -232,6 +235,21 @@ func recoveryFlask(it *itemtext.Item, item *pobcode.Item, mods []modparser.Mod, 
 	return d
 }
 
+// flaskInstant is getFlaskInstantRecovery: the flask's instant recovery
+// percentage, capped at 100.
+func flaskInstant(db *ModDB, perc, lowLife float64, life, mana bool) float64 {
+	if db.Flag("Condition:LowLife") {
+		perc += lowLife
+	}
+	if life {
+		perc += db.Sum("BASE", "LifeFlaskInstantRecovery")
+	}
+	if mana {
+		perc += db.Sum("BASE", "ManaFlaskInstantRecovery")
+	}
+	return math.Min(100, perc)
+}
+
 // flaskRecovery is the second mergeFlasks pass (onlyRecovery): flasks whose
 // effect is not removed at full recover over their duration
 // (calcFlaskRecovery); the highest flask of each kind applies.
@@ -254,17 +272,7 @@ func flaskRecovery(db *ModDB, st *flaskState) {
 		merged[key] = append(merged[key], m)
 	}
 	for _, fd := range st.recovery {
-		instant := fd.instantPerc
-		if db.Flag("Condition:LowLife") {
-			instant += fd.instantLowLife
-		}
-		if fd.life {
-			instant += db.Sum("BASE", "LifeFlaskInstantRecovery")
-		}
-		if fd.mana {
-			instant += db.Sum("BASE", "ManaFlaskInstantRecovery")
-		}
-		instant = math.Min(100, instant)
+		instant := flaskInstant(db, fd.instantPerc, fd.instantLowLife, fd.life, fd.mana)
 		for _, x := range []struct {
 			typ         string
 			has, notRem bool
@@ -392,18 +400,28 @@ func sameParams(a, b Mod) bool {
 	return fmt.Sprint(a.Tags) == fmt.Sprint(b.Tags)
 }
 
+// tinctureEffect holds the tincture effect increases and limit of
+// calcs.perform, read before the flasks are merged.
+type tinctureEffect struct{ inc, incMagic, limit float64 }
+
+func readTinctureEffect(db *ModDB) tinctureEffect {
+	player := &Cfg{Actor: "player"}
+	return tinctureEffect{db.SumCfg(player, "INC", "TinctureEffect"), db.SumCfg(player, "INC", "MagicTinctureEffect"), db.Sum("BASE", "TinctureLimit")}
+}
+
 // applyTinctures is mergeTinctures of calcs.perform (mode_combat): the
 // active tinctures, up to TinctureLimit in slot order, scaled by tincture
 // effect and quality.
-func (c *Calculator) applyTinctures(db *ModDB, res *Result, slots []flaskSlot) {
+//
+// The effect increases and the limit are tinctureEffect's, read before the
+// flasks are merged (CalcPerform.lua reads them above mergeFlasks), so
+// flask conditions do not reach them.
+func (c *Calculator) applyTinctures(db *ModDB, res *Result, slots []flaskSlot, te tinctureEffect) {
 	notBurn := math.Min(db.Sum("BASE", "TincturesNotInflictManaBurn"), 100)
 	if !db.Flag("Condition:WeepingWoundsInsteadOfManaBurn") && !(notBurn < 100 && db.output["ManaUnreserved"] > 0) {
 		return
 	}
-	player := &Cfg{Actor: "player"}
-	effectInc := db.SumCfg(player, "INC", "TinctureEffect")
-	effectIncMagic := db.SumCfg(player, "INC", "MagicTinctureEffect")
-	limit := db.Sum("BASE", "TinctureLimit")
+	effectInc, effectIncMagic, limit := te.inc, te.incMagic, te.limit
 	sort.SliceStable(slots, func(i, j int) bool { return slots[i].num < slots[j].num })
 	merged := map[string][]Mod{}
 	var keys []string

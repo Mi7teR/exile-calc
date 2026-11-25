@@ -431,6 +431,7 @@ func (c *Calculator) Calc(b *pobcode.Build) (*Result, error) {
 		db.NewMod("FlaskEffect", "INC", math.Floor(10*effect), "Alchemist's Genius")
 		db.NewMod("FlaskChargesGained", "INC", math.Floor(20*effect), "Alchemist's Genius")
 	}
+	tinctures := readTinctureEffect(db)
 	flaskSt := c.applyFlasks(db, res, flasks)
 	c.mergeKeystones(db, keystones, res)
 	// CalcPerform.lua: skillModList = new("ModList", baseSkillModList), so
@@ -462,7 +463,7 @@ func (c *Calculator) Calc(b *pobcode.Build) (*Result, error) {
 	shrineBuffs(db)
 	c.lifeMana(db)
 	reservations(db, skills, res)
-	c.applyTinctures(db, res, flasks)
+	c.applyTinctures(db, res, flasks, tinctures)
 	totemCounts(db, skills)
 	c.minionCounts(db, skills)
 	warcryExertMods(db, skills)
