@@ -27,7 +27,10 @@ type CombatDPS struct {
 	// Burst is the damage (not per second) of every active mine, trap,
 	// totem or ballista going off at once; 0 for other skills.
 	Burst float64
-	// Components: "Hit", "Ignite", "Poison", "Bleed", "Impale", "Dot".
+	// Components: the parts of PoB's CombinedDPS ("Hit", "Mirage",
+	// "Impale", "Ignite", "Poison", "Bleed", "Dot", "Ground",
+	// "CorruptingBlood", "Decay"), each with culling and reservation
+	// applied; zero parts are left out.
 	Components map[string]float64
 	// HitsPerCast is the hits one use lands, summed over the targets.
 	HitsPerCast float64
@@ -40,16 +43,61 @@ type CombatResult struct {
 	Assumptions []string
 }
 
-// combatComponents maps each CombatDPS component to the PoB output it
-// starts from. Ignite takes TotalIgniteDPS where PoB sets it (stacking
-// ignite), as combinedDPS does.
-var combatComponents = []struct{ name, out string }{
-	{"Hit", "TotalDPS"},
-	{"Ignite", "IgniteDPS"},
-	{"Poison", "TotalPoisonDPS"},
-	{"Bleed", "BleedDPS"},
-	{"Impale", "ImpaleDPS"},
-	{"Dot", "TotalDot"},
+// combatComponents are the parts of PoB's CombinedDPS (combinedDPS in
+// ailments.go), each with the PoB output it starts from. hit: scales with
+// the hits like TotalDPS (the mirage repeats the skill). dot: one of the
+// DoTs PoB sums, and caps, into TotalDotDPS. Impale scales by dotScale but
+// is outside TotalDotDPS, as in PoB.
+var combatComponents = []struct {
+	name, out string
+	hit, dot  bool
+}{
+	{"Hit", "TotalDPS", true, false},
+	{"Mirage", "MirageDPS", true, false},
+	{"Impale", "ImpaleDPS", false, false},
+	{"Ignite", "IgniteDPS", false, true},
+	{"Poison", "TotalPoisonDPS", false, true},
+	{"Bleed", "BleedDPS", false, true},
+	{"Dot", "TotalDot", false, true},
+	{"Ground", "GroundDPS", false, true},
+	{"CorruptingBlood", "CorruptingBloodDPS", false, true},
+	{"Decay", "DecayDPS", false, true},
+}
+
+// componentBase is PoB's value of a component: Ignite takes TotalIgniteDPS
+// where set (stacking ignite) and Ground the stronger of the player's and
+// the mirage's caustic and burning ground, as combinedDPS does.
+func componentBase(name, key string, out map[string]float64) float64 {
+	switch name {
+	case "Ignite":
+		if v, ok := out["TotalIgniteDPS"]; ok {
+			return v
+		}
+	case "Ground":
+		return math.Max(out["CausticGroundDPS"], out["MirageCausticGroundDPS"]) +
+			math.Max(out["BurningGroundDPS"], out["MirageBurningGroundDPS"])
+	}
+	return out[key]
+}
+
+// combinedMult is the culling and reservation multiplier combinedDPS
+// applies to CombinedDPS last: the better of the player's and the mirage's
+// culling, times ReservationDpsMultiplier.
+func combinedMult(s *activeSkill, out map[string]float64) float64 {
+	cull, ok := out["CullMultiplier"]
+	if !ok {
+		cull = 1
+	}
+	if s.mirage != nil {
+		if v, ok := s.mirage.out["TotalDPS"]; ok && v >= 0 {
+			cull = math.Max(cull, math.Max(1, s.mirage.out["CullMultiplier"]))
+		}
+	}
+	res, ok := out["ReservationDpsMultiplier"]
+	if !ok {
+		res = 1
+	}
+	return cull * res
 }
 
 var kindNames = map[deliveryKind]string{
@@ -130,7 +178,9 @@ func nonBossBuild(b *pobcode.Build) *pobcode.Build {
 // × scale × the sources' sustain multiplier: hits scale with h, DoTs with
 // dotScale(h) (stacking DoTs with h, the strongest-instance ones with
 // min(h, 1), so an area DoT counts once per mob it touches). DoTs are
-// capped per target at PoB's DoT DPS cap again. With pobOverlap PoB's
+// capped per target at PoB's DoT DPS cap again, one by one and summed, and
+// every component takes PoB's culling and reservation multiplier, so a
+// skill whose shape adds nothing gets CombinedDPS. With pobOverlap PoB's
 // dpsMultiplier already holds the overlap, so a boss the skill reaches
 // counts one hit per use.
 func combatDPS(res *Result, m targetModel, isBoss bool, seed uint64) (CombatDPS, []string) {
@@ -148,25 +198,36 @@ func combatDPS(res *Result, m targetModel, isBoss bool, seed uint64) (CombatDPS,
 	}
 
 	d := CombatDPS{PoB: out["CombinedDPS"], Components: map[string]float64{}}
+	mult := combinedMult(s, out)
+	vals := make([]float64, len(combatComponents))
 	for _, h := range hits {
 		d.HitsPerCast += h
-		for _, cmp := range combatComponents {
-			base := out[cmp.out]
-			if cmp.name == "Ignite" {
-				if v, ok := out["TotalIgniteDPS"]; ok {
-					base = v
-				}
-			}
-			if base == 0 {
-				continue
-			}
-			v := base * src.sustain(cmp.out, s)
-			if cmp.name == "Hit" {
+		dots := 0.0
+		for i, cmp := range combatComponents {
+			v := componentBase(cmp.name, cmp.out, out) * src.sustain(cmp.out, s)
+			if cmp.hit {
 				v *= h
 			} else {
 				v = math.Min(v*dotScale(cmp.out, h, s, out), dotDpsCap)
 			}
-			d.Components[cmp.name] += v
+			if cmp.dot {
+				dots += v
+			}
+			vals[i] = v
+		}
+		// PoB caps the DoT sum (TotalDotDPS) per enemy too.
+		capScale := 1.0
+		if dots > dotDpsCap {
+			capScale = dotDpsCap / dots
+		}
+		for i, cmp := range combatComponents {
+			v := vals[i] * mult
+			if cmp.dot {
+				v *= capScale
+			}
+			if v != 0 {
+				d.Components[cmp.name] += v
+			}
 		}
 	}
 	for _, v := range d.Components {
@@ -193,8 +254,12 @@ func combatDPS(res *Result, m targetModel, isBoss bool, seed uint64) (CombatDPS,
 			notes = append(notes, "последовательные снаряды (Barrage): геометрия под-ударов (взрывов) не применяется")
 		}
 	}
-	if sh.subHits > 0 {
-		notes = append(notes, fmt.Sprintf("под-удары: %.0f радиуса %.0f в разбросе %.0f", sh.subHits, sh.subRadius, sh.scatter))
+	if sh.subHits > 0 && sh.subRadius > 0 && !sh.pobOverlap {
+		proj := max(math.Round(out["ProjectileCount"]), 1)
+		notes = append(notes, fmt.Sprintf("по боссу попадают %.1f из %.0f взрывов за каст (%.0f снарядов × %.0f взрывов радиуса %.0f в разбросе %.0f)",
+			hits[0], proj*sh.subHits, proj, sh.subHits, sh.subRadius, sh.scatter))
+	} else if sh.subHits > 0 && !sh.pobOverlap {
+		notes = append(notes, fmt.Sprintf("вторичные снаряды: %.0f с каждой точки попадания", sh.subHits))
 	}
 	if sh.canShotgun {
 		notes = append(notes, fmt.Sprintf("шотган: снаряды веером %.0f° могут попасть в одну цель", sh.spreadDeg))
@@ -208,6 +273,9 @@ func combatDPS(res *Result, m targetModel, isBoss bool, seed uint64) (CombatDPS,
 			notes = append(notes, fmt.Sprintf("устойчивый DPS: хиты и стакающиеся DoT × %.0f, сильнейший DoT один", src.sustainMul))
 		}
 	}
-	notes = append(notes, "без culling, резервации, миражей (MirageDPS) и наземных DoT (caustic/burning ground)")
+	if truthy(s.data["showAverage"]) {
+		notes = append(notes, "PoB показывает для скилла средний урон (showAverage), а не DPS: цифра PoB не сравнима")
+	}
+	notes = append(notes, fmt.Sprintf("состав как у CombinedDPS PoB: миражи как хиты, наземные DoT по числу задетых целей, culling и резервация × %.2f", mult))
 	return d, notes
 }

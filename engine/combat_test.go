@@ -59,19 +59,26 @@ func TestCombatSingleTargetInvariant(t *testing.T) {
 		if sh.pobOverlap || (sh.kind != meleeStrike && sh.kind != singleHit) || sourcesOf(res.main, res.Stats).kind != "" {
 			continue
 		}
+		if truthy(res.main.data["showAverage"]) {
+			continue // CombinedDPS is an average hit, not a rate
+		}
 		cr, err := c.Combat(b, CombatOptions{})
 		if err != nil {
 			t.Fatalf("%s: %v", id, err)
 		}
 		out := res.Stats
+		mult := combinedMult(res.main, out)
 		ignite, ok := out["TotalIgniteDPS"]
 		if !ok {
 			ignite = out["IgniteDPS"]
 		}
-		for comp, want := range map[string]float64{"Hit": out["TotalDPS"], "Ignite": ignite, "Poison": out["TotalPoisonDPS"]} {
-			if got := cr.Boss.Components[comp]; !near(got, want, 0.005) {
-				t.Errorf("%s (%s): Boss %s = %v, PoB %v", id, cr.Skill, comp, got, want)
+		for comp, want := range map[string]float64{"Hit": out["TotalDPS"], "Ignite": ignite, "Poison": out["TotalPoisonDPS"], "Mirage": out["MirageDPS"]} {
+			if got := cr.Boss.Components[comp]; !near(got, want*mult, 0.005) {
+				t.Errorf("%s (%s): Boss %s = %v, PoB %v x %v", id, cr.Skill, comp, got, want, mult)
 			}
+		}
+		if !near(cr.Boss.Sustained, out["CombinedDPS"], 0.005) {
+			t.Errorf("%s (%s): Boss.Sustained %v, PoB CombinedDPS %v (%v)", id, cr.Skill, cr.Boss.Sustained, out["CombinedDPS"], cr.Boss.Components)
 		}
 		checked++
 	}
@@ -98,7 +105,7 @@ func TestCombatNoDoubleOverlap(t *testing.T) {
 		if err != nil {
 			t.Fatalf("%s: %v", id, err)
 		}
-		want := res.Stats["TotalDPS"] * sourcesOf(res.main, res.Stats).sustain("TotalDPS", res.main)
+		want := res.Stats["TotalDPS"] * sourcesOf(res.main, res.Stats).sustain("TotalDPS", res.main) * combinedMult(res.main, res.Stats)
 		if cr.Boss.HitsPerCast != 1 || !near(cr.Boss.Components["Hit"], want, 0.005) {
 			t.Errorf("%s (%s): HitsPerCast %v, Hit %v, PoB TotalDPS x sources %v", id, cr.Skill, cr.Boss.HitsPerCast, cr.Boss.Components["Hit"], want)
 		}
@@ -170,8 +177,13 @@ func TestCombatKineticBlast(t *testing.T) {
 	}
 	pob := res.Stats["TotalDPS"]
 	t.Logf("%s: PoB TotalDPS %.0f; Boss %+v; Pack %+v", cr.Skill, pob, cr.Boss, cr.Pack)
+	found := false
 	for _, a := range cr.Assumptions {
 		t.Log(a)
+		found = found || strings.Contains(a, "по боссу попадают")
+	}
+	if !found {
+		t.Error("no assumption on the explosions that hit the boss")
 	}
 	if cr.Boss.Sustained <= 2*pob {
 		t.Errorf("Boss.Sustained %v, want above 2 x PoB TotalDPS %v", cr.Boss.Sustained, pob)

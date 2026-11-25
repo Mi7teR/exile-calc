@@ -77,6 +77,9 @@ var shapeTable = func() map[string]shapeEntry {
 	// Ice Nova of Frostbolts is cast from Frostbolt projectiles.
 	add(shapeEntry{kind: targetArea}, "Ice Nova of Frostbolts")
 	add(shapeEntry{kind: targetArea}, "Frost Bomb", "Frost Bomb of Instability", "Frost Bomb of Forthcoming")
+	// Flameblast channels its area at the target location, not around the
+	// caster as the Channel default would put it.
+	add(shapeEntry{kind: targetArea}, "Flameblast", "Flameblast of Celerity", "Flameblast of Contraction")
 	// Overlap the engine models through skillData.dpsMultiplier (preDamageFunc
 	// in offence.go, ported from Data/Skills/*.lua). Not overlap, so not
 	// listed: Lightning Tendrils of Eccentricity (pulse DPS mods), seal

@@ -191,3 +191,18 @@ func TestShapeMoltenStrikeAndChannel(t *testing.T) {
 		t.Errorf("Cyclone: shape %+v, want default channel", sh)
 	}
 }
+
+func TestShapeFlameblast(t *testing.T) {
+	// Flameblast channels a growing area at the target location, not around
+	// the player as a default Channel skill would.
+	res := calcCorpus(t, "fmxcrOoQ46rS") // Flameblast of Celerity totems
+	sh := shapeOf(res.main, res.Stats)
+	if sh.kind != targetArea || sh.fromDefault || sh.pobOverlap {
+		t.Errorf("%s: shape %+v, want table targetArea", res.main.active.ge.Name, sh)
+	}
+	for _, n := range []string{"Flameblast", "Flameblast of Celerity", "Flameblast of Contraction"} {
+		if e, ok := shapeTable[n]; !ok || e.kind != targetArea {
+			t.Errorf("%s: table entry %+v, %v", n, e, ok)
+		}
+	}
+}
