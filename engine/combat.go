@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"github.com/Mi7teR/poe-lib/gamedata"
 	"math"
+	"strings"
 
 	"github.com/Mi7teR/poe-lib/pobcode"
 )
@@ -156,7 +157,12 @@ func (c *Calculator) Combat(b *pobcode.Build, opts CombatOptions) (*CombatResult
 	pack := opts.Pack.withDefaults()
 	var bossNotes, packNotes []string
 	r.Boss, bossNotes = combatDPS(bossRes, boss, true, opts.Seed)
-	r.Pack, packNotes = combatDPS(packRes, packModel(pack), false, opts.Seed)
+	pm := packModel(pack)
+	spread := contagionSpread{}
+	if spreadByContagion[r.Skill] {
+		spread = c.contagionOf(nonBossBuild(b))
+	}
+	r.Pack, packNotes = combatDPSSpread(packRes, pm, false, opts.Seed, spread)
 	r.PackPerMob = perMob(r.Pack, float64(pack.Count))
 
 	bossName := map[BossSize]string{BossSmall: "маленький", BossMedium: "средний", BossLarge: "большой"}[size]
@@ -168,6 +174,11 @@ func (c *Calculator) Combat(b *pobcode.Build, opts CombatOptions) (*CombatResult
 		"мобы бессмертны, сумма = пропускная способность",
 		fmt.Sprintf("в среднем на моба = сумма / %d (устойчивый DPS и бурст пака)", pack.Count),
 	)
+	if spread.radius > 0 {
+		r.Assumptions = append(r.Assumptions, fmt.Sprintf(
+			"пак: %s разносит DoT %s с цели на мобов в радиусе %.0f (%.1f м); считается, что разнос уже случился (мобы бессмертны)",
+			spread.name, r.Skill, spread.radius, spread.radius/10))
+	}
 	r.Assumptions = append(r.Assumptions, bossNotes...)
 	r.Assumptions = append(r.Assumptions, packNotes...)
 	return r, nil
@@ -238,6 +249,12 @@ func nonBossBuild(b *pobcode.Build) *pobcode.Build {
 // know it) is counted as a single hit rather than an area that touches
 // nothing.
 func combatDPS(res *Result, m targetModel, isBoss bool, seed uint64) (CombatDPS, []string) {
+	return combatDPSSpread(res, m, isBoss, seed, contagionSpread{})
+}
+
+// combatDPSSpread is combatDPS where the main skill's own DoT (TotalDot)
+// also reaches every mob Contagion spreads it to (spread.radius > 0).
+func combatDPSSpread(res *Result, m targetModel, isBoss bool, seed uint64, spread contagionSpread) (CombatDPS, []string) {
 	s, out := res.main, res.Stats
 	sh := shapeOf(s, out)
 	src := sourcesOf(s, out)
@@ -297,6 +314,18 @@ func combatDPS(res *Result, m targetModel, isBoss bool, seed uint64) (CombatDPS,
 		}
 	}
 
+	// Contagion spreads the debuff from the main target (the most-hit mob)
+	// to the mobs within its radius: their skill DoT counts as applied.
+	spreadTo := make([]bool, len(hits))
+	if spread.radius > 0 && len(hits) > 0 && hits[top] > 0 {
+		c := m.targets[top]
+		for j, t := range m.targets {
+			if math.Hypot(t.x-c.x, t.y-c.y) <= spread.radius+t.r {
+				spreadTo[j] = true
+			}
+		}
+	}
+
 	d := CombatDPS{PoB: out["CombinedDPS"], Components: map[string]float64{}}
 	mult := combinedMult(s, out)
 	vals := make([]float64, len(combatComponents))
@@ -314,7 +343,11 @@ func combatDPS(res *Result, m targetModel, isBoss bool, seed uint64) (CombatDPS,
 			case cmp.hit:
 				v *= h
 			case cmp.dot:
-				v = math.Min(v*dotScale(cmp.out, h, s, out), dotDpsCap)
+				hd := h
+				if cmp.out == "TotalDot" && spreadTo[t] {
+					hd = math.Max(h, 1)
+				}
+				v = math.Min(v*dotScale(cmp.out, hd, s, out), dotDpsCap)
 			default: // Impale: PoB does not cap it
 				v *= dotScale(cmp.out, h, s, out)
 			}
@@ -410,4 +443,45 @@ func hasAreaRadiusStat(ge *gamedata.Skill) bool {
 		}
 	}
 	return false
+}
+
+// spreadByContagion are the skills whose damaging debuff Contagion spreads
+// (gem descriptions: "The debuff is spread by Contagion"; Essence Drain of
+// Wickedness lacks the line).
+var spreadByContagion = map[string]bool{
+	"Essence Drain": true, "Essence Drain of Desperation": true, "Blight of Contagion": true,
+}
+
+// contagionSpread is a Contagion skill in the build: the radius it spreads
+// debuffs over (0 = none) and its name.
+type contagionSpread struct {
+	radius float64
+	name   string
+}
+
+// contagionOf finds an enabled Contagion in b's active skill set and
+// returns its area radius, from a Calc with that skill as the main skill.
+// Contagion and Contagion of Subsiding spread when an affected enemy dies,
+// Contagion of Transference when it is hit; on the immortal pack both are
+// taken as having spread.
+func (c *Calculator) contagionOf(b *pobcode.Build) contagionSpread {
+	set := b.ActiveSkills()
+	if set == nil {
+		return contagionSpread{}
+	}
+	for gi, g := range set.Groups {
+		if !g.Enabled || gi+1 == b.MainSocketGroup {
+			continue
+		}
+		for k := 1; k <= len(g.Gems); k++ {
+			res, err := c.Calc(withMainSkill(b, gi+1, k))
+			if err != nil || res.main == nil || !strings.HasPrefix(res.main.active.ge.Name, "Contagion") {
+				continue
+			}
+			if r := res.Stats["AreaOfEffectRadius"]; r > 0 {
+				return contagionSpread{radius: r, name: res.main.active.ge.Name}
+			}
+		}
+	}
+	return contagionSpread{}
 }

@@ -340,3 +340,31 @@ func TestCombatNoAreaNoExplosion(t *testing.T) {
 		t.Errorf("%s: pack hits per cast %.2f, want <= 1 (no explosion)", cr.Skill, cr.Pack.HitsPerCast)
 	}
 }
+
+// TestCombatContagionSpread: Contagion spreads Essence Drain's debuff over
+// the pack, so the pack's skill DoT is several mobs' worth; without the
+// spread it is one mob's (the projectile hits one target).
+func TestCombatContagionSpread(t *testing.T) {
+	c := newCalc(t)
+	b := corpusBuild(t, "maxrollEDBigStaff")
+	cr, err := c.Combat(b, CombatOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	boss, pack := cr.Boss.Components["Dot"], cr.Pack.Components["Dot"]
+	if boss <= 0 || pack < 5*boss {
+		t.Errorf("%s: pack Dot %v, want >= 5 x boss Dot %v (Contagion spread)", cr.Skill, pack, boss)
+	}
+	found := false
+	for _, a := range cr.Assumptions {
+		if strings.Contains(a, "разносит DoT") {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("no Contagion spread assumption in %q", cr.Assumptions)
+	}
+	if sp := c.contagionOf(b); sp.radius <= 0 || !strings.HasPrefix(sp.name, "Contagion") {
+		t.Errorf("contagionOf = %+v, want a Contagion with a radius", sp)
+	}
+}
