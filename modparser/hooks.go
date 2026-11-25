@@ -652,6 +652,59 @@ var hooks = map[string]Hook{
 	"modTagList[if (%d+) (%a+) items are equipped]": func(p *Parser, a []any) any {
 		return map[string]any{"tag": map[string]any{"type": "MultiplierThreshold", "var": firstToUpper(argS(a, 2)) + "Item", "threshold": arg(a, 0)}}
 	},
+	// ["your (%w+) damage can (%w+)"] = function(_, element, ailment) return {
+	//   flag(firstToUpper(element).."Can"..firstToUpper(ailment)) } end
+	"specialModList[^your (%w+) damage can (%w+)$]": func(_ *Parser, a []any) any {
+		return []any{newMod(firstToUpper(argS(a, cap1))+"Can"+firstToUpper(argS(a, cap2)), "FLAG", true, 0, 0)}
+	},
+	// ["your (%w+) damage cannot (%w+)"] = function(_, element, ailment) return {
+	//   flag(firstToUpper(element).."Cannot"..firstToUpper(ailment)) } end
+	"specialModList[^your (%w+) damage cannot (%w+)$]": func(_ *Parser, a []any) any {
+		return []any{newMod(firstToUpper(argS(a, cap1))+"Cannot"+firstToUpper(argS(a, cap2)), "FLAG", true, 0, 0)}
+	},
+	// ["you and your minions take (%d+)%% reduced reflected (%w+) damage"] = function(num, _, type) return {
+	//   mod(Type.."ReflectedDamageTaken", "INC", -tonumber(num), { type = "GlobalEffect", effectType = "Global", unscalable = true }),
+	//   mod("MinionModifier", "LIST", { mod = mod(Type.."ReflectedDamageTaken", "INC", -tonumber(num), <same tag>) }) } end
+	"specialModList[^you and your minions take (%d+)%% reduced reflected (%w+) damage$]": func(_ *Parser, a []any) any {
+		return reflectedTaken(firstToUpper(argS(a, cap2))+"ReflectedDamageTaken", a, true)
+	},
+	// ["you and your minions take (%d+)%% reduced reflected damage"] = function(num) return {
+	//   mod("ReflectedDamageTaken", "INC", -tonumber(num), <GlobalEffect tag>), mod("MinionModifier", "LIST", { mod = <same> }) } end
+	"specialModList[^you and your minions take (%d+)%% reduced reflected damage$]": func(_ *Parser, a []any) any {
+		return reflectedTaken("ReflectedDamageTaken", a, true)
+	},
+	// ["(%d+)%% reduced reflected damage taken during effect"] = function(num) return {
+	//   mod("ReflectedDamageTaken", "INC", -tonumber(num), { type = "GlobalEffect", effectType = "Global", unscalable = true }) } end
+	"specialModList[^(%d+)%% reduced reflected damage taken during effect$]": func(_ *Parser, a []any) any {
+		return reflectedTaken("ReflectedDamageTaken", a, false)
+	},
+	// ["cannot take reflected (%a+) damage if (%d+) (%a+) items are equipped"] = function(_, element, thresh, influence) return {
+	//   mod(firstToUpper(element).."ReflectedDamageTaken", "MORE", -100,
+	//   { type = "MultiplierThreshold", var = firstToUpper(influence).."Item", threshold = tonumber(thresh) }) } end
+	"specialModList[^cannot take reflected (%a+) damage if (%d+) (%a+) items are equipped$]": func(_ *Parser, a []any) any {
+		tag := map[string]any{
+			"type":      "MultiplierThreshold",
+			"var":       firstToUpper(argS(a, cap3)) + "Item",
+			"threshold": toNumber(argS(a, cap2)),
+		}
+		return []any{withTags(newMod(firstToUpper(argS(a, cap1))+"ReflectedDamageTaken", "MORE", -100.0, 0, 0), tag)}
+	},
+	// ["([%a%s]+) can affect hexproof enemies"] = function(_, name) return {
+	//   mod("SkillData", "LIST", { key = "ignoreHexproof", value = true }, { type = "SkillId", skillId = gemIdLookup[name] }) } end
+	"specialModList[^([%a%s]+) can affect hexproof enemies$]": func(p *Parser, a []any) any {
+		tag := map[string]any{"type": "SkillId"}
+		if id, ok := p.t.exact["gemIdLookup"][argS(a, cap1)]; ok {
+			tag["skillId"] = id
+		}
+		v := map[string]any{"key": "ignoreHexproof", "value": true}
+		return []any{withTags(newMod("SkillData", "LIST", v, 0, 0), tag)}
+	},
+	// ["items and gems have (%d+)%% reduced attribute requirements"] = function(num) return {
+	//   mod("GlobalAttributeRequirements", "INC", -num) } end
+	"specialModList[^items and gems have (%d+)%% reduced attribute requirements$]": func(_ *Parser, a []any) any {
+		n, _ := toNumber(arg(a, argNum)).(float64)
+		return []any{newMod("GlobalAttributeRequirements", "INC", -n, 0, 0)}
+	},
 	// The "Extra skill/support" block of ModParser.lua specialModList: one-line
 	// functions that return triggerExtraSkill, as named by the helper used.
 	"specialModList[^[ct][ar][si][tg]g?e?r?s? level (%d+) (.+) when equipped$]":                                                           numSkill,
@@ -1482,4 +1535,19 @@ func selfCastTag(curse string) map[string]any {
 func castExposure(element, curse string) map[string]any {
 	return withTags(newMod("EnemyModifier", "LIST", map[string]any{"mod": newMod(firstToUpper(element)+"Exposure", "BASE", -10.0, 0, 0)}, 0, 0),
 		selfCastTag(curse), map[string]any{"type": "Condition", "var": "Effective"})
+}
+
+// reflectedTaken is the "N% reduced reflected damage" mods: name INC -num
+// with the unscalable Global effect tag, and the same for minions.
+func reflectedTaken(name string, a []any, minions bool) []any {
+	n, _ := toNumber(arg(a, 0)).(float64)
+	global := func() map[string]any {
+		tag := map[string]any{"type": "GlobalEffect", "effectType": "Global", "unscalable": true}
+		return withTags(newMod(name, "INC", -n, 0, 0), tag)
+	}
+	out := []any{global()}
+	if minions {
+		out = append(out, newMod("MinionModifier", "LIST", map[string]any{"mod": global()}, 0, 0))
+	}
+	return out
 }
