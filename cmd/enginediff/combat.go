@@ -66,6 +66,8 @@ func runCombat(ids string) error {
 		fmt.Printf("== %s: %s\n", name, r.Skill)
 		printCombat("boss", r.Boss)
 		printCombat("pack", r.Pack)
+		fmt.Printf("  pack per mob: sustained %s  burst %s  hitsPerCast %.2f\n",
+			human(r.PackPerMob.Sustained), human(r.PackPerMob.Burst), r.PackPerMob.HitsPerCast)
 		fmt.Println("  assumptions:")
 		for _, a := range r.Assumptions {
 			fmt.Printf("    - %s\n", a)
