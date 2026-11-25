@@ -14,12 +14,29 @@ import (
 // runCombat prints the combat DPS model for the golden builds. It does not
 // use the PoB oracle: the numbers are the engine's own model.
 func runCombat(ids string) error {
-	codes, _ := filepath.Glob("testdata/golden/builds/*.code")
+	codes, err := filepath.Glob("testdata/golden/builds/*.code")
+	if err != nil {
+		return err
+	}
 	want := map[string]bool{}
 	for _, id := range strings.Split(ids, ",") {
 		if id != "" {
 			want[id] = true
 		}
+	}
+	found := map[string]bool{}
+	for _, c := range codes {
+		found[strings.TrimSuffix(filepath.Base(c), ".code")] = true
+	}
+	var missing []string
+	for id := range want {
+		if !found[id] {
+			missing = append(missing, id)
+		}
+	}
+	if len(missing) > 0 {
+		sort.Strings(missing)
+		return fmt.Errorf("no golden build %s", strings.Join(missing, ", "))
 	}
 	calc, err := engine.New()
 	if err != nil {
@@ -58,7 +75,7 @@ func runCombat(ids string) error {
 }
 
 func printCombat(label string, d engine.CombatDPS) {
-	fmt.Printf("  %s: PoB %s  sustained %s  burst %s  hitsPerCast %.2f\n",
+	fmt.Printf("  %s: PoB CombinedDPS %s  sustained %s  burst %s  hitsPerCast %.2f\n",
 		label, human(d.PoB), human(d.Sustained), human(d.Burst), d.HitsPerCast)
 	names := make([]string, 0, len(d.Components))
 	for k := range d.Components {
