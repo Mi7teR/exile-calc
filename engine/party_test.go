@@ -242,3 +242,60 @@ func TestPartyProtectiveLink(t *testing.T) {
 		t.Errorf("Protective Link Armour INC = %v, want 10 (100%% effect)", got)
 	}
 }
+
+// TestPartySoulLink: a party Soul Link (CalcDefence.lua:2595-2599): the
+// link's TakenFromParentESBeforeYou becomes TakenFromPartyMemberESBeforeYou
+// (PartyTab.lua), so SoulLinkMitigation = 30 at 150% effect = 45, and
+// AlliedEnergyShield is the linking member's EnergyShieldRecoveryCap
+// (exported in PartyMemberStats, CalcPerform.lua:3953).
+func TestPartySoulLink(t *testing.T) {
+	b := corpusBuild(t, "NCgd_ieVLUw7")
+	b.Party = &pobcode.Party{Buffs: []pobcode.PartyBuffs{
+		{Name: "PartyMemberStats", Text: "EnergyShieldRecoveryCap=5000"},
+		{Name: "Link Skills", Text: "Soul Link\n150\n" +
+			"30|Skill:SoulLink|TakenFromParentESBeforeYou|BASE|-|-|type=GlobalEffect/effectType=Link\n---"},
+	}}
+	res, err := newCalc(t).Calc(b)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Stats["SoulLinkMitigation"] != 45 || res.Stats["AlliedEnergyShield"] != 5000 {
+		t.Errorf("SoulLinkMitigation/AlliedEnergyShield = %v/%v, want 45/5000",
+			res.Stats["SoulLinkMitigation"], res.Stats["AlliedEnergyShield"])
+	}
+}
+
+// TestMinionQuicksilverNote: QuickSilverAppliesToAllies only reaches the
+// minion through an active Quicksilver Flask (CalcPerform.lua:1863), so
+// the flasks-on-minions note needs both.
+func TestMinionQuicksilverNote(t *testing.T) {
+	c := newCalc(t)
+	note := func(quicksilverActive bool) bool {
+		t.Helper()
+		b := corpusBuild(t, "b7vXBYdtxO95")
+		set := b.ActiveItems()
+		for i := range set.Slots {
+			if set.Slots[i].Name == "Flask 4" { // Clinician's Quicksilver Flask of the Impala
+				set.Slots[i].Active = quicksilverActive
+			}
+		}
+		cfg := b.ActiveConfig()
+		cfg.CustomMods = append(cfg.CustomMods, pobcode.CustomModBlock{
+			Title: "test", Enabled: true, Text: "Quicksilver Flasks you Use also apply to Allies within 6 metres",
+		})
+		res, err := c.Calc(withMainSkill(b, 2, 2))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if res.Minion == nil {
+			t.Fatal("no main minion")
+		}
+		return slices.Contains(res.Incomplete, "flask effects on the minion are not applied")
+	}
+	if !note(true) {
+		t.Error("active Quicksilver with QuickSilverAppliesToAllies: no flask note")
+	}
+	if note(false) {
+		t.Error("flask note without an active Quicksilver")
+	}
+}
