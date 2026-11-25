@@ -391,9 +391,12 @@ func combatDPS(res *Result, m targetModel, isBoss bool, seed uint64, spread cont
 			d.Components["Contagion"] += contagion * capScale
 		}
 	}
-	for _, v := range d.Components {
-		d.Sustained += v
+	// Sum in a fixed order: float addition over map iteration order changes
+	// the last bits from run to run.
+	for _, cmp := range combatComponents {
+		d.Sustained += d.Components[cmp.name]
 	}
+	d.Sustained += d.Components["Contagion"]
 	// Burst: one use's hit damage is TotalDPS / hit rate, which keeps PoB's
 	// dpsMultiplier once (taken out on the pack like the sustained hits);
 	// hitsPerCast is 1 per target with pobOverlap. Culling and reservation
