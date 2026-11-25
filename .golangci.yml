@@ -240,7 +240,7 @@ linters:
       # Default: [ switch ]
       check:
         - switch
-        # why: "mapliteral" is only known to golangci-lint >= 2.15; installed v2.12.2 rejects it.
+        - mapliteral
 
     exhaustruct_v5:
       # List of regular expressions to match type names that should be skipped from checking.

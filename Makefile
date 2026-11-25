@@ -5,10 +5,8 @@ STATSDUMP_DIR := $(HOME)/.cache/poe-lib/statsdump-base
 test:
 	go vet ./... && go test ./...
 
-# why GOTOOLCHAIN: the installed golangci-lint is built with Go 1.26 and panics on the Go 1.27 standard library;
-# linting under the cached Go 1.25 toolchain (the go.mod version) works. Drop it once golangci-lint is rebuilt with Go 1.27.
 lint:
-	GOTOOLCHAIN=go1.25.11 golangci-lint run ./...
+	golangci-lint run ./...
 
 # Compare current benchmarks against the committed baseline.
 bench:
