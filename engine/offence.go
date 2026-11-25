@@ -1131,16 +1131,6 @@ func preDamageFunc(actor *ModDB, s *activeSkill, out map[string]float64) {
 			Tags: []map[string]any{{"type": "DistanceRamp", "ramp": []any{[]any{0.0, 0.0}, []any{r, 1.0}}}}})
 		s.mods.Add(Mod{Name: "EnemyFreezeChance", Type: "BASE", Value: 25.0, Source: "Skill:FreezingPulse",
 			Tags: []map[string]any{{"type": "DistanceRamp", "ramp": []any{[]any{0.0, 1.0}, []any{15 * out["ProjectileSpeedMod"], 0.0}}}}})
-	case "Lightning Tendrils of Eccentricity":
-		// The DPS of each pulse part.
-		interval := numOr(data["pulseInterval"], 0)
-		part := []map[string]any{{"type": "SkillPart", "skillPart": float64(s.part)}}
-		switch s.part {
-		case 2:
-			s.mods.Add(Mod{Name: "DPS", Type: "MORE", Value: -(1 / interval) * 100, Source: "Normal pulse", Tags: part})
-		case 3:
-			s.mods.Add(Mod{Name: "DPS", Type: "MORE", Value: -(interval - 1) / interval * 100, Source: "Stronger pulse", Tags: part})
-		}
 	case "Kinetic Fusillade":
 		if s.part == 1 {
 			data["dpsMultiplier"] = proj
@@ -1188,18 +1178,6 @@ func preDamageFunc(actor *ModDB, s *activeSkill, out map[string]float64) {
 	case "Tornado of Elemental Turbulence":
 		data["hitTimeOverride"] = data["damageInterval"]
 		mulDPS(s.mods.SumCfg(s.cfg, "BASE", "Multiplier:TornadoofElementalTurbulenceStage"))
-	case "Storm Burst":
-		freq, _ := num(data["repeatFrequency"])
-		dur := numOr(data["duration"], 0) * out["DurationMod"]
-		switch s.part {
-		case 2:
-			// duration * 10 / (jump * 10) avoids floating point issues; +1 tick on spawn.
-			mulDPS(1 + math.Floor(dur*10/(freq*10)))
-		case 3:
-			jumps := math.Floor((dur + 0.001) / freq)
-			per, _ := num(data["remainingDurationDamage"])
-			s.mods.Add(Mod{Name: "Damage", Type: "MORE", Value: math.Max(per*jumps-100, 0), Source: "Skill:StormBurst"})
-		}
 	case "Spark", "Spark of the Nova":
 		if s.part == 2 {
 			mulDPS(1 + math.Floor(out["Duration"]/0.66))
@@ -1239,10 +1217,6 @@ func preDamageFunc(actor *ModDB, s *activeSkill, out map[string]float64) {
 				}
 			}
 		}
-	case "Flameblast", "Flameblast of Celerity", "Flameblast of Contraction":
-		// One release per channelled stage beyond the starting stages.
-		stage := "Multiplier:" + strings.Join(strings.Fields(s.active.ge.Name), "") + "Stage"
-		data["hitTimeMultiplier"] = math.Max(s.mods.SumCfg(s.cfg, "BASE", stage)-s.mods.SumCfg(s.cfg, "BASE", "Multiplier:FlameblastMinimumStage"), 1)
 	case "Static Strike":
 		if s.part == 2 {
 			f, _ := num(data["repeatFrequency"])
@@ -1911,6 +1885,9 @@ func areaOfEffect(s *activeSkill, out map[string]float64) {
 // after the crit chance of each damage pass. PoB passes the global output
 // (runSkillFunc's upvalue); out is the pass's, which is the same for spells.
 func postCritFunc(s *activeSkill, out, global map[string]float64) {
+	if h := hooksOf(s); h != nil && h.postCrit != nil {
+		h.postCrit(s, out, global)
+	}
 	switch s.active.ge.Name {
 	case "Kinetic Fusillade":
 		// Attacking faster than the projectiles fire wastes damage.
@@ -1932,17 +1909,6 @@ func postCritFunc(s *activeSkill, out, global map[string]float64) {
 			s.data["dpsMultiplier"] = base * maxAPS / global["Speed"]
 		}
 		global["KineticFusilladeMaxEffectiveAPS"] = maxAPS
-	case "Lightning Tendrils of Eccentricity":
-		// The 5th pulse's more damage as an average over the interval.
-		if s.part != 1 {
-			return
-		}
-		interval := numOr(s.data["pulseInterval"], 0)
-		pulse := numOr(s.data["pulseDamage"], 0) / 100
-		crit, eff, multi := out["PreEffectiveCritChance"]/100, out["CritChance"]/100, out["CritMultiplier"]
-		avg := 100 * (((interval-1)*(1+crit*(multi-1))+(1+pulse)*multi)/(interval*((1-eff)+multi*eff)) - 1)
-		s.mods.Add(Mod{Name: "Damage", Type: "MORE", Value: avg, Source: "Average Pulse Damage", KeywordFlags: kfHit | kfAilment,
-			Tags: []map[string]any{{"type": "SkillPart", "skillPart": 1.0}}})
 	}
 }
 
@@ -2047,44 +2013,9 @@ func weaponRange(s *activeSkill, w1 hitSource, w2 *hitSource, out map[string]flo
 }
 
 // initialFunc ports the skills' initialFunc (Data/Skills/*.lua), run first
-// in calcs.offence. Cyclone: AdditionalMeleeRange is the weapon's range
-// bonus plus MeleeWeaponRange (averaged when dual wielding), or the
-// unarmed range bonus. Blood Sacrament: life reserved per stage.
+// in calcs.offence.
 func initialFunc(actor *ModDB, s *activeSkill, w1 hitSource, w2 *hitSource) {
-	var source string
-	switch s.active.ge.Name {
-	case "Blood Sacrament":
-		// other.lua BloodSacramentUnique initialFunc: the skill's own life
-		// reservation (skillData LifeReservedPercent / LifeReservedBase, set
-		// by the reservation pass). PoB differs: with no reservation stored it
-		// falls back to math.huge life per stage, i.e. infinite damage; here
-		// an unknown reservation adds nothing.
-		if actor.output["LifeReservedPercent"] >= 100 {
-			return
-		}
-		pct, base := numOr(s.data["LifeReservedPercent"], 3), numOr(s.data["LifeReservedBase"], 0)
-		s.mods.NewMod("Multiplier:ChannelledLifeReservedPercentPerStage", "BASE", pct, "Blood Sacrament")
-		s.mods.NewMod("Multiplier:ChannelledLifeReservedPerStage", "BASE", base, "Blood Sacrament")
-		return
-	case "Cyclone", "Vaal Cyclone":
-		source = "Skill:Cyclone"
-	case "Cyclone of Tumult":
-		source = "Skill:CycloneAltX"
-	default:
-		return
+	if h := hooksOf(s); h != nil && h.initial != nil {
+		h.initial(actor, s, w1, w2)
 	}
-	list := s.mods
-	bonus := func(w *hitSource, wcfg *Cfg) float64 {
-		return list.SumCfg(wcfg, "BASE", "MeleeWeaponRange") + 10*list.SumCfg(wcfg, "BASE", "MeleeWeaponRangeMetre") + w.rangeBonus
-	}
-	var r float64
-	if s.flags["weapon1Attack"] && w1.hasRange {
-		r = bonus(&w1, s.weapon1Cfg)
-		if s.flags["weapon2Attack"] && w2 != nil && w2.hasRange {
-			r = (r + bonus(w2, s.weapon2Cfg)) / 2
-		}
-	} else {
-		r = list.SumCfg(s.cfg, "BASE", "UnarmedRange") + 10*list.SumCfg(s.cfg, "BASE", "UnarmedRangeMetre")
-	}
-	list.NewMod("Multiplier:AdditionalMeleeRange", "BASE", r, source)
 }
