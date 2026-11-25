@@ -15,6 +15,9 @@ energy shield, ward, block) within 0.5% for every build.
 (imported auras, curses, warcries, links, party member stats and enemy
 mods) taken from public builds or written by hand; `sources.tsv` names
 both. They check the Party tab, which few public builds fill.
+`link-<base id>` is the base build with the "Linked To Minion?" config
+option set, which its author left off: it checks Link skills on a minion
+(Link Skills can target Damageable Minions).
 
 - `builds/*.code` — PoB codes after a `pobcode` round trip (notes, import
   links and UI state removed). `sources.tsv`: id, public link, ascendancy,

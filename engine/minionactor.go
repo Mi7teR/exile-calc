@@ -222,6 +222,7 @@ func buffMinionModifiers(buffs map[string][]Mod, cfg *Cfg) [][]ListEntry {
 func minionBuffs(db *ModDB, skills []*activeSkill, mdb *ModDB, mainCfg *Cfg, res *Result) map[string][]Mod {
 	out := map[string][]Mod{}
 	selfAurasStay := db.Flag("SelfAurasCannotAffectAllies") || db.Flag("SelfAurasOnlyAffectYou") || db.Flag("SelfAuraSkillsCannotAffectAllies")
+	linkToMinion := linksApplyToMinion(db, mdb, mainSkill(skills))
 	for _, s := range skills {
 		if s.disabled {
 			continue
@@ -281,10 +282,38 @@ func minionBuffs(db *ModDB, skills []*activeSkill, mdb *ModDB, mainCfg *Cfg, res
 				mdb.conditions["AffectedBy"+name] = true
 				mdb.conditions["AffectedByAura"] = true
 				mergeBuff(append(scaleMods(b.mods, mult), scaleMods(extraAuraMods(db, cfg), mult)...), out, b.name)
+			case "Link": //nolint:goconst // PoB buff type, as the other cases
+				if linkToMinion {
+					// Only the first Link skill links (#linkSkills < 1).
+					linkToMinion = false
+					mergeBuff(linkToMinionMods(db, mdb, s, b), out, b.name)
+				}
 			}
 		}
 	}
 	return out
+}
+
+// linksApplyToMinion is calcs.perform's linksApplyToMinions: Link skills
+// can target damageable minions, the config links the main minion, and
+// that minion can be damaged.
+func linksApplyToMinion(db, mdb *ModDB, summon *activeSkill) bool {
+	return summon != nil && db.Flag("Condition:CanLinkToMinions") && db.Flag("Condition:LinkedToMinion") &&
+		!mdb.Flag("Condition:CannotBeDamaged") && !summon.types[stMinionsAreUndamagable]
+}
+
+// linkToMinionMods is the linksApplyToMinions part of calcs.perform's Link
+// branch: the link's mods and ExtraLinkEffect mods, scaled by link and buff
+// effect and the minion's effect on self.
+func linkToMinionMods(db, mdb *ModDB, s *activeSkill, b *skillBuff) []Mod {
+	list, cfg := s.mods, s.cfg
+	extra := extraEffectMods(db, cfg, "ExtraLinkEffect")
+	inc := list.SumCfg(cfg, "INC", "LinkEffect", "BuffEffect") + mdb.Sum("INC", "BuffEffectOnSelf", "LinkEffectOnSelf")
+	more := list.MoreCfg(cfg, "LinkEffect", "BuffEffect") * mdb.More("BuffEffectOnSelf", "LinkEffectOnSelf")
+	mult := (1 + inc/100) * more
+	mdb.conditions["AffectedBy"+strings.ReplaceAll(b.name, " ", "")] = true
+	mdb.conditions["AffectedByLink"] = true
+	return append(scaleMods(b.mods, mult), scaleMods(extra, mult)...)
 }
 
 // clawCritToMinion is the Law of the Wilds part of calcs.offence's stat

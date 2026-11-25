@@ -238,7 +238,8 @@ func (c *Calculator) applyBuffs(db *ModDB, skills []*activeSkill, res *Result) (
 					curses = append(curses, cu)
 				}
 			case "Link":
-				res.Incomplete = append(res.Incomplete, fmt.Sprintf("%s buff not applied: %s", strings.ToLower(b.typ), b.name))
+				// The player is never linked to itself: a link reaches the
+				// main minion (minionBuffs) or the party (buffExports only).
 			}
 		}
 		// Wither: the skill or its (main) minion can wither.
@@ -372,8 +373,15 @@ func extraAuraDebuffMods(db *ModDB, cfg *Cfg) []Mod {
 // extraAuraMods is the extraAuraModList of the Aura branch of
 // calcs.perform: ExtraAuraEffect mods, merged by parameters.
 func extraAuraMods(db *ModDB, cfg *Cfg) []Mod {
+	return extraEffectMods(db, cfg, "ExtraAuraEffect")
+}
+
+// extraEffectMods is the extraAuraModList/extraLinkModList loop of
+// calcs.perform: the mods of the actor's list entries of that name, with
+// comparable mods summed.
+func extraEffectMods(db *ModDB, cfg *Cfg, listName string) []Mod {
 	var extra []Mod
-	for _, e := range db.List(cfg, "ExtraAuraEffect") {
+	for _, e := range db.List(cfg, listName) {
 		v, _ := e.Value.(map[string]any)
 		mm, ok := v["mod"].(map[string]any)
 		if !ok {

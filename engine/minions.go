@@ -94,6 +94,14 @@ func (c *Calculator) minionCounts(db *ModDB, skills []*activeSkill) {
 	counts := map[string]*count{}
 	var order []string
 	for _, s := range skills {
+		if s.types[stCreatesMinion] && !s.types[stMinionsAreUndamagable] {
+			// calcs.perform: modDB:NewMod("Condition:HaveDamageableMinion", "FLAG", true).
+			db.Add(Mod{
+				Name:  "Condition:HaveDamageableMinion",
+				Type:  "FLAG", //nolint:goconst // PoB mod type
+				Value: true,
+			})
+		}
 		if s.disabled {
 			continue
 		}
