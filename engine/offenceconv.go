@@ -355,8 +355,8 @@ func repeats(actor *ModDB, s *activeSkill, out map[string]float64) {
 	}
 	out["RepeatCount"] = n
 	mode := "AVERAGE"
-	if actor.build != nil {
-		mode = configString(actor.build.ActiveConfig(), "repeatMode", "AVERAGE")
+	if b := actor.theBuild(); b != nil {
+		mode = configString(b.ActiveConfig(), "repeatMode", "AVERAGE")
 	}
 	if mode == "NONE" {
 		return

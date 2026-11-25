@@ -812,8 +812,8 @@ func (c *Calculator) crit(s *activeSkill, p *hitPass, enemy *ModDB, actor *ModDB
 			done = true
 		} else if list.FlagCfg(cfg, "SpellSkillsAlwaysDealCriticalStrikesOnFinalRepeat") {
 			mode := "AVERAGE"
-			if actor.build != nil {
-				mode = configString(actor.build.ActiveConfig(), "repeatMode", "AVERAGE")
+			if b := actor.theBuild(); b != nil {
+				mode = configString(b.ActiveConfig(), "repeatMode", "AVERAGE")
 			}
 			switch mode {
 			case "None":

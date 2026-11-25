@@ -1013,6 +1013,17 @@ func (db *ModDB) TabulateCfg(cfg *Cfg, typ, name string) []Row {
 	return rows
 }
 
+// theBuild is env.build for any actor: a minion's ModDB has no build of
+// its own, so this follows the owner chain to the player's.
+func (db *ModDB) theBuild() *pobcode.Build {
+	for d := db.root(); d != nil; d = d.owner {
+		if d.build != nil {
+			return d.build
+		}
+	}
+	return nil
+}
+
 // root is the end of the parent chain: the actor's ModDB.
 func (db *ModDB) root() *ModDB {
 	for db.parent != nil {
