@@ -336,9 +336,18 @@ func combatDPSSpread(res *Result, m targetModel, isBoss bool, seed uint64, sprea
 	mult := combinedMult(s, out)
 	vals := make([]float64, len(combatComponents))
 	effHits := 0.0 // sum of hits × overlap factor, for the burst
+	// dotTargets: targets the skill's own DoT reaches (hit or spread to),
+	// or, for a DoT that stacks, the hits on them.
+	dotTargets, dotStacks := 0.0, stackingDot("TotalDot", s)
 	for t, h := range hits {
 		d.HitsPerCast += h
 		effHits += h * ovs[t]
+		switch {
+		case dotStacks:
+			dotTargets += h * ovs[t]
+		case h > 0 || spreadTo[t]:
+			dotTargets += math.Min(math.Max(h, b2f(spreadTo[t])), 1)
+		}
 		dots := 0.0
 		for i, cmp := range combatComponents {
 			v := componentBase(cmp.name, cmp.out, out) * src.sustain(cmp.out, s)
@@ -401,6 +410,15 @@ func combatDPSSpread(res *Result, m targetModel, isBoss bool, seed uint64, sprea
 		if rate := hitSpeed(out); rate > 0 {
 			d.Burst = out["TotalDPS"] / rate * effHits * src.burstHits * mult
 		}
+		// The skill's own DoT over its duration: one debuff per target from
+		// the whole pack unless it stacks (then one per hit, per source).
+		if dot, dur := math.Min(out["TotalDot"], dotDpsCap), out["Duration"]; dot > 0 && dur > 0 {
+			n := dotTargets
+			if dotStacks {
+				n *= src.burstHits
+			}
+			d.Burst += dot * dur * n * mult
+		}
 	}
 
 	if !isBoss {
@@ -434,7 +452,7 @@ func combatDPSSpread(res *Result, m targetModel, isBoss bool, seed uint64, sprea
 	}
 	if src.kind != "" {
 		srcName := map[string]string{"mine": "мины", "trap": "ловушки", "totem": "тотемы", "ballista": "баллисты"}[src.kind]
-		notes = append(notes, fmt.Sprintf("источники: %s, активных %.0f; бурст = урон всех %.0f разом (урон, не в секунду), только хиты", srcName, src.active, src.burstHits))
+		notes = append(notes, fmt.Sprintf("источники: %s, активных %.0f; бурст = урон всех %.0f разом (урон, не в секунду): хиты плюс DoT скилла за его длительность (один дебафф на цель, если не стакается); ignite, poison, bleed в бурст не входят", srcName, src.active, src.burstHits))
 		if src.kind == "mine" || src.kind == "trap" {
 			notes = append(notes, "устойчивый DPS ограничен скоростью установки/броска")
 		} else {

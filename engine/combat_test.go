@@ -290,7 +290,15 @@ func TestCombatBurst(t *testing.T) {
 		if src.kind == "" || rate <= 0 || shapeOf(res.main, res.Stats).pobOverlap {
 			return
 		}
-		want := res.Stats["TotalDPS"] / rate * cr.Boss.HitsPerCast * src.burstHits * combinedMult(res.main, res.Stats)
+		mult := combinedMult(res.main, res.Stats)
+		want := res.Stats["TotalDPS"] / rate * cr.Boss.HitsPerCast * src.burstHits * mult
+		if dot, dur := math.Min(res.Stats["TotalDot"], dotDpsCap), res.Stats["Duration"]; dot > 0 && dur > 0 {
+			n := math.Min(cr.Boss.HitsPerCast, 1) // one target, one debuff
+			if stackingDot("TotalDot", res.main) {
+				n = cr.Boss.HitsPerCast * src.burstHits
+			}
+			want += dot * dur * n * mult
+		}
 		if !near(cr.Boss.Burst, want, 1e-9) {
 			t.Errorf("%s (%s): Boss.Burst %v, want %v", id, cr.Skill, cr.Boss.Burst, want)
 		}
