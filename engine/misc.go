@@ -785,6 +785,13 @@ func enemyAilments(db *ModDB, skills []*activeSkill, guaranteedBonechill bool) {
 		}
 		enemy.Add(Mod{Name: "Condition:Already" + a.condition, Type: "FLAG", Value: true, Tags: []map[string]any{when}})
 	}
+	// Update chill and shock multipliers.
+	for _, n := range []string{"Chill", "Shock"} {
+		cur, ok := db.output["Current"+n]
+		if have := enemy.Sum("BASE", "Multiplier:"+n+"Effect"); ok && have < cur {
+			enemy.Add(Mod{Name: "Multiplier:" + n + "Effect", Type: "BASE", Value: cur - have})
+		}
+	}
 }
 
 const (
