@@ -35,7 +35,7 @@ formatters:
   exclusions:
     # why: same verbatim-moved files as in linters.exclusions; reflowing their long lines would edit moved bodies.
     paths:
-      - 'engine/(calc(items|tree)|offence_(area|crit|hit|speed|warcry)|skill(setup|mods|buffs))\.go'
+      - 'engine/(calc(items|tree)|offence_(area|crit|hit|speed|warcry|dps)|skill(setup|mods|buffs)|ailments_dot|ehp_(pools|maxhit)|misc_(counts|enemy)|moddb_eval)\.go'
 
   settings:
     goimports:
@@ -475,11 +475,11 @@ linters:
       # step list is a package-level table on purpose (TestCalcStepOrder pins it).
       - path: 'engine/calcsteps\.go'
         linters: [ mnd, goconst, gochecknoglobals ]
-      # why: these files hold legacy port code moved verbatim out of calc.go, offence.go and skills.go (Task 6
-      # split, no body edits); new-from-rev sees moved lines as new. Only style and complexity linters are
-      # excluded here (PoB literals, long ported functions); correctness linters still run, and their findings
-      # on legacy lines carry line-level nolint directives.
-      - path: 'engine/(calc(items|tree)|offence_(area|crit|hit|speed|warcry)|skill(setup|mods|buffs))\.go'
+      # why: these files hold legacy port code moved verbatim out of calc.go, offence.go, skills.go, ailments.go,
+      # ehp.go, misc.go and moddb.go (Task 6 split, no body edits); new-from-rev sees moved lines as new. Only
+      # style and complexity linters are excluded here (PoB literals, long ported functions); correctness linters
+      # still run, and their findings on legacy lines carry line-level nolint directives.
+      - path: 'engine/(calc(items|tree)|offence_(area|crit|hit|speed|warcry|dps)|skill(setup|mods|buffs)|ailments_dot|ehp_(pools|maxhit)|misc_(counts|enemy)|moddb_eval)\.go'
         linters: [ mnd, funlen, gocognit, gocyclo, cyclop, nestif, goconst, gochecknoglobals, exhaustive, intrange,
                    modernize, revive ]
       # why: skillmods.go keeps a nolint:goconst directive moved verbatim from skills.go; goconst is excluded for
