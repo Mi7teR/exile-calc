@@ -41,6 +41,22 @@ var hooks = map[string]Hook{
 		limit, _ := toNumber(argS(a, 2)).(float64)
 		return []any{withTags(newMod("Speed", "INC", n, 0, 0), map[string]any{"type": "Multiplier", "var": "CorpseConsumedRecently", "limit": limit / n})}
 	},
+	// ["each mine applies (%d+)%% increased damage taken to enemies near it, up to (%d+)%%"] = function(num, _, limit) return {
+	//   mod("EnemyModifier", "LIST", { mod = mod("DamageTaken", "INC", num, { type = "Multiplier", var = "ActiveMineCount", limit = limit / num }) }) } end,
+	"specialModList[^each mine applies (%d+)%% increased damage taken to enemies near it, up to (%d+)%%$]": func(p *Parser, a []any) any {
+		n, _ := toNumber(arg(a, 0)).(float64)
+		limit, _ := toNumber(argS(a, 2)).(float64)
+		return []any{newMod("EnemyModifier", "LIST", map[string]any{"mod": withTags(newMod("DamageTaken", "INC", n, 0, 0),
+			map[string]any{"type": "Multiplier", "var": "ActiveMineCount", "limit": limit / n})}, 0, 0)}
+	},
+	// ["each mine applies (%d+)%% reduced damage dealt to enemies near it, up to (%d+)%%"] = function(num, _, limit) return {
+	//   mod("EnemyModifier", "LIST", { mod = mod("Damage", "INC", -num, { type = "Multiplier", var = "ActiveMineCount", limit = limit / num }) }) } end,
+	"specialModList[^each mine applies (%d+)%% reduced damage dealt to enemies near it, up to (%d+)%%$]": func(p *Parser, a []any) any {
+		n, _ := toNumber(arg(a, 0)).(float64)
+		limit, _ := toNumber(argS(a, 2)).(float64)
+		return []any{newMod("EnemyModifier", "LIST", map[string]any{"mod": withTags(newMod("Damage", "INC", -n, 0, 0),
+			map[string]any{"type": "Multiplier", "var": "ActiveMineCount", "limit": limit / n})}, 0, 0)}
+	},
 	// ["every (%d+) seconds, gain (%d+)%% of physical damage as extra fire damage for (%d+) seconds"] = function(frequency, _, num, duration) return {
 	//   mod("PhysicalDamageGainAsFire", "BASE", tonumber(num), { type = "Condition", var = "NgamahuFlamesAdvance" }) } end,
 	"specialModList[^every (%d+) seconds, gain (%d+)%% of physical damage as extra fire damage for (%d+) seconds$]": func(p *Parser, a []any) any {
