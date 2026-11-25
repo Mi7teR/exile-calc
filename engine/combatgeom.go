@@ -73,18 +73,7 @@ func bossModel(size BossSize) targetModel {
 // packModel lays the mobs out uniformly in the cluster circle, without
 // overlapping hitboxes where possible. The layout is fixed per PackParams.
 func packModel(p PackParams) targetModel {
-	if p.Count <= 0 {
-		p.Count = defaultPackCount
-	}
-	if p.Radius <= 0 {
-		p.Radius = defaultPackRadius
-	}
-	if p.MobRadius <= 0 {
-		p.MobRadius = defaultMobRadius
-	}
-	if p.Distance <= 0 {
-		p.Distance = defaultPackDist
-	}
+	p = p.withDefaults()
 	rng := rand.New(rand.NewPCG(packSeed, pcgStream))
 	ts := make([]target, 0, p.Count)
 	for range p.Count {
@@ -98,6 +87,23 @@ func packModel(p PackParams) targetModel {
 		ts = append(ts, target{x, y, p.MobRadius})
 	}
 	return targetModel{targets: ts, distance: p.Distance, inside: true}
+}
+
+// withDefaults fills the zero fields with the default pack.
+func (p PackParams) withDefaults() PackParams {
+	if p.Count <= 0 {
+		p.Count = defaultPackCount
+	}
+	if p.Radius <= 0 {
+		p.Radius = defaultPackRadius
+	}
+	if p.MobRadius <= 0 {
+		p.MobRadius = defaultMobRadius
+	}
+	if p.Distance <= 0 {
+		p.Distance = defaultPackDist
+	}
+	return p
 }
 
 func overlapsAny(x, y, r float64, ts []target) bool {
