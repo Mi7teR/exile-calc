@@ -39,7 +39,7 @@ func (db *ModDB) replaceMod(m Mod) {
 // calcs.offence (CalcOffence.lua, from "account for Battlemage" to the
 // random physical conversions): mods that apply to other stats.
 func (c *Calculator) offenceStatConversions(actor *ModDB, s *activeSkill, w1 hitSource, w2 *hitSource, out map[string]float64) {
-	list, cfg, data := s.mods, s.cfg, &s.data
+	list, cfg, data := s.mods, s.cfg, s.data
 	mfClaw, mfUnarmed, mfBow := modFlagByName["Claw"], modFlagByName["Unarmed"], modFlagByName["Bow"]
 	improved := func(name string) float64 {
 		if v, ok := list.MaxCfg(cfg, name); ok {
@@ -256,7 +256,7 @@ func (c *Calculator) offenceStatConversions(actor *ModDB, s *activeSkill, w1 hit
 // unleashSeals is the "Applies DPS multiplier based on seals count" block
 // of calcs.offence (Unleash supports).
 func unleashSeals(actor *ModDB, s *activeSkill, out map[string]float64) {
-	list, cfg, data := s.mods, s.cfg, &s.data
+	list, cfg, data := s.mods, s.cfg, s.data
 	if !list.Flag("HasSeals") || !s.types[stCanRapidFire] || list.Flag("NoRepeatBonuses") {
 		return
 	}

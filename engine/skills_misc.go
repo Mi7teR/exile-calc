@@ -24,7 +24,7 @@ func onKillMonsterExplosionPreDamage(_ *ModDB, s *activeSkill, out map[string]fl
 //
 // The trigger source's totem life (triggerSourceUUID's TotemLife).
 func avengingFlamePreDamage(_ *ModDB, s *activeSkill, _ map[string]float64) {
-	data := &s.data
+	data := s.data
 	add := numOr(data.val("triggerSourceTotemLife"), 0) * numOr(data.val("lifeDealtAsFire"), 0) / 100
 	data.set("FireMin", numOr(data.val("FireMin"), 0)+add)
 	data.set("FireMax", numOr(data.val("FireMax"), 0)+add)
@@ -39,7 +39,7 @@ func bladefallOfTrarthusPreDamage(_ *ModDB, s *activeSkill, _ map[string]float64
 // Data/Skills/act_dex.lua Tornado of Elemental Turbulence preDamageFunc.
 func tornadoOfElementalTurbulencePreDamage(_ *ModDB, s *activeSkill, _ map[string]float64) {
 	s.data.set("hitTimeOverride", s.data.val("damageInterval"))
-	mulDPS(&s.data, s.mods.SumCfg(s.cfg, "BASE", "Multiplier:TornadoofElementalTurbulenceStage"))
+	mulDPS(s.data, s.mods.SumCfg(s.cfg, "BASE", "Multiplier:TornadoofElementalTurbulenceStage"))
 }
 
 // Data/Skills/act_int.lua Bodyswap preDamageFunc.

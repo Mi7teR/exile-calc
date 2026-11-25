@@ -410,7 +410,7 @@ func warcryBonus(db *ModDB, s *activeSkill, b *skillBuff) ([]float64, float64) {
 			bonus[i] = math.Floor(p / div)
 		}
 	}
-	duration := skillDuration(list, cfg, &s.data, db.enemy)
+	duration := skillDuration(list, cfg, s.data, db.enemy)
 	cooldown, ok := list.OverrideCfg(cfg, "CooldownRecovery")
 	if !ok {
 		cd, _ := s.data.cooldown.get()

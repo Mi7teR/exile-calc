@@ -40,7 +40,7 @@ func reservations(db *ModDB, skills []*activeSkill, res *Result) {
 		}
 		mult := floorTo(list.MoreCfg(cfg, "SupportManaMultiplier"), 4)
 		base := func(key string, fromLevel float64) float64 {
-			if v, ok := dataNum(&s.data, key); ok {
+			if v, ok := dataNum(s.data, key); ok {
 				return v
 			}
 			return fromLevel

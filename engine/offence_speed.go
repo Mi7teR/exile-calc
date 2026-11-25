@@ -28,7 +28,7 @@ func skillCooldown(list *ModDB, cfg *Cfg, data *skillData) (float64, bool) {
 // hitAndSpeed is the hit chance and attack/cast speed part of
 // calcs.offence for one pass.
 func (c *Calculator) hitAndSpeed(actor *ModDB, s *activeSkill, p *hitPass) {
-	list, cfg, data, out := s.mods, s.cfg, &s.data, p.out
+	list, cfg, data, out := s.mods, s.cfg, s.data, p.out
 	enemy := actor.enemy
 	isAttack := s.flags["attack"]
 	// PoB calls skillModList:More("MORE", cfg, ...): the cfg is the string
@@ -164,7 +164,7 @@ func (c *Calculator) hitAndSpeed(actor *ModDB, s *activeSkill, p *hitPass) {
 // hitTime is the HitTime and HitSpeed part of the speed calculation:
 // skills that hit on their own timer (hitTimeOverride, hitTimeMultiplier).
 func hitTime(s *activeSkill, out map[string]float64, tickCap bool) {
-	data := &s.data
+	data := s.data
 	if truthy(data.val("triggeredOnDeath")) {
 		return
 	}

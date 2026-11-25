@@ -77,7 +77,7 @@ func enemyMaxResistFor(configMax float64) float64 {
 // hitDamage is the crit and hit damage part of calcs.offence for one pass:
 // AverageHit and AverageDamage.
 func (c *Calculator) hitDamage(actor *ModDB, s *activeSkill, p *hitPass) {
-	list, cfg, data, out := s.mods, s.cfg, &s.data, p.out
+	list, cfg, data, out := s.mods, s.cfg, s.data, p.out
 	enemy := actor.enemy
 	ge := s.active.ge
 

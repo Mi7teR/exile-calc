@@ -531,10 +531,10 @@ func (c *Calculator) buildSkillMods(db *ModDB, s *activeSkill, res *Result) {
 		}
 	}
 	for _, e := range player.List(s.cfg, "SkillData") {
-		applySkillData(&s.data, e.Value)
+		applySkillData(s.data, e.Value)
 	}
 	for _, e := range list.List(s.cfg, "SkillData") {
-		applySkillData(&s.data, e.Value)
+		applySkillData(s.data, e.Value)
 	}
 	c.separateBuffs(s)
 	if len(s.buffs) > 0 && flags["attack"] {

@@ -75,7 +75,7 @@ func lightningTendrilsOfEccentricityPostCrit(s *activeSkill, out, _ map[string]f
 
 // Data/Skills/act_int.lua Storm Burst preDamageFunc.
 func stormBurstPreDamage(_ *ModDB, s *activeSkill, out map[string]float64) {
-	data := &s.data
+	data := s.data
 	freq, _ := num(data.val("repeatFrequency"))
 	dur := data.duration.or(0) * out["DurationMod"]
 	switch s.part {

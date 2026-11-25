@@ -237,7 +237,7 @@ type activeSkill struct {
 	gem            *pobcode.Gem // srcInstance: the gem of the active effect
 	cfg            *Cfg
 	mods           *ModDB // skillModList
-	data           skillData
+	data           *skillData
 	buffs          []*skillBuff
 	disabled       bool
 	main           bool // env.player.mainSkill

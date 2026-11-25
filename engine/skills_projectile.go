@@ -36,14 +36,14 @@ func barragePreDamage(_ *ModDB, s *activeSkill, out map[string]float64) {
 // Data/Skills/act_int.lua Blazing Salvo preDamageFunc.
 func blazingSalvoPreDamage(_ *ModDB, s *activeSkill, out map[string]float64) {
 	if s.part == 2 {
-		mulDPS(&s.data, out["ProjectileCount"])
+		mulDPS(s.data, out["ProjectileCount"])
 	}
 }
 
 // Data/Skills/act_int.lua Forbidden Rite preDamageFunc.
 func forbiddenRitePreDamage(_ *ModDB, s *activeSkill, out map[string]float64) {
 	if s.part == 2 {
-		mulDPS(&s.data, out["ProjectileCount"]+1)
+		mulDPS(s.data, out["ProjectileCount"]+1)
 	}
 }
 
@@ -104,14 +104,14 @@ func kineticFusilladePostCrit(s *activeSkill, _, global map[string]float64) {
 // Data/Skills/act_int.lua Spark preDamageFunc.
 func sparkPreDamage(_ *ModDB, s *activeSkill, out map[string]float64) {
 	if s.part == 2 {
-		mulDPS(&s.data, 1+math.Floor(out["Duration"]/0.66))
+		mulDPS(s.data, 1+math.Floor(out["Duration"]/0.66))
 	}
 }
 
 // Data/Skills/act_int.lua Ice Spear preDamageFunc.
 func iceSpearPreDamage(_ *ModDB, s *activeSkill, out map[string]float64) {
 	if s.part == 3 || s.part == 4 {
-		mulDPS(&s.data, out["ProjectileCount"])
+		mulDPS(s.data, out["ProjectileCount"])
 	}
 }
 
@@ -130,13 +130,13 @@ func shrapnelBallistaPreDamage(_ *ModDB, s *activeSkill, out map[string]float64)
 		} else if s.types[stRain] {
 			overlap = proj
 		}
-		mulDPS(&s.data, math.Min(overlap, proj))
+		mulDPS(s.data, math.Min(overlap, proj))
 	}
 }
 
 // Data/Skills/act_int.lua Ball Lightning of Orbiting preDamageFunc.
 func ballLightningOfOrbitingPreDamage(_ *ModDB, s *activeSkill, _ map[string]float64) {
-	data := &s.data
+	data := s.data
 	if s.part == 2 || s.part == 3 {
 		interval, _ := num(data.val("strikeInterval"))
 		dur, _ := data.duration.get()

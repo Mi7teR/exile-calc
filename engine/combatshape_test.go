@@ -54,7 +54,11 @@ func TestShapeKineticBlast(t *testing.T) {
 		t.Errorf("subRadius %v, want AreaOfEffectRadius %v", sh.subRadius, res.Stats["AreaOfEffectRadius"])
 	}
 	if sh.scatter != res.Stats["AreaOfEffectRadiusSecondary"] || sh.scatter == 0 {
-		t.Errorf("scatter %v, want AreaOfEffectRadiusSecondary %v", sh.scatter, res.Stats["AreaOfEffectRadiusSecondary"])
+		t.Errorf(
+			"scatter %v, want AreaOfEffectRadiusSecondary %v",
+			sh.scatter,
+			res.Stats["AreaOfEffectRadiusSecondary"],
+		)
 	}
 }
 
@@ -110,7 +114,7 @@ func TestShapePobOverlap(t *testing.T) {
 
 func TestShapeShotgunGMP(t *testing.T) {
 	active := &skillEffect{ge: &gamedata.Skill{Name: "Ethereal Knives"}}
-	s := &activeSkill{active: active, types: map[int]bool{stProjectile: true},
+	s := &activeSkill{active: active, types: map[int]bool{stProjectile: true}, data: &skillData{},
 		effects: []*skillEffect{active, {ge: &gamedata.Skill{Name: "Greater Multiple Projectiles"}}}}
 	sh := shapeOf(s, nil)
 	// Bare projectiles of one use never hit the same target twice: GMP only
@@ -129,7 +133,7 @@ func TestShapePobOverlapEngineOnly(t *testing.T) {
 	skill := func(name string, part int) *activeSkill {
 		active := &skillEffect{ge: &gamedata.Skill{Name: name}}
 		return &activeSkill{active: active, effects: []*skillEffect{active}, part: part,
-			types: map[int]bool{stProjectile: true}, mods: NewModDB(), cfg: &Cfg{}}
+			types: map[int]bool{stProjectile: true}, mods: NewModDB(), cfg: &Cfg{}, data: &skillData{}}
 	}
 	// Not ported to offence.go's preDamageFunc.
 	for _, s := range []*activeSkill{skill("Tornado Shot", 2), skill("Storm Rain", 2), skill("Kinetic Fusillade of Detonation", 1)} {
@@ -164,7 +168,7 @@ func TestShapeShrapnelBallista(t *testing.T) {
 	newSkill := func() *activeSkill {
 		active := &skillEffect{ge: &gamedata.Skill{Name: "Shrapnel Ballista"}}
 		return &activeSkill{active: active, effects: []*skillEffect{active},
-			types: map[int]bool{stProjectile: true}, mods: NewModDB(), cfg: &Cfg{}}
+			types: map[int]bool{stProjectile: true}, mods: NewModDB(), cfg: &Cfg{}, data: &skillData{}}
 	}
 	// Default: offence.go applies min(1, ProjectileCount) = 1, no overlap.
 	if sh := shapeOf(newSkill(), nil); sh.pobOverlap || sh.kind != projectile {
@@ -211,7 +215,13 @@ func TestShapeFlameblast(t *testing.T) {
 
 func TestShapeShotgunOnlyAreas(t *testing.T) {
 	// Kinetic Blast with GMP: the explosions of several projectiles overlap.
-	s := &activeSkill{effects: []*skillEffect{{ge: &gamedata.Skill{Name: "Kinetic Blast"}}, {ge: &gamedata.Skill{Name: "Greater Multiple Projectiles"}}}}
+	s := &activeSkill{
+		data: &skillData{},
+		effects: []*skillEffect{
+			{ge: &gamedata.Skill{Name: "Kinetic Blast"}},
+			{ge: &gamedata.Skill{Name: "Greater Multiple Projectiles"}},
+		},
+	}
 	if sh := withShotgun(s, skillShape{kind: projectile, subHits: 5, subRadius: 12}); !sh.canShotgun {
 		t.Errorf("explosions with GMP: %+v, want shotgun", sh)
 	}

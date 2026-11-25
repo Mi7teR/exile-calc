@@ -43,8 +43,8 @@ func TestSkillDataPresence(t *testing.T) {
 		t.Fatal("hitTimeOverride present after del")
 	}
 	d.set("triggered", "yes")
-	if v, ok := d.get("triggered"); v != "yes" || !ok || d.triggered.set {
-		t.Fatalf("triggered string = (%v, %v), field %v", v, ok, d.triggered)
+	if v, ok := d.get("triggered"); v != "yes" || !ok {
+		t.Fatalf("triggered string = (%v, %v)", v, ok)
 	}
 	d.set("triggered", true)
 	if v, ok := d.get("triggered"); v != true || !ok {

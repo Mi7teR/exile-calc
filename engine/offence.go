@@ -84,7 +84,7 @@ type hitPass struct {
 // calcs.offence's combineStat does.
 func (c *Calculator) offence(actor *ModDB, s *activeSkill, w1 hitSource, w2 *hitSource) map[string]float64 {
 	out := map[string]float64{}
-	list, cfg, data := s.mods, s.cfg, &s.data
+	list, cfg, data := s.mods, s.cfg, s.data
 	if s.disabled {
 		out["CombinedDPS"] = 0
 		return out
@@ -441,7 +441,7 @@ func pacts(actor *ModDB, s *activeSkill, out map[string]float64) {
 		if !applies || done[key] || v.disabled {
 			continue
 		}
-		cooldown, _ := skillCooldown(v.mods, v.cfg, &v.data)
+		cooldown, _ := skillCooldown(v.mods, v.cfg, v.data)
 		castRate := 1 / v.active.ge.CastTime * calcMod(v.mods, v.cfg, "Speed") * actionSpeedMod(actor)
 		castTime := 1 / math.Min(castRate, serverTickRate)
 		count := v.mods.SumCfg(v.cfg, "BASE", key+"EmpoweredSpells")

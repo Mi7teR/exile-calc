@@ -38,7 +38,7 @@ func warcries(actor *ModDB, s *activeSkill, cfg *Cfg, out map[string]float64) {
 	maxHit := list.Flag("Condition:WarcryMaxHit")
 	ratios := map[string]float64{}
 	uptime := func(v *activeSkill, count float64) float64 {
-		cd, _ := skillCooldown(v.mods, v.cfg, &v.data)
+		cd, _ := skillCooldown(v.mods, v.cfg, v.data)
 		r := 100.0
 		if speed != 0 {
 			r = math.Min((count/speed)/(cd+warcryCastTime(actor, v)), 1) * 100

@@ -19,29 +19,25 @@ func (o optF) or(def float64) float64 {
 // get is the value and whether it is set: num on the field.
 func (o optF) get() (float64, bool) { return o.v, o.set }
 
-// optB is a bool with presence.
-type optB struct{ v, set bool }
-
-// skillData is activeSkill.skillData (a Lua table in PoB). The frequent keys
-// are typed fields with presence; the rest, and any value of another type
+// skillData is activeSkill.skillData (a Lua table in PoB). The frequent float
+// keys are typed fields with presence; the rest, and any value of another type
 // than its field's, live in extra: a present nil (hitTimeOverride copied from
-// an absent damageInterval) or a statMap SkillData value, which the stat's
-// number replaces (showAverage and triggered arrive as float64 that way).
-// All string-keyed access goes through get, set and del.
+// an absent damageInterval), bools, strings and dynamic keys. All string-keyed
+// access goes through get, set and del. activeSkill holds it by pointer, so a
+// copy of the skill shares it; cloneSkill takes its own copy with clone.
 //
 // A set field wins over extra, so code may write a float field directly
-// (d.cooldown = optF{v, true}) without clearing a stale extra entry. Code
-// reads a field directly only where extra cannot hold another number or a
-// truthy value for its key; the bool fields are read through val because
-// statMap values land in extra.
+// (d.cooldown = optF{v, true}) without clearing a stale extra entry. Direct
+// field reads rely on every number that reaches set being a float64: SkillData
+// JSON numbers and statMap values are float64, so a numeric value of a typed
+// key always lands in its field, and extra can hold only a non-number for it.
 type skillData struct {
 	dpsMultiplier, hitTimeOverride, cooldown, duration, storedUses, timeOverride optF
-	triggered, showAverage                                                       optB
 	// SkillData mods, statMap and dynamic keys (t+"BonusMin").
 	extra map[string]any
 }
 
-// floatField and boolField route a key to its typed field, or nil.
+// floatField routes a key to its typed field, or nil.
 func (d *skillData) floatField(key string) *optF {
 	switch key {
 	case "dpsMultiplier":
@@ -60,23 +56,10 @@ func (d *skillData) floatField(key string) *optF {
 	return nil
 }
 
-func (d *skillData) boolField(key string) *optB {
-	switch key {
-	case "triggered":
-		return &d.triggered
-	case "showAverage":
-		return &d.showAverage
-	}
-	return nil
-}
-
 // get is data[key] with presence: absent → (nil, false).
 func (d *skillData) get(key string) (any, bool) {
 	if f := d.floatField(key); f != nil && f.set {
 		return f.v, true
-	}
-	if b := d.boolField(key); b != nil && b.set {
-		return b.v, true
 	}
 	v, ok := d.extra[key]
 	return v, ok
@@ -99,14 +82,6 @@ func (d *skillData) set(key string, v any) {
 		}
 		*f = optF{}
 	}
-	if b := d.boolField(key); b != nil {
-		if x, ok := v.(bool); ok {
-			*b = optB{x, true}
-			delete(d.extra, key)
-			return
-		}
-		*b = optB{}
-	}
 	if d.extra == nil {
 		d.extra = map[string]any{}
 	}
@@ -118,15 +93,12 @@ func (d *skillData) del(key string) {
 	if f := d.floatField(key); f != nil {
 		*f = optF{}
 	}
-	if b := d.boolField(key); b != nil {
-		*b = optB{}
-	}
 	delete(d.extra, key)
 }
 
 // clone is a copy that shares nothing with d.
-func (d *skillData) clone() skillData {
+func (d *skillData) clone() *skillData {
 	c := *d
 	c.extra = maps.Clone(d.extra)
-	return c
+	return &c
 }

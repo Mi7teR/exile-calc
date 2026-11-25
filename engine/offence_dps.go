@@ -5,7 +5,7 @@ import "math"
 // skillDot is "Calculate skill DOT components": the skill's own damage
 // over time (TotalDotInstance, TotalDot). preDotFunc is not ported.
 func skillDot(actor *ModDB, s *activeSkill, out map[string]float64, dpsMult, quantity float64) {
-	list, data, enemy, sc := s.mods, &s.data, actor.enemy, s.cfg
+	list, data, enemy, sc := s.mods, s.data, actor.enemy, s.cfg
 	flags := sc.Flags | mfDot
 	for _, x := range []struct {
 		flag uint64

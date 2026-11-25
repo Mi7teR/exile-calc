@@ -533,7 +533,7 @@ func canSupport(sup *skillEffect, s *activeSkill) bool {
 
 // createActiveSkill is calcs.createActiveSkill.
 func (c *Calculator) createActiveSkill(active *skillEffect, supports []*skillEffect, g *pobcode.SocketGroup, weapons [2]string, summon *activeSkill) *activeSkill {
-	s := &activeSkill{active: active, group: g, weapons: weapons, supportList: supports, summon: summon,
+	s := &activeSkill{active: active, group: g, weapons: weapons, supportList: supports, summon: summon, data: &skillData{},
 		types: typeSet(active.ge.SkillTypes), minionTypes: typeSet(active.ge.MinionSkillTypes), flags: map[string]bool{}}
 	for _, f := range active.ge.BaseFlags {
 		s.flags[f] = true

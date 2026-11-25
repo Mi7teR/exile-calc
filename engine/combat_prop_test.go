@@ -170,11 +170,11 @@ func TestPropSeedDeterministic(t *testing.T) {
 // maximum (scale x the stacks PoB already holds <= max), the rest keep one
 // instance (scale <= 1).
 func TestPropDotScaleMonotonic(t *testing.T) {
-	plain := &activeSkill{mods: NewModDB(), flags: map[string]bool{}}
-	crimson := &activeSkill{mods: NewModDB(), flags: map[string]bool{}}
+	plain := &activeSkill{data: &skillData{}, mods: NewModDB(), flags: map[string]bool{}}
+	crimson := &activeSkill{data: &skillData{}, mods: NewModDB(), flags: map[string]bool{}}
 	crimson.mods.Add(Mod{Name: "Condition:HaveCrimsonDance", Type: "FLAG", Value: true})
-	igniteStack := &activeSkill{mods: NewModDB(), flags: map[string]bool{"igniteCanStack": true}}
-	dotStack := &activeSkill{mods: NewModDB(), flags: map[string]bool{"DotCanStack": true}}
+	igniteStack := &activeSkill{data: &skillData{}, mods: NewModDB(), flags: map[string]bool{"igniteCanStack": true}}
+	dotStack := &activeSkill{data: &skillData{}, mods: NewModDB(), flags: map[string]bool{"DotCanStack": true}}
 	skills := []*activeSkill{plain, crimson, igniteStack, dotStack}
 	comps := []string{
 		"Hit", "PoisonDPS", "TotalPoisonDPS", "ImpaleDPS", "TotalDot",

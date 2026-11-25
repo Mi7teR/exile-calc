@@ -18,7 +18,7 @@ func init() {
 // BrandActivationFrequency) / more BrandActivationFrequency. Penance Brand
 // activates once per its max energy.
 func brandPreDamage(_ *ModDB, s *activeSkill, _ map[string]float64) {
-	data := &s.data
+	data := s.data
 	f, _ := num(data.val("repeatFrequency"))
 	if s.active.ge.Name == "Penance Brand" {
 		f *= s.mods.SumCfg(s.cfg, "BASE", "Multiplier:PenanceBrandMaxEnergy")
@@ -33,7 +33,7 @@ func brandPreDamage(_ *ModDB, s *activeSkill, _ map[string]float64) {
 // duration, plus the strongest maximum-stage Wintertide's End debuff for
 // its uptime.
 func wintertideBrandPreDamage(actor *ModDB, s *activeSkill, _ map[string]float64) {
-	data := &s.data
+	data := s.data
 	data.set("countsAttachedBrandsInDamage", s.part == 1)
 	f, _ := num(data.val("repeatFrequency"))
 	inc := s.mods.SumCfg(s.cfg, "INC", "Speed", "BrandActivationFrequency")

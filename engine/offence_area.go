@@ -97,7 +97,7 @@ func valCfg(db *ModDB, cfg *Cfg, name string) float64 {
 // trapMineStats is the trap and mine part of calcs.offence's skill type
 // stats: throwing and laying rates become skillData.timeOverride.
 func trapMineStats(actor *ModDB, s *activeSkill, out map[string]float64) {
-	list, cfg, data := s.mods, s.cfg, &s.data
+	list, cfg, data := s.mods, s.cfg, s.data
 	_, hasCD := data.get("cooldown")
 	_, hasTrapCD := data.get("trapCooldown")
 	if (s.flags["trap"] || s.flags["mine"]) && !hasCD && !hasTrapCD {
@@ -167,7 +167,7 @@ func trapMineStats(actor *ModDB, s *activeSkill, out map[string]float64) {
 // offenceDuration is the "Skill duration" part of calcs.offence: the primary
 // duration (output.Duration), rounded up to a server tick.
 func offenceDuration(actor *ModDB, s *activeSkill, out map[string]float64) {
-	list, cfg, data := s.mods, s.cfg, &s.data
+	list, cfg, data := s.mods, s.cfg, s.data
 	names := []string{"Duration", "PrimaryDuration"}
 	if truthy(data.val("mineDurationAppliesToSkill")) {
 		names = append(names, "MineDuration")
@@ -197,7 +197,7 @@ func impaleDuration(actor *ModDB, s *activeSkill, out map[string]float64) {
 // explode chance and the <Type>EffectiveExplodePercentage of this skill's
 // source (parts 1 and 2) or of all sources (part 3).
 func enemyExplode(s *activeSkill, out map[string]float64) {
-	data := &s.data
+	data := s.data
 	entries := s.mods.List(s.cfg, "ExplodeMod")
 	explodeVal := func(e ListEntry) (string, float64, float64) {
 		v, _ := e.Value.(map[string]any)
@@ -331,7 +331,7 @@ func calcRadius(base, areaMod, radiusMod float64) float64 {
 // radius from projectile speed; random base radius margins; the
 // weapon-range radius of radiusIsWeaponRange).
 func areaOfEffect(s *activeSkill, out map[string]float64) {
-	list, cfg, data := s.mods, s.cfg, &s.data
+	list, cfg, data := s.mods, s.cfg, s.data
 	mods := func(names ...string) (float64, float64) {
 		return 1 + list.SumCfg(cfg, "INC", names...)/100, list.MoreCfg(cfg, names...)
 	}

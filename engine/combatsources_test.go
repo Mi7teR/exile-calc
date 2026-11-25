@@ -56,10 +56,10 @@ func TestSourcesSustainedCappedByThrowRate(t *testing.T) {
 }
 
 func TestDotScale(t *testing.T) {
-	plain := &activeSkill{mods: NewModDB(), flags: map[string]bool{}}
-	crimson := &activeSkill{mods: NewModDB(), flags: map[string]bool{}}
+	plain := &activeSkill{data: &skillData{}, mods: NewModDB(), flags: map[string]bool{}}
+	crimson := &activeSkill{data: &skillData{}, mods: NewModDB(), flags: map[string]bool{}}
 	crimson.mods.Add(Mod{Name: "Condition:HaveCrimsonDance", Type: "FLAG", Value: true})
-	igniteStack := &activeSkill{mods: NewModDB(), flags: map[string]bool{"igniteCanStack": true}}
+	igniteStack := &activeSkill{data: &skillData{}, mods: NewModDB(), flags: map[string]bool{"igniteCanStack": true}}
 	out := map[string]float64{"BleedStacksMax": 8, "BleedStacks": 1}
 	cases := []struct {
 		comp string
@@ -89,7 +89,7 @@ func TestDotScale(t *testing.T) {
 			t.Errorf("dotScale(%s, %v) = %v, want %v", c.comp, c.hits, got, c.want)
 		}
 	}
-	stack := &activeSkill{mods: NewModDB(), flags: map[string]bool{"DotCanStack": true}}
+	stack := &activeSkill{data: &skillData{}, mods: NewModDB(), flags: map[string]bool{"DotCanStack": true}}
 	if got := dotScale("TotalDot", 3, stack, nil); got != 3 {
 		t.Errorf("stacking skill DoT x3 = %v, want 3", got)
 	}

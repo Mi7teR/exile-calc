@@ -18,7 +18,7 @@ func moltenStrikePreDamage(_ *ModDB, s *activeSkill, out map[string]float64) {
 	if s.part == 1 {
 		return
 	}
-	data := &s.data
+	data := s.data
 	proj := out["ProjectileCount"]
 	enemyRadius, ok := s.mods.OverrideCfg(s.cfg, "EnemyRadius")
 	if !ok {
@@ -55,7 +55,7 @@ func staticStrikePreDamage(_ *ModDB, s *activeSkill, _ map[string]float64) {
 
 // Data/Skills/act_str.lua Rage Vortex preSkillTypeFunc.
 func rageVortexPreSkillType(s *activeSkill) {
-	list, cfg, data := s.mods, s.cfg, &s.data
+	list, cfg, data := s.mods, s.cfg, s.data
 	if s.part == 2 {
 		maxRage := list.SumCfg(cfg, "BASE", "MaximumRage")
 		pct := numOr(data.val("MaxRageVortexSacrificePercentage"), 0) / 100

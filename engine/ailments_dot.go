@@ -149,7 +149,7 @@ func ignite(actor *ModDB, s *activeSkill, p *hitPass, global map[string]float64,
 // bleed is the "Calculate bleeding chance and damage" part of the ailment
 // loop for one pass.
 func bleed(actor *ModDB, s *activeSkill, p *hitPass, global map[string]float64, dpsMult float64) {
-	list, cfg, out, enemy, data := s.mods, p.cfg, p.out, actor.enemy, &s.data
+	list, cfg, out, enemy, data := s.mods, p.cfg, p.out, actor.enemy, s.data
 	if !canDeal(s, "Physical") || out["BleedChanceOnHit"]+out["BleedChanceOnCrit"] <= 0 {
 		return
 	}
@@ -252,7 +252,7 @@ func bleed(actor *ModDB, s *activeSkill, p *hitPass, global map[string]float64, 
 // poison is the "Calculate poison chance and damage" part of the ailment
 // loop for one pass.
 func poison(actor *ModDB, s *activeSkill, p *hitPass, global map[string]float64, dpsMult, quantity float64) {
-	list, cfg, out, enemy, data := s.mods, p.cfg, p.out, actor.enemy, &s.data
+	list, cfg, out, enemy, data := s.mods, p.cfg, p.out, actor.enemy, s.data
 	if !canDeal(s, "Chaos") || out["PoisonChanceOnHit"]+out["PoisonChanceOnCrit"]+out["ChaosPoisonChance"] <= 0 {
 		return
 	}

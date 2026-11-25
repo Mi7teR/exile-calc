@@ -95,7 +95,7 @@ func (c *Calculator) generalsCry(db *ModDB, s *activeSkill, w1 hitSource, w2 *hi
 	var gc *activeSkill
 	for _, v := range db.activeSkills {
 		if v.active.ge.Name == "General's Cry" && v.group != nil && s.group != nil && v.group.Slot == s.group.Slot {
-			cooldown, _ = skillCooldown(v.mods, v.cfg, &v.data)
+			cooldown, _ = skillCooldown(v.mods, v.cfg, v.data)
 			gc = v
 			break
 		}

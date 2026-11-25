@@ -204,6 +204,7 @@ func runGoHook(t *testing.T, c luaPortCase) luaPortState {
 		mods:   NewModDB(),
 		flags:  map[string]bool{},
 		part:   c.part,
+		data:   &skillData{},
 	}
 	for _, m := range c.stats {
 		s.mods.NewMod(m.Name, m.Type, m.Value, m.Source)
@@ -221,8 +222,7 @@ func runGoHook(t *testing.T, c luaPortCase) luaPortState {
 		t.Fatalf("no Go %s hook for %s", c.hook, c.skill)
 	}
 	st := luaPortState{Output: actor.output, SkillData: map[string]any{}}
-	keys := []string{"dpsMultiplier", "hitTimeOverride", "cooldown", "duration", "storedUses", "timeOverride",
-		"triggered", "showAverage"}
+	keys := []string{"dpsMultiplier", "hitTimeOverride", "cooldown", "duration", "storedUses", "timeOverride"}
 	for k := range s.data.extra {
 		keys = append(keys, k)
 	}
