@@ -101,7 +101,7 @@ func modFromMap(m map[string]any, source string) Mod {
 	}
 	if l, ok := m["@list"].([]any); ok {
 		for _, t := range l {
-			if tm, ok := t.(map[string]any); ok { //nolint:govet // legacy, kept by pure refactor; see refactor plan part 2
+			if tm, isMap := t.(map[string]any); isMap {
 				mod.Tags = append(mod.Tags, tm)
 			}
 		}
@@ -114,7 +114,7 @@ func modFromMap(m map[string]any, source string) Mod {
 func processMod(ge *gamedata.Skill, id string, m map[string]any, stat string) Mod {
 	mod := modFromMap(m, "Skill:"+id)
 	if v, ok := mod.Value.(map[string]any); ok {
-		if sub, ok := v["mod"].(map[string]any); ok { //nolint:govet // legacy, kept by pure refactor; see refactor plan part 2
+		if sub, isMod := v["mod"].(map[string]any); isMod {
 			v = copyMap(v)
 			sub = copyMap(sub)
 			sub["source"] = "Skill:" + id
@@ -308,14 +308,14 @@ func (c *Calculator) buildSkillMods(db *ModDB, s *activeSkill, res *Result) {
 	}
 	if flags["shieldAttack"] {
 		// weapon2Flags = 0
-	} else if f, ok, known := handFlags(s.weapons[1]); ok && s.weapons[1] != "" { //nolint:govet // legacy, kept by pure refactor; see refactor plan part 2
+	} else if f2, ok2, known2 := handFlags(s.weapons[1]); ok2 && s.weapons[1] != "" {
 		if types[stDualWieldRequiresDifferentTypes] && s.weapons[0] == s.weapons[1] {
 			s.disabled = true
 		} else if attackLike {
-			w2Flags, w2Attack = f, true
+			w2Flags, w2Attack = f2, true
 			flags["weapon2Attack"] = true
 		}
-	} else if (types[stDualWieldOnly] || known && s.weapons[1] != "") && s.summon == nil {
+	} else if (types[stDualWieldOnly] || known2 && s.weapons[1] != "") && s.summon == nil {
 		s.disabled = true
 	}
 	var modFlags uint64
@@ -387,7 +387,7 @@ func (c *Calculator) buildSkillMods(db *ModDB, s *activeSkill, res *Result) {
 		dist, distVar = 15, "meleeDistance"
 	}
 	if b := db.theBuild(); b != nil {
-		if in, ok := configInput(b.ActiveConfig(), distVar); ok && in.Kind == pobcode.KindNumber { //nolint:govet // legacy, kept by pure refactor; see refactor plan part 2
+		if in, found := configInput(b.ActiveConfig(), distVar); found && in.Kind == pobcode.KindNumber {
 			dist = in.Number
 		}
 	}
@@ -484,7 +484,7 @@ func (c *Calculator) buildSkillMods(db *ModDB, s *activeSkill, res *Result) {
 	}
 	for _, e := range list.List(s.cfg, "ExtraSkillMod") {
 		v, _ := e.Value.(map[string]any)
-		if m, ok := v["mod"].(map[string]any); ok { //nolint:govet // legacy, kept by pure refactor; see refactor plan part 2
+		if m, isMod := v["mod"].(map[string]any); isMod {
 			src, _ := m["source"].(string)
 			if src == "" {
 				src = e.Mod.Source

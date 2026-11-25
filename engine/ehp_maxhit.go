@@ -54,7 +54,7 @@ func (est *defenceEstimations) maximumHitTaken(db *ModDB) {
 			if pct <= 0 && flat == 0 {
 				continue
 			}
-			hit := 0.0 //nolint:wastedassign // legacy, kept by pure refactor; see refactor plan part 2
+			var hit float64
 			applied := out[to+"EffectiveAppliedArmour"]
 			conv := pct / 100
 			pool := out[to+"TotalHitPool"]

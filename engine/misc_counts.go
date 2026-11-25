@@ -68,7 +68,7 @@ func convertIncMods(db *ModDB, names []string, to string, mult float64) {
 // impaleStacks is "Fix the configured impale stacks on the enemy" of
 // calcs.perform: the maximum when not configured, capped otherwise.
 func impaleStacks(db *ModDB) {
-	max := db.Sum("BASE", "ImpaleStacksMax") * (1 + db.Sum("BASE", "ImpaleAdditionalDurationChance")/100) //nolint:predeclared // legacy, kept by pure refactor; see refactor plan part 2
+	maxStacks := db.Sum("BASE", "ImpaleStacksMax") * (1 + db.Sum("BASE", "ImpaleAdditionalDurationChance")/100)
 	combat := map[string]any{"type": "Condition", "var": "Combat"}
 	mods := db.enemy.mods["Multiplier:ImpaleStacks"]
 	has := false
@@ -77,11 +77,11 @@ func impaleStacks(db *ModDB) {
 	}
 	switch {
 	case !has:
-		db.enemy.NewMod("Multiplier:ImpaleStacks", "BASE", max, "Config", combat)
-	case db.enemy.Sum("BASE", "Multiplier:ImpaleStacks") > max:
+		db.enemy.NewMod("Multiplier:ImpaleStacks", "BASE", maxStacks, "Config", combat)
+	case db.enemy.Sum("BASE", "Multiplier:ImpaleStacks") > maxStacks:
 		for i := range mods {
 			if mods[i].Type == "BASE" && mods[i].Source == "Config" {
-				mods[i].Value = max
+				mods[i].Value = maxStacks
 			}
 		}
 	}

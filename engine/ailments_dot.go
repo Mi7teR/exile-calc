@@ -38,8 +38,8 @@ func ignite(actor *ModDB, s *activeSkill, p *hitPass, global map[string]float64,
 			speed = v
 		}
 		if cd, ok := out["Cooldown"]; ok {
-			t, ok := out["HitTime"] //nolint:govet // legacy, kept by pure refactor; see refactor plan part 2
-			if !ok {
+			t, hasHitTime := out["HitTime"]
+			if !hasHitTime {
 				t = out["Time"]
 			}
 			stacks *= global["IgniteDuration"] / math.Max(cd, t)
@@ -165,9 +165,9 @@ func bleed(actor *ModDB, s *activeSkill, p *hitPass, global map[string]float64, 
 	}
 	global["BleedStacksMax"] = maxStacks
 	durationBase := float64(bleedDurationBase)
-	if v, ok := list.OverrideCfg(dotCfg, "BleedDurationBase"); ok { //nolint:govet // legacy, kept by pure refactor; see refactor plan part 2
+	if v, isOverride := list.OverrideCfg(dotCfg, "BleedDurationBase"); isOverride {
 		durationBase = v
-	} else if d, ok := data.duration.get(); ok && truthy(data.val("bleedDurationIsSkillDuration")) { //nolint:govet // legacy, kept by pure refactor; see refactor plan part 2
+	} else if d, hasDuration := data.duration.get(); hasDuration && truthy(data.val("bleedDurationIsSkillDuration")) {
 		durationBase = d
 	}
 	durNames := []string{"EnemyBleedDuration", "EnemyAilmentDuration", "DamagingAilmentDuration"}
@@ -185,8 +185,8 @@ func bleed(actor *ModDB, s *activeSkill, p *hitPass, global map[string]float64, 
 		stacks *= global["BleedDuration"] * speed
 	}
 	if s.flags["totem"] {
-		totems, ok := actor.Override("TotemsSummoned") //nolint:govet // legacy, kept by pure refactor; see refactor plan part 2
-		if !ok {
+		totems, isOverride := actor.Override("TotemsSummoned")
+		if !isOverride {
 			totems = list.SumCfg(s.cfg, "BASE", "ActiveTotemLimit", "ActiveBallistaLimit")
 		}
 		stacks *= totems
@@ -261,7 +261,7 @@ func poison(actor *ModDB, s *activeSkill, p *hitPass, global map[string]float64,
 	durationBase := float64(poisonDurationBase)
 	if v, ok := list.OverrideCfg(dotCfg, "PoisonDurationBase"); ok {
 		durationBase = v
-	} else if d, ok := data.duration.get(); ok && truthy(data.val("poisonDurationIsSkillDuration")) { //nolint:govet // legacy, kept by pure refactor; see refactor plan part 2
+	} else if d, hasDuration := data.duration.get(); hasDuration && truthy(data.val("poisonDurationIsSkillDuration")) {
 		durationBase = d
 	}
 	durNames := []string{"EnemyPoisonDuration", "EnemyAilmentDuration", "DamagingAilmentDuration"}

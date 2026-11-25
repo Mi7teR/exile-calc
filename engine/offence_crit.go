@@ -71,14 +71,14 @@ func (c *Calculator) crit(s *activeSkill, p *hitPass, enemy *ModDB, actor *ModDB
 			}
 			if rolls != 0 {
 				if actor.Flag("Unexciting") {
-					cc = (3*math.Pow(cc/100, 2) - 2*math.Pow(cc/100, 3)) * 100 //nolint:staticcheck // legacy, kept by pure refactor; see refactor plan part 2
+					cc = (3*math.Pow(cc/100, 2) - 2*math.Pow(cc/100, 3)) * 100 //nolint:staticcheck // matches PoB CalcOffence.lua:3155
 				} else {
 					cc = (1 - math.Pow(1-cc/100, rolls+1)) * 100
 				}
 			}
 			out["PreBifurcateCritChance"] = cc
 			if list.FlagCfg(cfg, "BifurcateCrit") {
-				cc = (1 - math.Pow(1-cc/100, 2)) * 100 //nolint:staticcheck // legacy, kept by pure refactor; see refactor plan part 2
+				cc = (1 - math.Pow(1-cc/100, 2)) * 100 //nolint:staticcheck // matches PoB CalcOffence.lua:3163
 			}
 			for _, x := range []struct {
 				flag string

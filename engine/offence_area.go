@@ -268,7 +268,8 @@ func enemyExplode(s *activeSkill, out map[string]float64) {
 // n-th of env.explodeSources (CalcSetup: allocated nodes, then items), n
 // being this gem's place among the group's EnemyExplode gems.
 func explodeSource(s *activeSkill, entries []ListEntry) string {
-	var tree, items []string
+	// Tree sources first, then the rest.
+	var sources, items []string
 	seen := map[string]bool{}
 	for _, e := range entries {
 		if e.Mod == nil || seen[e.Mod.Source] {
@@ -276,12 +277,12 @@ func explodeSource(s *activeSkill, entries []ListEntry) string {
 		}
 		seen[e.Mod.Source] = true
 		if strings.HasPrefix(e.Mod.Source, "Tree:") {
-			tree = append(tree, e.Mod.Source)
+			sources = append(sources, e.Mod.Source)
 		} else {
 			items = append(items, e.Mod.Source)
 		}
 	}
-	sources := append(tree, items...) //nolint:gocritic // legacy, kept by pure refactor; see refactor plan part 2
+	sources = append(sources, items...)
 	n := 0
 	if s.group != nil {
 		for i := range s.group.Gems {

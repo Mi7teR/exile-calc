@@ -125,8 +125,8 @@ func enemyAilments(db *ModDB, skills []*activeSkill, guaranteedBonechill bool) {
 			}
 		case "Shock":
 			if db.Flag("ShockCanStack") {
-				limit, ok := db.Override("ShockStacksMax") //nolint:govet // legacy, kept by pure refactor; see refactor plan part 2
-				if !ok {
+				limit, isOverride := db.Override("ShockStacksMax")
+				if !isOverride {
 					limit = db.Sum("BASE", "ShockStacksMax")
 				}
 				enemy.NewMod("DamageTaken", "INC", cur, "Shock", when, map[string]any{"type": "Multiplier", "var": "ShockStacks", "limit": limit})
@@ -136,8 +136,8 @@ func enemyAilments(db *ModDB, skills []*activeSkill, guaranteedBonechill bool) {
 			}
 		case "Scorch":
 			if db.Flag("ScorchCanStack") {
-				limit, ok := db.Override("ScorchStacksMax") //nolint:govet // legacy, kept by pure refactor; see refactor plan part 2
-				if !ok {
+				limit, isOverride := db.Override("ScorchStacksMax")
+				if !isOverride {
 					limit = db.Sum("BASE", "ScorchStacksMax")
 				}
 				enemy.NewMod("ElementalResist", "BASE", -cur, "Scorch", when, map[string]any{"type": "Multiplier", "var": "ScorchStacks", "limit": limit})
@@ -183,7 +183,9 @@ func sumSkillSource(db *ModDB, name string) float64 {
 // chillSkills is the chill part of calcs.perform's active skill loop:
 // Skitterbots' ailments and the skills that always chill, returned for
 // guaranteedChills.
-func chillSkills(db *ModDB, skills []*activeSkill) (guaranteed []*activeSkill, guaranteedBonechill bool) { //nolint:nonamedreturns // legacy, kept by pure refactor; see refactor plan part 2
+func chillSkills(db *ModDB, skills []*activeSkill) ([]*activeSkill, bool) {
+	var guaranteed []*activeSkill
+	guaranteedBonechill := false
 	out := db.output
 	for _, s := range skills {
 		if s.mods == nil {

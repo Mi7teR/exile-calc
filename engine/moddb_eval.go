@@ -25,8 +25,8 @@ func (db *ModDB) eval(m *Mod, cfg *Cfg) (any, bool) {
 		for k, x := range v {
 			cp[k] = x
 		}
-		if mm, ok := v["mod"].(map[string]any); ok { //nolint:govet // legacy, kept by pure refactor; see refactor plan part 2
-			if f, ok := num(mm["value"]); ok { //nolint:govet // legacy, kept by pure refactor; see refactor plan part 2
+		if mm, isMod := v["mod"].(map[string]any); isMod {
+			if f, isNum := num(mm["value"]); isNum {
 				m2 := make(map[string]any, len(mm))
 				for k, x := range mm {
 					m2[k] = x
@@ -34,7 +34,7 @@ func (db *ModDB) eval(m *Mod, cfg *Cfg) (any, bool) {
 				m2["value"] = f*mult + base
 				cp["mod"] = m2
 			}
-		} else if f, ok := num(v["value"]); ok { //nolint:govet // legacy, kept by pure refactor; see refactor plan part 2
+		} else if f, isNum := num(v["value"]); isNum {
 			cp["value"] = f*mult + base
 		}
 		value = cp
@@ -69,8 +69,8 @@ func (db *ModDB) eval(m *Mod, cfg *Cfg) (any, bool) {
 			// limitVar and limitStat read limitTarget: this actor, or limitActor.
 			limitTarget := db
 			if la := tagStr(t, "limitActor"); la != "" {
-				lt, ok := db.target(map[string]any{"actor": la}) //nolint:govet // legacy, kept by pure refactor; see refactor plan part 2
-				if !ok {
+				lt, found := db.target(map[string]any{"actor": la})
+				if !found {
 					return nil, false
 				}
 				limitTarget = lt
@@ -161,7 +161,7 @@ func (db *ModDB) eval(m *Mod, cfg *Cfg) (any, bool) {
 				base = target.GetStat(tagStr(t, "stat"))
 			}
 			mult := base
-			if p, ok := tagNum(t, "percent"); ok { //nolint:govet // legacy, kept by pure refactor; see refactor plan part 2
+			if p, hasPercent := tagNum(t, "percent"); hasPercent {
 				mult = base * p / 100
 			} else if pv := tagStr(t, "percentVar"); pv != "" {
 				mult = base * db.getMultiplier(pv, cfg, false) / 100
@@ -178,10 +178,11 @@ func (db *ModDB) eval(m *Mod, cfg *Cfg) (any, bool) {
 			}
 			if f, isNum := num(value); isNum {
 				b, _ := tagNum(t, "base")
-				value = math.Ceil(f*mult + b)
+				v := math.Ceil(f*mult + b)
 				if hasLimit && tagBool(t, "limitTotal") {
-					value = math.Min(value.(float64), limit) //nolint:errcheck // legacy, kept by pure refactor; see refactor plan part 2
+					v = math.Min(v, limit)
 				}
+				value = v
 			}
 		case "StatThreshold":
 			stat := 0.0
@@ -196,7 +197,7 @@ func (db *ModDB) eval(m *Mod, cfg *Cfg) (any, bool) {
 			if !ok {
 				threshold = db.GetStat(tagStr(t, "thresholdStat"))
 			}
-			if p, ok := tagNum(t, "thresholdPercent"); ok { //nolint:govet // legacy, kept by pure refactor; see refactor plan part 2
+			if p, hasPercent := tagNum(t, "thresholdPercent"); hasPercent {
 				threshold *= p / 100
 			}
 			if (tagBool(t, "upper") && stat > threshold) || (!tagBool(t, "upper") && stat < threshold) {
@@ -304,12 +305,12 @@ func (db *ModDB) eval(m *Mod, cfg *Cfg) (any, bool) {
 			match := false
 			if parts, ok := t["skillPartList"].([]any); ok {
 				for _, p := range parts {
-					if f, ok := num(p); ok && int(f) == cfg.SkillPart { //nolint:govet // legacy, kept by pure refactor; see refactor plan part 2
+					if f, isNum := num(p); isNum && int(f) == cfg.SkillPart {
 						match = true
 						break
 					}
 				}
-			} else if f, ok := tagNum(t, "skillPart"); ok { //nolint:govet // legacy, kept by pure refactor; see refactor plan part 2
+			} else if f, hasPart := tagNum(t, "skillPart"); hasPart {
 				match = int(f) == cfg.SkillPart
 			}
 			if tagBool(t, "neg") {
@@ -323,12 +324,12 @@ func (db *ModDB) eval(m *Mod, cfg *Cfg) (any, bool) {
 			if cfg != nil {
 				if types, ok := t["skillTypeList"].([]any); ok {
 					for _, ty := range types {
-						if f, ok := num(ty); ok && cfg.SkillTypes[int(f)] { //nolint:govet // legacy, kept by pure refactor; see refactor plan part 2
+						if f, isNum := num(ty); isNum && cfg.SkillTypes[int(f)] {
 							match = true
 							break
 						}
 					}
-				} else if f, ok := tagNum(t, "skillType"); ok { //nolint:govet // legacy, kept by pure refactor; see refactor plan part 2
+				} else if f, hasType := tagNum(t, "skillType"); hasType {
 					match = cfg.SkillTypes[int(f)]
 				}
 			}
@@ -392,8 +393,10 @@ func (db *ModDB) eval(m *Mod, cfg *Cfg) (any, bool) {
 					match = target.getCondition(v, cfg, false)
 				}
 			}
+			// PoB's elseif (ModStore.lua:682): the actor check applies only without a var test.
 			_, hasVars := t["varList"]
-			if a := tagStr(t, "actor"); !(target != nil && (hasVars || tagStr(t, "var") != "")) && a != "" && cfg != nil && a == cfg.Actor { //nolint:staticcheck // legacy, kept by pure refactor; see refactor plan part 2
+			varTested := target != nil && (hasVars || tagStr(t, "var") != "")
+			if a := tagStr(t, "actor"); !varTested && a != "" && cfg != nil && a == cfg.Actor {
 				match = true
 			}
 			if tagBool(t, "neg") {
