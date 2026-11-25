@@ -141,10 +141,53 @@ func TestShapePobOverlapEngineOnly(t *testing.T) {
 		t.Error("Perforate in Sand Stance: pobOverlap")
 	}
 	p.mods.conditions["BloodStance"] = true
+	if shapeOf(p, nil).pobOverlap {
+		t.Error("Perforate in Blood Stance without spike overlap: pobOverlap")
+	}
+	p.mods.multipliers["PerforateSpikeOverlap"] = 3
 	if !shapeOf(p, nil).pobOverlap {
 		t.Error("Perforate in Blood Stance: no pobOverlap")
 	}
-	if !shapeOf(skill("Perforate of Bloodshed", 0), nil).pobOverlap {
+	b := skill("Perforate of Bloodshed", 0)
+	if shapeOf(b, nil).pobOverlap {
+		t.Error("Perforate of Bloodshed without spike overlap: pobOverlap")
+	}
+	b.mods.multipliers["PerforateSpikeOverlap"] = 3
+	if !shapeOf(b, nil).pobOverlap {
 		t.Error("Perforate of Bloodshed: no pobOverlap")
+	}
+}
+
+func TestShapeShrapnelBallista(t *testing.T) {
+	newSkill := func() *activeSkill {
+		active := &skillEffect{ge: &gamedata.Skill{Name: "Shrapnel Ballista"}}
+		return &activeSkill{active: active, effects: []*skillEffect{active}, data: map[string]any{},
+			types: map[int]bool{stProjectile: true}, mods: NewModDB(), cfg: &Cfg{}}
+	}
+	// Default: offence.go applies min(1, ProjectileCount) = 1, no overlap.
+	if sh := shapeOf(newSkill(), nil); sh.pobOverlap || sh.kind != projectile {
+		t.Errorf("default Shrapnel Ballista: shape %+v, want projectile without pobOverlap", sh)
+	}
+	rain := newSkill()
+	rain.types[stRain] = true
+	cfgOverlap := newSkill()
+	cfgOverlap.data["ShrapnelBallistaProjectileOverlap"] = 3.0
+	seq := newSkill()
+	seq.mods.Add(Mod{Name: "SequentialProjectiles", Type: "FLAG", Value: true})
+	for name, s := range map[string]*activeSkill{"Rain type": rain, "overlap config": cfgOverlap, "SequentialProjectiles": seq} {
+		if !shapeOf(s, nil).pobOverlap {
+			t.Errorf("Shrapnel Ballista with %s: no pobOverlap", name)
+		}
+	}
+}
+
+func TestShapeMoltenStrikeAndChannel(t *testing.T) {
+	res := calcCorpus(t, "tyLAO6f9GS0_") // Molten Strike of the Zenith part 6
+	if sh := shapeOf(res.main, res.Stats); !sh.pobOverlap {
+		t.Errorf("Molten Strike of the Zenith part %d: shape %+v, want pobOverlap", res.main.part, sh)
+	}
+	res = calcCorpus(t, "NCgd_ieVLUw7") // Cyclone: Melee, Area, Channel
+	if sh := shapeOf(res.main, res.Stats); sh.kind != channel || !sh.fromDefault {
+		t.Errorf("Cyclone: shape %+v, want default channel", sh)
 	}
 }

@@ -28,6 +28,7 @@ const (
 	stArea                            = 8
 	stMelee                           = 20
 	stNova                            = 84
+	stRain                            = 89
 	stSlam                            = 92
 	stDamage                          = 7
 	stRequireShield                   = 10
