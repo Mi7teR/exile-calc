@@ -42,6 +42,19 @@ type fullDPSAcc struct {
 // ignite, burning and caustic ground and the summed poison, decay and
 // skill DoT are added once, capped at the DoT DPS cap, then impale and
 // culling. A build with no such skill has FullDPS 0 and no skills.
+//
+// PoB runs this pass in CALCULATOR mode on an env it rebuilds from cached
+// mod DBs (calcs.initEnv with accelerate) and only overrides mainSkill;
+// that is the likely source of its 0.1-0.3% offsets between a skill's
+// Full DPS entry and its own main-skill DPS, which a fresh Calc per skill
+// does not reproduce.
+//
+// Labels differ from PoB's in places, never the numbers: the skillPart
+// line uses infoMessage2 only for "Skill Damage" (the other setters, the
+// trigger and mirage messages, are not ported); the totals' "source"
+// (the skill giving the best bleed, ignite or ground) is not exposed; and
+// Trigger is set only by the ported default trigger handler (no Saviour,
+// Focus, or unported trigger configs).
 func (c *Calculator) FullDPS(b *pobcode.Build) (*FullDPSResult, error) {
 	base, err := c.Calc(b)
 	if err != nil {
@@ -60,7 +73,7 @@ func (c *Calculator) FullDPS(b *pobcode.Build) (*FullDPSResult, error) {
 		info := base.Skills[i]
 		r := base
 		if !s.main {
-			if r, err = c.Calc(withMainSkill(b, info.Group, info.GroupSkill)); err != nil {
+			if r, err = c.Calc(keepMainGroup(b, withMainSkill(b, info.Group, info.GroupSkill))); err != nil {
 				return nil, err
 			}
 		}
@@ -72,12 +85,32 @@ func (c *Calculator) FullDPS(b *pobcode.Build) (*FullDPSResult, error) {
 	return acc.finish(), nil
 }
 
+// keepMainGroup keeps b's main socket group in the copy cp made with
+// another main skill. PoB sets fullEnv.player.mainSkill on the env built
+// for b, whose activeSkillList holds the main group even when it is
+// disabled (CalcSetup.lua: index == env.mainSocketGroup or group.enabled
+// ...); cp's own main group moved, so a disabled b main group is enabled
+// in cp. A main group in an inactive weapon swap slot is not kept.
+func keepMainGroup(b, cp *pobcode.Build) *pobcode.Build {
+	set := b.ActiveSkills()
+	if set == nil || len(set.Groups) == 0 {
+		return cp
+	}
+	m := min(len(set.Groups), max(b.MainSocketGroup, 1)) // setupSkills' mainGroup
+	if set.Groups[m-1].Enabled || m == cp.MainSocketGroup {
+		return cp
+	}
+	// withMainSkill copied the group slice, so this does not touch b.
+	cp.ActiveSkills().Groups[m-1].Enabled = true
+	return cp
+}
+
 // activeSkillCount is getActiveSkillCount (Modules/Calcs.lua): the group's
 // count, else the count of the gem granting the skill (for a Vaal gem,
 // enabled only with the matching enableGlobal), else 1.
 func (c *Calculator) activeSkillCount(s *activeSkill) (float64, bool) {
-	if s.group.GroupCount > 0 {
-		return float64(s.group.GroupCount), true
+	if n := s.group.GroupCount; n != nil {
+		return float64(*n), true
 	}
 	id := s.active.id
 	for gi := range s.group.Gems {
@@ -153,6 +186,8 @@ func (a *fullDPSAcc) addSkill(r *Result, info SkillInfo, count float64) {
 	if mr := s.mirage; mr != nil {
 		mo, n := mr.out, mr.count*count
 		if mo["TotalDPS"] > 0 {
+			// trigger = activeSkill.mirage.infoTrigger: CalcMirages.lua never sets
+			// it in v2.68.1 (only the mirage's infoMessage2), so it is "".
 			entry(withPart(name+" (Mirage)", partName(s, nil)), mo["TotalDPS"], n, "")
 			a.combined += mo["TotalDPS"] * n
 		}

@@ -207,6 +207,16 @@ func (p *parser) int(field, s string, def int) int {
 	return v
 }
 
+// intPtr is tonumber(attr) for an optional count: nil when absent or
+// "nil", so a saved 0 stays set.
+func (p *parser) intPtr(field, s string) *int {
+	if s == "" || s == "nil" {
+		return nil
+	}
+	v := p.int(field, s, 0)
+	return &v
+}
+
 func (p *parser) float(field, s string) float64 {
 	v, err := strconv.ParseFloat(strings.TrimSpace(s), 64)
 	if err != nil && p.err == nil {
@@ -342,7 +352,7 @@ func Parse(data []byte) (*Build, error) {
 			g := SocketGroup{
 				Enabled:              sk.Active == "true" || sk.Enabled == "true",
 				IncludeInFullDPS:     sk.IncludeInFullDPS == "true",
-				GroupCount:           p.int("Skill.groupCount", sk.GroupCount, 0),
+				GroupCount:           p.intPtr("Skill.groupCount", sk.GroupCount),
 				Label:                sk.Label,
 				Slot:                 sk.Slot,
 				Source:               sk.Source,
@@ -454,6 +464,13 @@ func (p *parser) input(in xInput) Input {
 
 func itoa(v int) string { return strconv.Itoa(v) }
 
+func itoaPtr(v *int) string {
+	if v == nil {
+		return ""
+	}
+	return strconv.Itoa(*v)
+}
+
 func itoaOpt(v int) string {
 	if v == 0 {
 		return ""
@@ -543,7 +560,7 @@ func (b *Build) XML() ([]byte, error) {
 			xk := xSkill{
 				Enabled:              btoa(g.Enabled),
 				IncludeInFullDPS:     btoa(g.IncludeInFullDPS),
-				GroupCount:           itoaOpt(g.GroupCount),
+				GroupCount:           itoaPtr(g.GroupCount),
 				Label:                g.Label,
 				Slot:                 g.Slot,
 				Source:               g.Source,

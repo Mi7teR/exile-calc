@@ -196,7 +196,7 @@ func TestParseModernBuild(t *testing.T) {
 		t.Fatalf("skills: %+v", skills)
 	}
 	g := skills.Groups[0]
-	if g.Label != "Main" || !g.IncludeInFullDPS || g.GroupCount != 2 {
+	if g.Label != "Main" || !g.IncludeInFullDPS || g.GroupCount == nil || *g.GroupCount != 2 {
 		t.Errorf("group: %+v", g)
 	}
 	ts, ma := g.Gems[0], g.Gems[1]
@@ -270,6 +270,41 @@ func TestRoundTrip(t *testing.T) {
 				t.Fatal("build changed after encode/decode")
 			}
 		})
+	}
+}
+
+// groupCount: absent stays unset, "0" is a count (tonumber("0") is 0,
+// which Lua treats as set) and is written back.
+func TestGroupCountZeroRoundTrip(t *testing.T) {
+	x := strings.Replace(string(readFile(t, "testdata/modern.xml")), `groupCount="2"`, `groupCount="0"`, 1)
+	b, err := Parse([]byte(x))
+	if err != nil {
+		t.Fatal(err)
+	}
+	g := b.ActiveSkills().Groups[0]
+	if g.GroupCount == nil || *g.GroupCount != 0 {
+		t.Fatalf("groupCount 0 parsed as %v", g.GroupCount)
+	}
+	out, err := b.XML()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(out), `groupCount="0"`) {
+		t.Error(`groupCount="0" not written back`)
+	}
+	b2, err := Parse(out)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if g2 := b2.ActiveSkills().Groups[0]; g2.GroupCount == nil || *g2.GroupCount != 0 {
+		t.Errorf("groupCount 0 after round trip: %v", g2.GroupCount)
+	}
+	none, err := Parse([]byte(strings.Replace(x, `groupCount="0" `, "", 1)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n := none.ActiveSkills().Groups[0].GroupCount; n != nil {
+		t.Errorf("absent groupCount parsed as %d", *n)
 	}
 }
 

@@ -123,9 +123,11 @@ type SkillSet struct {
 
 // SocketGroup is one <Skill> element: gems linked in one slot.
 type SocketGroup struct {
-	Enabled              bool
-	IncludeInFullDPS     bool
-	GroupCount           int // groupCount, the Full DPS count; 0 = not set
+	Enabled          bool
+	IncludeInFullDPS bool
+	// GroupCount is groupCount, the group's Full DPS count; nil when not
+	// set (0 is a count: the group's hits count zero times).
+	GroupCount           *int
 	Label                string
 	Slot                 string
 	Source               string

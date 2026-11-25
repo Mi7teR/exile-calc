@@ -54,6 +54,8 @@ not parse are in `res.Unparsed`, parts it could not compute are in
 
 `res.Skills` lists the active skills with gem level, quality and buffs;
 `calc.CalcMinions(b)` computes each minion skill as the main skill.
+`calc.FullDPS(b)` is PoB's Full DPS: `FullDPS`, `FullDotDPS` and the
+per-skill entries over the groups marked "Include in Full DPS".
 
 ### Combat DPS against a boss and a pack
 
