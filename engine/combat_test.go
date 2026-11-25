@@ -12,7 +12,7 @@ import (
 )
 
 // corpusBuild decodes a golden corpus build.
-func corpusBuild(t *testing.T, id string) *pobcode.Build {
+func corpusBuild(t testing.TB, id string) *pobcode.Build {
 	t.Helper()
 	raw, err := os.ReadFile("../testdata/golden/builds/" + id + ".code")
 	if err != nil {
@@ -25,7 +25,7 @@ func corpusBuild(t *testing.T, id string) *pobcode.Build {
 	return b
 }
 
-func newCalc(t *testing.T) *Calculator {
+func newCalc(t testing.TB) *Calculator {
 	t.Helper()
 	c, err := New()
 	if err != nil {

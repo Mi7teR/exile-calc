@@ -60,7 +60,9 @@ func fmtStats(m map[string]float64) map[string]string {
 }
 
 func dumpCombatDPS(d CombatDPS) combatDPSDump {
-	return combatDPSDump{fmtFloat(d.PoB), fmtFloat(d.Sustained), fmtFloat(d.Burst), fmtFloat(d.HitsPerCast), fmtStats(d.Components)}
+	return combatDPSDump{
+		fmtFloat(d.PoB), fmtFloat(d.Sustained), fmtFloat(d.Burst), fmtFloat(d.HitsPerCast), fmtStats(d.Components),
+	}
 }
 
 func dumpBuild(t *testing.T, c *Calculator, id string) statsDump {
@@ -85,11 +87,13 @@ func dumpBuild(t *testing.T, c *Calculator, id string) statsDump {
 		d.Minions = append(d.Minions, minionDump{m.Skill, m.Minion, fmtStats(m.Stats)})
 	}
 	if res.main != nil {
-		cr, err := c.Combat(corpusBuild(t, id), CombatOptions{})
-		if err != nil {
-			t.Fatalf("%s: Combat: %v", id, err)
+		cr, cerr := c.Combat(corpusBuild(t, id), CombatOptions{})
+		if cerr != nil {
+			t.Fatalf("%s: Combat: %v", id, cerr)
 		}
-		d.Combat = &combatDump{dumpCombatDPS(cr.Boss), dumpCombatDPS(cr.Pack), dumpCombatDPS(cr.PackPerMob), cr.Skill, cr.Assumptions}
+		d.Combat = &combatDump{
+			dumpCombatDPS(cr.Boss), dumpCombatDPS(cr.Pack), dumpCombatDPS(cr.PackPerMob), cr.Skill, cr.Assumptions,
+		}
 	}
 	return d
 }
@@ -141,21 +145,21 @@ func TestStatsDump(t *testing.T) {
 			t.Fatalf("%s: %v", id, err)
 		}
 		if out != "" {
-			if err := os.WriteFile(filepath.Join(out, id+".json"), raw, 0o644); err != nil {
-				t.Fatal(err)
+			if werr := os.WriteFile(filepath.Join(out, id+".json"), raw, 0o644); werr != nil {
+				t.Fatal(werr)
 			}
 		}
 		if base != "" {
-			wantRaw, err := os.ReadFile(filepath.Join(base, id+".json"))
-			if err != nil {
-				t.Fatal(err)
+			wantRaw, rerr := os.ReadFile(filepath.Join(base, id+".json"))
+			if rerr != nil {
+				t.Fatal(rerr)
 			}
 			var want, got statsDump
-			if err := json.Unmarshal(wantRaw, &want); err != nil {
-				t.Fatal(err)
+			if uerr := json.Unmarshal(wantRaw, &want); uerr != nil {
+				t.Fatal(uerr)
 			}
-			if err := json.Unmarshal(raw, &got); err != nil {
-				t.Fatal(err)
+			if uerr := json.Unmarshal(raw, &got); uerr != nil {
+				t.Fatal(uerr)
 			}
 			if diff := cmp.Diff(want, got); diff != "" {
 				diffs++
