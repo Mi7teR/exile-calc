@@ -118,6 +118,11 @@ func itemWeapon(it *itemtext.Item, mods []modparser.Mod) (hitSource, string, boo
 	speedInc := calcLocalFlags(mods, "Speed", "INC", mfAttack) + math.Floor(quality/8*local("AlternateQualityLocalAttackSpeedPer8Quality", "INC"))
 	out := hitSource{min: map[string]float64{}, max: map[string]float64{}}
 	out.attackRate = round(w.AttackRateBase*(1+speedInc/100), 2)
+	// Item.lua: weaponData.range = base range + rangeBonus.
+	out.rangeBonus = local("WeaponRange", "BASE") + 10*local("WeaponRangeMetre", "BASE") +
+		math.Floor(quality/10*local("AlternateQualityLocalWeaponRangePer10Quality", "BASE"))
+	out.rng = float64(w.Range) + out.rangeBonus
+	out.hasRange = true
 	localEle := local("LocalElementalDamage", "INC")
 	for _, t := range dmgTypeList {
 		mn, mx := local(t+"Min", "BASE"), local(t+"Max", "BASE")

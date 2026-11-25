@@ -98,6 +98,11 @@ type hitSource struct {
 	min, max   map[string]float64
 	attackRate float64
 	critChance float64
+	// rng is weaponData.range and rangeBonus weaponData.rangeBonus (an
+	// item's local range mods); hasRange is false when range is nil
+	// (unarmed, shield, monster without attackRange).
+	rng, rangeBonus float64
+	hasRange        bool
 }
 
 type passShared struct {
@@ -208,6 +213,7 @@ func (c *Calculator) offence(actor *ModDB, s *activeSkill, w1 hitSource, w2 *hit
 		out["CombinedDPS"] = 0
 		return out
 	}
+	initialFunc(s, w1, w2)
 	for _, e := range list.List(cfg, "SkillData") {
 		skillData(data, e.Value)
 	}
@@ -239,6 +245,7 @@ func (c *Calculator) offence(actor *ModDB, s *activeSkill, w1 hitSource, w2 *hit
 	preSkillTypeFunc(s)
 	chainStats(actor, s, out)
 	projectileStats(s, out)
+	weaponRange(s, w1, w2, out)
 	if s.flags["area"] || s.data["radius"] != nil || (s.flags["mine"] && s.types[stAura]) {
 		areaOfEffect(s, out)
 	}
@@ -1333,7 +1340,7 @@ func warcryCastTime(actor *ModDB, v *activeSkill) float64 {
 // warcries is the exerted attack part of calcs.offence's damage pass
 // (mode_buffs): each warcry's exert uptime, the offensive warcry effect
 // (Rallying Cry), Intimidating Cry's double damage and the exert damage
-// mods scaled by uptime. Seismic Cry's area and Ancestral Cry's extra
+// mods scaled by uptime, and Seismic Cry's area. Ancestral Cry's extra
 // strikes are not ported.
 func warcries(actor *ModDB, s *activeSkill, cfg *Cfg, out map[string]float64) {
 	const stMelee, stMeleeSingleTarget, stSummonsTotem, stSlam, stOtherThingUsesSkill, stNeverExertable, stRetaliation = 20, 21, 26, 92, 95, 122, 121
@@ -1404,6 +1411,14 @@ func warcries(actor *ModDB, s *activeSkill, cfg *Cfg, out map[string]float64) {
 		out[key+"UpTimeRatio"] = r
 		out["GlobalWarcryUptimeRatio"] += r
 		switch key {
+		case "Seismic":
+			// Account for the exert's AoE increase, then recalculate the area.
+			if maxHit {
+				list.NewMod("AreaOfEffect", "MORE", player.Sum("BASE", "SeismicMoreAoE"), "Max Seismic Exert AoE")
+			} else {
+				list.NewMod("AreaOfEffect", "MORE", math.Floor(player.Sum("BASE", "SeismicMoreAoE")/100*r), "Avg Seismic Exert AoE")
+			}
+			areaOfEffect(s, out)
 		case "Intimidating":
 			dd := math.Min(list.SumCfg(cfg, "BASE", "DoubleDamageChance")+actor.enemy.SumCfg(cfg, "BASE", "SelfDoubleDamageChance")+exertDD, 100)
 			out["IntimidatingAvgDmg"] = 2 * (1 - dd/100)
@@ -1807,8 +1822,8 @@ func calcRadius(base, areaMod, radiusMod float64) float64 {
 
 // areaOfEffect is calcs.offence's calcAreaOfEffect: AreaOfEffectMod and
 // the primary, secondary and tertiary radii (Molten Strike's tertiary
-// radius from projectile speed; random base radius margins). The
-// weapon-range radius (radiusIsWeaponRange) is not ported.
+// radius from projectile speed; random base radius margins; the
+// weapon-range radius of radiusIsWeaponRange).
 func areaOfEffect(s *activeSkill, out map[string]float64) {
 	list, cfg, data := s.mods, s.cfg, s.data
 	mods := func(names ...string) (float64, float64) {
@@ -1817,6 +1832,16 @@ func areaOfEffect(s *activeSkill, out map[string]float64) {
 	inc, more := mods("AreaOfEffect", "AreaOfEffectPrimary")
 	out["AreaOfEffectMod"] = calcAreaMod(inc, more)
 	radiusMod := calcMod(list, cfg, "AreaOfEffectRadius")
+	if truthy(data["radiusIsWeaponRange"]) {
+		r := 0.0
+		if s.flags["weapon1Attack"] {
+			r = math.Max(r, s.weaponRange1)
+		}
+		if s.flags["weapon2Attack"] {
+			r = math.Max(r, s.weaponRange2)
+		}
+		data["radius"] = r + 2
+	}
 	radius, ok := num(data["radius"])
 	if !ok {
 		return
@@ -1968,4 +1993,71 @@ func sustainableStages(s *activeSkill, out map[string]float64) {
 	case "Scorching Ray", "Scorching Ray of Immolation":
 		set(7)
 	}
+}
+
+// weaponRange is the melee block of calcs.offence: actor.weaponRange1/2
+// (the weapon's range plus MeleeWeaponRange, or the unarmed range) and,
+// for MeleeSingleTarget skills, WeaponRange and StrikeTargets. PoB keeps
+// the ranges on the actor; here they live on the skill, which is the only
+// reader (radiusIsWeaponRange).
+func weaponRange(s *activeSkill, w1 hitSource, w2 *hitSource, out map[string]float64) {
+	if !s.flags["melee"] {
+		return
+	}
+	list, cfg := s.mods, s.cfg
+	rangeOf := func(w *hitSource, wcfg *Cfg) float64 {
+		if w != nil && w.hasRange {
+			return w.rng + list.SumCfg(wcfg, "BASE", "MeleeWeaponRange") + 10*list.SumCfg(wcfg, "BASE", "MeleeWeaponRangeMetre")
+		}
+		return 6 + list.SumCfg(cfg, "BASE", "UnarmedRange") + 10*list.SumCfg(cfg, "BASE", "UnarmedRangeMetre")
+	}
+	if s.flags["weapon1Attack"] {
+		s.weaponRange1 = rangeOf(&w1, s.weapon1Cfg)
+	}
+	if s.flags["weapon2Attack"] {
+		s.weaponRange2 = rangeOf(w2, s.weapon2Cfg)
+	}
+	const stMeleeSingleTarget = 21
+	if s.types[stMeleeSingleTarget] {
+		r := 100.0
+		if s.flags["weapon1Attack"] {
+			r = math.Min(r, s.weaponRange1)
+		}
+		if s.flags["weapon2Attack"] {
+			r = math.Min(r, s.weaponRange2)
+		}
+		out["WeaponRange"] = r + 2
+		out["WeaponRangeMetre"] = out["WeaponRange"] / 10
+		out["StrikeTargets"] = 1 + list.SumCfg(cfg, "BASE", "AdditionalStrikeTarget")
+	}
+}
+
+// initialFunc ports the skills' initialFunc (Data/Skills/*.lua), run first
+// in calcs.offence. Cyclone: AdditionalMeleeRange is the weapon's range
+// bonus plus MeleeWeaponRange (averaged when dual wielding), or the
+// unarmed range bonus. Not ported: Blood Sacrament.
+func initialFunc(s *activeSkill, w1 hitSource, w2 *hitSource) {
+	var source string
+	switch s.active.ge.Name {
+	case "Cyclone", "Vaal Cyclone":
+		source = "Skill:Cyclone"
+	case "Cyclone of Tumult":
+		source = "Skill:CycloneAltX"
+	default:
+		return
+	}
+	list := s.mods
+	bonus := func(w *hitSource, wcfg *Cfg) float64 {
+		return list.SumCfg(wcfg, "BASE", "MeleeWeaponRange") + 10*list.SumCfg(wcfg, "BASE", "MeleeWeaponRangeMetre") + w.rangeBonus
+	}
+	var r float64
+	if s.flags["weapon1Attack"] && w1.hasRange {
+		r = bonus(&w1, s.weapon1Cfg)
+		if s.flags["weapon2Attack"] && w2 != nil && w2.hasRange {
+			r = (r + bonus(w2, s.weapon2Cfg)) / 2
+		}
+	} else {
+		r = list.SumCfg(s.cfg, "BASE", "UnarmedRange") + 10*list.SumCfg(s.cfg, "BASE", "UnarmedRangeMetre")
+	}
+	list.NewMod("Multiplier:AdditionalMeleeRange", "BASE", r, source)
 }

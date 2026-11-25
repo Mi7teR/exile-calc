@@ -457,6 +457,10 @@ func (db *ModDB) eval(m *Mod, cfg *Cfg) (any, bool) {
 				base = target.getMultiplier(tagStr(t, "var"), cfg, false)
 			}
 			div, ok := tagNum(t, "div")
+			if dv := tagStr(t, "divVar"); dv != "" {
+				// ModStore: tag.div = GetMultiplier(self, tag.divVar, cfg).
+				div, ok = db.getMultiplier(dv, cfg, false), true
+			}
 			if !ok || div == 0 {
 				div = 1
 			}
@@ -524,6 +528,10 @@ func (db *ModDB) eval(m *Mod, cfg *Cfg) (any, bool) {
 				base = target.getStat(tagStr(t, "stat"), cfg)
 			}
 			div, ok := tagNum(t, "div")
+			if dv := tagStr(t, "divVar"); dv != "" {
+				// ModStore: tag.div = GetMultiplier(self, tag.divVar, cfg).
+				div, ok = db.getMultiplier(dv, cfg, false), true
+			}
 			if !ok || div == 0 {
 				div = 1
 			}

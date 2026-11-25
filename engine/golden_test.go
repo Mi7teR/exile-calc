@@ -39,33 +39,33 @@ var reportStats = []string{}
 
 // Ratchet: builds where every stat above is within tolerance. Raise it as
 // the engine improves; never lower it.
-const minBuildsWithinTolerance = 78
+const minBuildsWithinTolerance = 81
 
 // minBuildsWithoutTimeless applies when the timeless jewel tables are absent.
 const minBuildsWithoutTimeless = 2
 
 // Minion ratchet: oracle minions (each minion skill as the main skill,
 // output.Minion) whose minionResultStats are all within tolerance.
-const minMinionsWithinTolerance = 108
+const minMinionsWithinTolerance = 110
 
 // Minion offence ratchet: oracle minions whose TotalDPS is within tolerance.
-const minMinionDPSWithinTolerance = 108
+const minMinionDPSWithinTolerance = 110
 
 // Player offence ratchet: builds whose main skill playerRatchetStats are
 // each within tolerance.
-const minPlayerDPSWithinTolerance = 78
+const minPlayerDPSWithinTolerance = 81
 
 // playerOffenceStats are the main skill's hit, ignite and skill DoT stats.
 var playerOffenceStats = []string{"Speed", "HitChance", "CritChance", "CritMultiplier", "AverageDamage", "TotalDPS",
 	"IgniteChance", "IgniteDPS", "TotalDot", "WithIgniteDPS", "TotalDotDPS", "CombinedDPS", "MirageDPS",
 	"BleedChance", "BleedDPS", "WithBleedDPS", "PoisonChance", "PoisonDPS", "TotalPoisonDPS", "WithPoisonDPS",
-	"ImpaleChance", "ImpaleModifier", "ImpaleDPS", "WithImpaleDPS", "ImpaleDuration"}
+	"ImpaleChance", "ImpaleModifier", "ImpaleDPS", "WithImpaleDPS", "ImpaleDuration", "WeaponRange", "StrikeTargets", "AreaOfEffectRadius", "AreaOfEffectMod"}
 
 // playerRatchetStats are the playerOffenceStats each held at
 // minPlayerDPSWithinTolerance.
 var playerRatchetStats = []string{"TotalDPS", "IgniteChance", "IgniteDPS", "TotalDot", "WithIgniteDPS", "TotalDotDPS", "CombinedDPS", "MirageDPS",
 	"BleedChance", "BleedDPS", "WithBleedDPS", "PoisonChance", "PoisonDPS", "TotalPoisonDPS", "WithPoisonDPS",
-	"ImpaleChance", "ImpaleModifier", "ImpaleDPS", "WithImpaleDPS", "ImpaleDuration"}
+	"ImpaleChance", "ImpaleModifier", "ImpaleDPS", "WithImpaleDPS", "ImpaleDuration", "WeaponRange", "StrikeTargets", "AreaOfEffectRadius", "AreaOfEffectMod"}
 
 // goldenMinion is one entry of the oracle's "Minions" list.
 type goldenMinion struct {

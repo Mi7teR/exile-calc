@@ -34,6 +34,14 @@ var hooks = map[string]Hook{
 		return []any{withTags(newMod("ChaosDamage", "INC", n, 0, 0),
 			map[string]any{"type": "PerStat", "stat": "Mana", "div": div, "globalLimit": limit, "globalLimitKey": "DarkIdeation"})}
 	},
+	// ["(%d+)%% increased area of effect per power charge, up to a maximum of (%d+)%%"] = function(num, _, limit) return {
+	//   mod("AreaOfEffect", "INC", num, { type = "Multiplier", var = "PowerCharge", globalLimit = tonumber(limit), globalLimitKey = "VastPower" }) } end,
+	"specialModList[^(%d+)%% increased area of effect per power charge, up to a maximum of (%d+)%%$]": func(p *Parser, a []any) any {
+		n, _ := toNumber(arg(a, 0)).(float64)
+		limit, _ := toNumber(argS(a, 2)).(float64)
+		return []any{withTags(newMod("AreaOfEffect", "INC", n, 0, 0),
+			map[string]any{"type": "Multiplier", "var": "PowerCharge", "globalLimit": limit, "globalLimitKey": "VastPower"})}
+	},
 	// ["(%d+)%% increased attack and cast speed for each corpse consumed recently, up to a maximum of (%d+)%%"] = function(num, _, limit) return {
 	//   mod("Speed", "INC", num, { type = "Multiplier", var = "CorpseConsumedRecently", limit = tonumber(limit / num) }) } end,
 	"specialModList[^(%d+)%% increased attack and cast speed for each corpse consumed recently, up to a maximum of (%d+)%%$]": func(p *Parser, a []any) any {

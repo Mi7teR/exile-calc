@@ -284,6 +284,8 @@ type activeSkill struct {
 	// weapon1Cfg and weapon2Cfg are the skill cfgs of main and off hand
 	// attacks (weapon flags).
 	weapon1Cfg, weapon2Cfg *Cfg
+	// weaponRange1/2 are actor.weaponRange1/2 of calcs.offence (melee).
+	weaponRange1, weaponRange2 float64
 	// part is activeSkill.skillPart (1-based, 0 for single part skills).
 	part int
 	// mirage is activeSkill.mirage: the Mirage Archer copy's output.

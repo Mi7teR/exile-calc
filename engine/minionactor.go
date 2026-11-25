@@ -390,7 +390,8 @@ func (c *Calculator) minionWeapon(s *activeSkill, m *skillMinion, mdb *ModDB, ge
 	if s.flags["spectre"] || m.data.Hostile {
 		table = c.data.Monster.Damage
 	}
-	w := hitSource{min: map[string]float64{}, max: map[string]float64{}, critChance: 5}
+	w := hitSource{min: map[string]float64{}, max: map[string]float64{}, critChance: 5,
+		rng: m.data.AttackRange, hasRange: m.data.AttackRange != 0}
 	if m.level > len(table) || m.data.AttackTime == 0 {
 		return w, typ, w2, w2Type
 	}
