@@ -241,6 +241,9 @@ func (c *Calculator) offence(actor *ModDB, s *activeSkill, w1 hitSource, w2 *hit
 		effect := actor.output["ElusiveEffectMod"] / 100
 		list.Add(Mod{Name: "CritMultiplier", Type: "BASE", Value: math.Floor(list.Sum("BASE", "NightbladeElusiveCritMultiplier") * effect), Source: "Nightblade"})
 	}
+	// CalcOffence "set other limits".
+	out["ActiveTrapLimit"] = list.SumCfg(cfg, "BASE", "ActiveTrapLimit")
+	out["ActiveMineLimit"] = list.SumCfg(cfg, "BASE", "ActiveMineLimit")
 	c.offenceStatConversions(actor, s, w1, w2, out)
 	preSkillTypeFunc(s)
 	chainStats(actor, s, out)
