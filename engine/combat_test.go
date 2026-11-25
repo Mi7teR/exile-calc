@@ -327,3 +327,16 @@ func TestCombatOptionsAndPerMob(t *testing.T) {
 		t.Errorf("no per-mob assumption: %q", def.Assumptions)
 	}
 }
+
+// TestCombatNoAreaNoExplosion: Essence Drain has a radius in its data but no
+// area flag, so its projectile does not explode on the pack.
+func TestCombatNoAreaNoExplosion(t *testing.T) {
+	c := newCalc(t)
+	cr, err := c.Combat(corpusBuild(t, "Fk9CO61s3Yaj"), CombatOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cr.Pack.HitsPerCast > 1.0001 {
+		t.Errorf("%s: pack hits per cast %.2f, want <= 1 (no explosion)", cr.Skill, cr.Pack.HitsPerCast)
+	}
+}

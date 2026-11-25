@@ -2,6 +2,7 @@ package engine
 
 import (
 	"fmt"
+	"github.com/Mi7teR/poe-lib/gamedata"
 	"math"
 
 	"github.com/Mi7teR/poe-lib/pobcode"
@@ -244,6 +245,14 @@ func combatDPS(res *Result, m targetModel, isBoss bool, seed uint64) (CombatDPS,
 	if sh.kind == meleeStrike {
 		radius = out["WeaponRange"]
 	}
+	// A projectile hits an area only when the gem has an area radius stat
+	// (Fireball's explosion, Ball Lightning's bolts). s.flags["area"] and the
+	// Area skill type are no guide: the engine sets the flag for any skill
+	// with a radius, and Essence Drain has both, yet its projectile only
+	// applies the debuff to what it hits (PoB's skill("radius", 8)).
+	if sh.kind == projectile && !hasAreaRadiusStat(s.active.ge) {
+		radius = 0
+	}
 	noRadius := areaKind(sh.kind) && radius <= 0 && (sh.subHits <= 0 || sh.subRadius <= 0)
 	if noRadius {
 		sh.kind = singleHit
@@ -385,4 +394,20 @@ func combatDPS(res *Result, m targetModel, isBoss bool, seed uint64) (CombatDPS,
 	}
 	notes = append(notes, fmt.Sprintf("состав как у CombinedDPS PoB: миражи как хиты, наземные DoT по числу задетых целей, culling и резервация × %.2f", mult))
 	return d, notes
+}
+
+// hasAreaRadiusStat reports whether the gem's own stats give it an area
+// (active_skill_base_area_of_effect_radius), as opposed to a radius PoB
+// hard-codes for display.
+func hasAreaRadiusStat(ge *gamedata.Skill) bool {
+	const stat = "active_skill_base_area_of_effect_radius"
+	if contains(ge.Stats, stat) {
+		return true
+	}
+	for _, cs := range ge.ConstantStats {
+		if cs.Stat == stat {
+			return true
+		}
+	}
+	return false
 }
