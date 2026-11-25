@@ -263,6 +263,9 @@ type activeSkill struct {
 	// skill (the stages after the first), set when hasStageCount.
 	activeStageCount float64
 	hasStageCount    bool
+	// infoTrigger is activeSkill.infoTrigger: the trigger label
+	// CalcTriggers.lua defaultTriggerHandler gives a triggered main skill.
+	infoTrigger string
 }
 
 // modFlagByName is the weapon part of Data/Global.lua ModFlag.

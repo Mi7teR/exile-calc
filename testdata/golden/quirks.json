@@ -4,6 +4,14 @@
       "reason": "Ailment source damage uses the hand's conversion table (PoB uses skillCfg's, so the main hand's gain-as-fire misses ignite).",
       "value": 1599235.7063817822
     },
+    "FullDPS": {
+      "reason": "Ailment source damage uses the hand's conversion table (PoB uses skillCfg's, so the main hand's gain-as-fire misses ignite). Full DPS: the oracle value with its Best Ignite DPS replaced by that ignite.",
+      "value": 2106319.3200339014
+    },
+    "FullDotDPS": {
+      "reason": "Ailment source damage uses the hand's conversion table (PoB uses skillCfg's, so the main hand's gain-as-fire misses ignite). Full DPS: its Best Ignite DPS is that ignite.",
+      "value": 65891.19409731735
+    },
     "IgniteDPS": {
       "reason": "Ailment source damage uses the hand's conversion table (PoB uses skillCfg's, so the main hand's gain-as-fire misses ignite).",
       "value": 65891.19409731735

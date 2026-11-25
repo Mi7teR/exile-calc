@@ -196,7 +196,7 @@ func TestParseModernBuild(t *testing.T) {
 		t.Fatalf("skills: %+v", skills)
 	}
 	g := skills.Groups[0]
-	if g.Label != "Main" || !g.IncludeInFullDPS {
+	if g.Label != "Main" || !g.IncludeInFullDPS || g.GroupCount != 2 {
 		t.Errorf("group: %+v", g)
 	}
 	ts, ma := g.Gems[0], g.Gems[1]

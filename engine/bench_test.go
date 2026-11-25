@@ -38,3 +38,19 @@ func BenchmarkCombat(b *testing.B) {
 		})
 	}
 }
+
+func BenchmarkFullDPS(b *testing.B) {
+	c := newCalc(b)
+	for _, id := range benchBuilds() {
+		build := corpusBuild(b, id)
+		b.Run(id, func(b *testing.B) {
+			b.ReportAllocs()
+			b.ResetTimer()
+			for range b.N {
+				if _, err := c.FullDPS(build); err != nil {
+					b.Fatal(err)
+				}
+			}
+		})
+	}
+}

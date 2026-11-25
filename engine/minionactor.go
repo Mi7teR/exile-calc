@@ -14,6 +14,10 @@ type MinionResult struct {
 	Skill  string // the summoning skill
 	Minion string // the minion's name
 	Stats  map[string]float64
+	// out is the minion's whole output (env.minion.output) and mainSkill
+	// its main skill's name, for calcFullDPS.
+	out       map[string]float64
+	mainSkill string
 }
 
 // minionBaseMods are the calcs.initModDB base mods (CalcSetup.lua) that the
@@ -538,6 +542,8 @@ func (c *Calculator) mainMinion(db *ModDB, skills []*activeSkill, buffs map[stri
 		stats[k] = mdb.output[k]
 	}
 	clawCritToMinion(s, mdb)
+	var out map[string]float64
+	var mainName string
 	if ms != nil {
 		if debugMinionSkill != nil {
 			debugMinionSkill(ms)
@@ -545,13 +551,15 @@ func (c *Calculator) mainMinion(db *ModDB, skills []*activeSkill, buffs map[stri
 		if debugEnemy != nil && debugMinionOffence {
 			debugEnemy(mdb)
 		}
-		for k, v := range c.offence(mdb, ms, weapon, weapon2) {
+		out = c.offence(mdb, ms, weapon, weapon2)
+		for k, v := range out {
 			if contains(minionOffenceStats, k) || debugMinionOffence {
 				stats[k] = v
 			}
 		}
+		mainName = ms.active.ge.Name
 	}
-	return &MinionResult{Skill: s.active.ge.Name, Minion: m.data.Name, Stats: stats}
+	return &MinionResult{Skill: s.active.ge.Name, Minion: m.data.Name, Stats: stats, out: out, mainSkill: mainName}
 }
 
 // CalcMinions calculates the build once per enabled minion skill with that

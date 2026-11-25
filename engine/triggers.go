@@ -288,6 +288,13 @@ func (c *Calculator) defaultTrigger(db *ModDB, main *activeSkill, by *skillEffec
 		return
 	}
 	main.data.set("triggered", true)
+	// defaultTriggerHandler: infoTrigger = config.triggerName, which
+	// calcs.triggers defaults to triggeredBy's name, else the skill's (no
+	// ported config sets its own).
+	main.infoTrigger = main.active.ge.Name
+	if by != nil {
+		main.infoTrigger = by.ge.Name
+	}
 	if w2 != nil && main.weapons[0] != "" && main.weapons[1] != "" &&
 		!truthy(source.data.val("doubleHitsWhenDualWielding")) &&
 		(source.types[stMelee] || source.types[stAttack]) && by != nil && by.ge.FromItem {

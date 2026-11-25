@@ -129,6 +129,7 @@ type xSkill struct {
 	Enabled              string `xml:"enabled,attr"`
 	Active               string `xml:"active,attr,omitempty"` // legacy spelling of enabled
 	IncludeInFullDPS     string `xml:"includeInFullDPS,attr,omitempty"`
+	GroupCount           string `xml:"groupCount,attr,omitempty"`
 	Label                string `xml:"label,attr,omitempty"`
 	Slot                 string `xml:"slot,attr,omitempty"`
 	Source               string `xml:"source,attr,omitempty"`
@@ -341,6 +342,7 @@ func Parse(data []byte) (*Build, error) {
 			g := SocketGroup{
 				Enabled:              sk.Active == "true" || sk.Enabled == "true",
 				IncludeInFullDPS:     sk.IncludeInFullDPS == "true",
+				GroupCount:           p.int("Skill.groupCount", sk.GroupCount, 0),
 				Label:                sk.Label,
 				Slot:                 sk.Slot,
 				Source:               sk.Source,
@@ -541,6 +543,7 @@ func (b *Build) XML() ([]byte, error) {
 			xk := xSkill{
 				Enabled:              btoa(g.Enabled),
 				IncludeInFullDPS:     btoa(g.IncludeInFullDPS),
+				GroupCount:           itoaOpt(g.GroupCount),
 				Label:                g.Label,
 				Slot:                 g.Slot,
 				Source:               g.Source,

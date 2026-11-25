@@ -55,6 +55,10 @@ const minMinionDPSWithinTolerance = 131
 // each within tolerance.
 const minPlayerDPSWithinTolerance = 94
 
+// Full DPS ratchet: builds whose FullDPS and FullDotDPS (calcs.calcFullDPS)
+// are both within tolerance.
+const minFullDPSWithinTolerance = 82
+
 // playerOffenceStats are the main skill's hit, ignite and skill DoT stats.
 var playerOffenceStats = []string{"Speed", "HitChance", "CritChance", "CritMultiplier", "AverageDamage", "TotalDPS",
 	"IgniteChance", "IgniteDPS", "TotalDot", "WithIgniteDPS", "TotalDotDPS", "CombinedDPS", "MirageDPS",
@@ -162,6 +166,7 @@ func TestGoldenCorpus(t *testing.T) {
 	allOK := 0
 	minionPerStat := map[string]int{}
 	minionsOK, minionsTotal := 0, 0
+	fullOK := 0
 	unsupportedTags := map[string]int{}
 	for _, c := range codes {
 		name := strings.TrimSuffix(filepath.Base(c), ".code")
@@ -249,7 +254,18 @@ func TestGoldenCorpus(t *testing.T) {
 		if len(mDiffs) > 0 {
 			t.Logf("%-14s minions: %s", name, strings.Join(mDiffs, ", "))
 		}
+		full, err := calc.FullDPS(b)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if matches(full.FullDPS, want, "FullDPS") && matches(full.FullDotDPS, want, "FullDotDPS") {
+			fullOK++
+		} else {
+			t.Logf("%-14s full DPS: FullDPS %.6g/%.6g FullDotDPS %.6g/%.6g",
+				name, full.FullDPS, want["FullDPS"], full.FullDotDPS, want["FullDotDPS"])
+		}
 	}
+	t.Logf("builds with FullDPS and FullDotDPS within tolerance: %d/%d", fullOK, len(codes))
 	for _, s := range append(append([]string(nil), goldenStats...), reportStats...) {
 		t.Logf("%-16s within %.1f%%: %d/%d", s, tolerance*100, perStat[s], len(codes))
 	}
@@ -287,6 +303,9 @@ func TestGoldenCorpus(t *testing.T) {
 		if ratchet == minBuildsWithinTolerance && perStat["Offence:"+st] < minPlayerDPSWithinTolerance {
 			t.Errorf("player %s within tolerance %d < ratchet %d", st, perStat["Offence:"+st], minPlayerDPSWithinTolerance)
 		}
+	}
+	if ratchet == minBuildsWithinTolerance && fullOK < minFullDPSWithinTolerance {
+		t.Errorf("full DPS within tolerance %d < ratchet %d", fullOK, minFullDPSWithinTolerance)
 	}
 	if ratchet == minBuildsWithinTolerance && minionsOK < minMinionsWithinTolerance {
 		t.Errorf("minions within tolerance %d < ratchet %d", minionsOK, minMinionsWithinTolerance)

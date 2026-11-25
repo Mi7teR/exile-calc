@@ -41,7 +41,7 @@ Crimson Jewel
 	</Items>
 	<Skills activeSkillSet="1" defaultGemLevel="normalMaximum" defaultGemQuality="0" sortGemsByDPS="true" showSupportGemTypes="ALL" sortGemsByDPSField="CombinedDPS" showLegacyGems="false">
 		<SkillSet id="1" title="Bow">
-			<Skill enabled="true" includeInFullDPS="true" slot="Body Armour" mainActiveSkill="1" mainActiveSkillCalcs="1" label="Main">
+			<Skill enabled="true" includeInFullDPS="true" groupCount="2" slot="Body Armour" mainActiveSkill="1" mainActiveSkillCalcs="1" label="Main">
 				<Gem nameSpec="Tornado Shot" skillId="TornadoShot" gemId="Metadata/Items/Gems/SkillGemTornadoShot" variantId="TornadoShot" level="21" quality="20" enabled="true" enableGlobal1="true" enableGlobal2="false" count="1" skillPart="2"/>
 				<Gem nameSpec="Mirage Archer" skillId="SupportMirageArcher" level="20" quality="0" enabled="false" count="1"/>
 			</Skill>

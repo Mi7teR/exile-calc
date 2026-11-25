@@ -125,6 +125,7 @@ type SkillSet struct {
 type SocketGroup struct {
 	Enabled              bool
 	IncludeInFullDPS     bool
+	GroupCount           int // groupCount, the Full DPS count; 0 = not set
 	Label                string
 	Slot                 string
 	Source               string
