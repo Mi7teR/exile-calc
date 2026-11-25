@@ -1,9 +1,13 @@
 STATSDUMP_DIR := $(HOME)/.cache/poe-lib/statsdump-base
 
-.PHONY: test lint bench dump-base dump-check
+.PHONY: test lint bench dump-base dump-check luaport
 
 test:
 	go vet ./... && go test ./...
+
+# Compare skill hooks with PoB's own Lua functions (needs PoB src, POB_SRC).
+luaport:
+	go test -tags luaport ./engine -run TestLuaPort -count=1
 
 lint:
 	@test -z "$$(gofmt -l .)" || { echo 'gofmt needed:'; gofmt -l .; exit 1; }
