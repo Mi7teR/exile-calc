@@ -230,7 +230,6 @@ func (c *Calculator) buildSkillMods(db *ModDB, s *activeSkill, res *Result) {
 		flags["multiPart"] = true
 	}
 	w2, w1 := db.items["Weapon 2"], db.items["Weapon 1"]
-	//nolint:goconst // PoB base item type name
 	if types[stRequiresShield] && (w2 == nil || w2.Base == nil || w2.Base.Type != "Shield") {
 		s.disabled = true
 	}

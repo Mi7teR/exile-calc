@@ -12,6 +12,10 @@
 
 version: "2"
 
+run:
+  # why: the luaport test files are behind a build tag; lint them too.
+  build-tags: [ luaport ]
+
 issues:
   # why: refactoring starts at e9f24de; only code written since then is linted, the legacy port is not rewritten for style.
   new-from-rev: e9f24de
@@ -482,11 +486,6 @@ linters:
       - path: 'engine/(calc(items|tree)|offence_(area|crit|hit|speed|warcry|dps)|skill(setup|mods|buffs)|ailments_dot|ehp_(pools|maxhit)|misc_(counts|enemy)|moddb_eval)\.go'
         linters: [ mnd, funlen, gocognit, gocyclo, cyclop, nestif, goconst, gochecknoglobals, exhaustive, intrange,
                    modernize, revive ]
-      # why: skillmods.go keeps a nolint:goconst directive moved verbatim from skills.go; goconst is excluded for
-      # the moved files above, so the directive is unused there.
-      - path: 'engine/skillmods\.go'
-        text: 'directive `//nolint:goconst // PoB base item type name` is unused'
-        linters: [ nolintlint ]
       - text: 'should have a package comment'
         linters: [ revive ]
       - text: 'exported \S+ \S+ should have comment( \(or a comment on this block\))? or be unexported'
