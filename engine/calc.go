@@ -470,6 +470,7 @@ func (c *Calculator) Calc(b *pobcode.Build) (*Result, error) {
 	c.lifeMana(db)
 	reservations(db, skills, res)
 	c.applyTinctures(db, res, flasks, tinctures)
+	brandCounts(db, skills)
 	totemCounts(db, skills)
 	c.minionCounts(db, skills)
 	warcryExertMods(db, skills)

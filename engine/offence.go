@@ -242,6 +242,12 @@ func (c *Calculator) offence(actor *ModDB, s *activeSkill, w1 hitSource, w2 *hit
 	if s.flags["area"] || s.data["radius"] != nil || (s.flags["mine"] && s.types[stAura]) {
 		areaOfEffect(s, out)
 	}
+	if s.types[stBrand] {
+		out["BrandAttachmentRange"] = 30 * calcMod(list, s.cfg, "BrandAttachmentRange") // data.misc.BrandAttachmentRangeBase
+		out["BrandAttachmentRangeMetre"] = out["BrandAttachmentRange"] / 10
+		out["ActiveBrandLimit"] = list.SumCfg(s.cfg, "BASE", "ActiveBrandLimit")
+		out["AttachedBrandCount"] = numOr(s.data["attachedBrandCount"], 0)
+	}
 	trapMineStats(actor, s, out)
 	offenceDuration(actor, s, out)
 	// CalcPerform.lua's "maximum sustainable stages" block, from the
@@ -426,6 +432,14 @@ func (c *Calculator) offence(actor *ModDB, s *activeSkill, w1 hitSource, w2 *hit
 	// skillData.dpsMultiplier is read when used: Ruthless (MAX) changes it
 	// in the damage passes.
 	dpsMod := (1 + list.SumCfg(cfg, "INC", "DPS")/100) * list.MoreCfg(cfg, "DPS")
+	if s.types[stBrand] && !truthy(data["countsAttachedBrandsInDamage"]) {
+		dpsMod *= out["AttachedBrandCount"]
+		if v, ok := out["SkillDPSMultiplier"]; ok {
+			out["SkillDPSMultiplier"] = v * out["AttachedBrandCount"]
+		} else {
+			out["SkillDPSMultiplier"] = out["AttachedBrandCount"]
+		}
+	}
 	dpsMult := numOr(data["dpsMultiplier"], 1) * dpsMod
 	quantity := math.Max(list.SumCfg(cfg, "BASE", "QuantityMultiplier"), 1)
 	warcries(actor, s, passes[0].cfg, out)
@@ -1211,6 +1225,17 @@ func preDamageFunc(actor *ModDB, s *activeSkill, out map[string]float64) {
 				}
 			}
 		}
+	case "Arcanist Brand", "Armageddon Brand", "Armageddon Brand of Recall", "Penance Brand",
+		"Penance Brand of Dissipation", "Penance Brand of Conduction", "Storm Brand", "Storm Brand of Indecision":
+		// Brands hit once per activation: repeatFrequency / (1 + inc Speed and
+		// BrandActivationFrequency) / more BrandActivationFrequency. Penance Brand
+		// activates once per its max energy.
+		// Not ported: Wintertide Brand (stage averaging, Wintertide's End).
+		f, _ := num(data["repeatFrequency"])
+		if s.active.ge.Name == "Penance Brand" {
+			f *= s.mods.SumCfg(s.cfg, "BASE", "Multiplier:PenanceBrandMaxEnergy")
+		}
+		data["hitTimeOverride"] = f / (1 + s.mods.SumCfg(s.cfg, "INC", "Speed", "BrandActivationFrequency")/100) / s.mods.MoreCfg(s.cfg, "BrandActivationFrequency")
 	case "Static Strike":
 		if s.part == 2 {
 			f, _ := num(data["repeatFrequency"])

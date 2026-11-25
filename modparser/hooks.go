@@ -234,12 +234,39 @@ var hooks = map[string]Hook{
 	// ["inflict withered for (%d+) seconds on hit if you've cast (.-) in the past (%d+) seconds"] = function (_, _, curse) return {
 	//   flag("Condition:CanWither", { type = "Condition", var = "SelfCast"..curse:gsub("^%l", string.upper):gsub(" %l", string.upper):gsub(" ", "") }) } end
 	"specialModList[^inflict withered for (%d+) seconds on hit if you've cast (.-) in the past (%d+) seconds$]": func(p *Parser, a []any) any {
-		words := strings.Fields(argS(a, 2))
-		for i, w := range words {
-			words[i] = firstToUpper(w)
-		}
-		return []any{withTags(newMod("Condition:CanWither", "FLAG", true, 0, 0),
-			map[string]any{"type": "Condition", "var": "SelfCast" + strings.Join(words, "")})}
+		return []any{withTags(newMod("Condition:CanWither", "FLAG", true, 0, 0), selfCastTag(argS(a, 2)))}
+	},
+	// The Balance of Terror: "... if you've cast <curse> in the past N seconds", each with
+	// { type = "Condition", var = "SelfCast"..<Curse Name without spaces> }.
+	"specialModList[^gain (%d+)%% of physical damage as a random element if you've cast (.-) in the past (%d+) seconds$]": func(p *Parser, a []any) any {
+		return []any{withTags(newMod("PhysicalDamageGainAsRandom", "BASE", toNumber(arg(a, 0)), 0, 0), selfCastTag(argS(a, 2)))}
+	},
+	"specialModList[^(%a+) exposure on hit if you've cast (.-) in the past (%d+) seconds$]": func(p *Parser, a []any) any {
+		return []any{castExposure(argS(a, 1), argS(a, 2))}
+	},
+	"specialModList[^inflict (%a+) exposure on hit if you've cast (.-) in the past (%d+) seconds$]": func(p *Parser, a []any) any {
+		return []any{castExposure(argS(a, 1), argS(a, 2))}
+	},
+	"specialModList[^you are unaffected by (.+) if you've cast (.-) in the past (%d+) seconds$]": func(p *Parser, a []any) any {
+		return []any{withTags(newMod("Self"+firstToUpper(argS(a, 1))+"Effect", "MORE", -100.0, 0, 0), selfCastTag(argS(a, 2)),
+			map[string]any{"type": "GlobalEffect", "effectType": "Global", "unscalable": true})}
+	},
+	"specialModList[^immun[ei]t?y? to (%a-)s? if you've cast (.-) in the past (%d+) seconds$]": func(p *Parser, a []any) any {
+		return []any{withTags(newMod(firstToUpper(argS(a, 1))+"Immune", "FLAG", true, 0, 0), selfCastTag(argS(a, 2)))}
+	},
+	"specialModList[^action speed cannot be slowed below base value if you've cast (.-) in the past (%d+) seconds$]": func(p *Parser, a []any) any {
+		return []any{withTags(newMod("MinimumActionSpeed", "MAX", 100.0, 0, 0), selfCastTag(argS(a, 1)))}
+	},
+	"specialModList[^action speed cannot be modified to below base value if you've cast (.-) in the past (%d+) seconds$]": func(p *Parser, a []any) any {
+		return []any{withTags(newMod("MinimumActionSpeed", "MAX", 100.0, 0, 0), selfCastTag(argS(a, 1)))}
+	},
+	"specialModList[^intimidate enemies on hit if you've cast (.-) in the past (%d+) seconds$]": func(p *Parser, a []any) any {
+		return []any{withTags(newMod("EnemyModifier", "LIST", map[string]any{"mod": newMod("Condition:Intimidated", "FLAG", true, 0, 0)}, 4, 0), // ModFlag.Hit
+			selfCastTag(argS(a, 1)))}
+	},
+	"specialModList[^take no extra damage from critical strikes if you've cast (.-) in the past (%d+) seconds$]": func(p *Parser, a []any) any {
+		return []any{withTags(newMod("ReduceCritExtraDamage", "BASE", 100.0, 0, 0),
+			map[string]any{"type": "GlobalEffect", "effectType": "Global", "unscalable": true}, selfCastTag(argS(a, 1)))}
 	},
 	// ["(%d+)%% of chaos damage t?a?k?e?n? ?does not bypass energy shield"] = function(num) return {
 	//   mod("ChaosEnergyShieldBypass", "BASE", -num) } end
@@ -1135,4 +1162,21 @@ func minionConvert(a []any, tag map[string]any) map[string]any {
 		m = withTags(m, tag)
 	}
 	return m
+}
+
+// selfCastTag is { type = "Condition", var = "SelfCast"..<curse> } with each
+// word capitalised and the spaces removed.
+func selfCastTag(curse string) map[string]any {
+	words := strings.Fields(curse)
+	for i, w := range words {
+		words[i] = firstToUpper(w)
+	}
+	return map[string]any{"type": "Condition", "var": "SelfCast" + strings.Join(words, "")}
+}
+
+// castExposure is the "(inflict) X exposure on hit if you've cast <curse>"
+// mod: -10 X exposure on the enemy, while Effective.
+func castExposure(element, curse string) map[string]any {
+	return withTags(newMod("EnemyModifier", "LIST", map[string]any{"mod": newMod(firstToUpper(element)+"Exposure", "BASE", -10.0, 0, 0)}, 0, 0),
+		selfCastTag(curse), map[string]any{"type": "Condition", "var": "Effective"})
 }

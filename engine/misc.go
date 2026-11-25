@@ -616,6 +616,28 @@ func exposures(db *ModDB) {
 // with any totem skill, ActiveTotemLimit is the main skill's limit and
 // TotemsSummoned (read by "per summoned totem" mods) the configured count
 // or that limit.
+// brandCounts is the Brand part of calcs.perform's active skill loop: each
+// brand's attached count (the configured number up to the attach limit,
+// else the limit) and the ActiveBrand, BrandsAttachedToEnemy and enemy
+// BrandsAttached multipliers.
+func brandCounts(db *ModDB, skills []*activeSkill) {
+	for _, s := range skills {
+		if !s.types[stBrand] || s.mods == nil {
+			continue
+		}
+		limit := math.Min(s.mods.SumCfg(s.cfg, "BASE", "BrandsAttachedLimit"), s.mods.SumCfg(s.cfg, "BASE", "ActiveBrandLimit"))
+		attached := limit
+		if configured := db.Sum("BASE", "Multiplier:ConfigBrandsAttachedToEnemy"); configured > 0 {
+			attached = math.Min(configured, limit)
+		}
+		s.data["attachedBrandCount"] = attached
+		active := math.Min(db.Sum("BASE", "Multiplier:ConfigActiveBrands"), s.mods.SumCfg(s.cfg, "BASE", "ActiveBrandLimit"))
+		db.multipliers["ActiveBrand"] = math.Max(active, db.multipliers["ActiveBrand"])
+		db.multipliers["BrandsAttachedToEnemy"] = math.Max(attached, db.multipliers["BrandsAttachedToEnemy"])
+		db.enemy.multipliers["BrandsAttached"] = math.Max(attached, db.enemy.multipliers["BrandsAttached"])
+	}
+}
+
 func totemCounts(db *ModDB, skills []*activeSkill) {
 	main := mainSkill(skills)
 	if main == nil || main.mods == nil {
