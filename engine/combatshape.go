@@ -39,10 +39,14 @@ type shapeEntry struct {
 	// subRadiusOut and scatterOut are the outputs holding the sub-hit
 	// radius and the radius the sub-hits spread over.
 	subRadiusOut, scatterOut string
-	// pobOverlap: PoB's preDamageFunc or statMap sets skillData.dpsMultiplier
-	// for the overlap, in overlapParts (all parts when nil).
+	// pobOverlap: this engine's preDamageFunc port or a statMap SkillData
+	// mod sets skillData.dpsMultiplier for the overlap, in overlapParts (all
+	// parts when nil) and while overlapCond holds (always when empty). Only
+	// skills whose overlap the engine applies are flagged: the PoB value
+	// combat DPS starts from has no overlap otherwise.
 	pobOverlap   bool
 	overlapParts []int
+	overlapCond  string
 }
 
 // shapeTable holds the skills whose shape is not what their skill types say,
@@ -63,10 +67,9 @@ var shapeTable = func() map[string]shapeEntry {
 		"Kinetic Blast", "Kinetic Blast of Clustering")
 	// Tornado Shot: each projectile releases tornado_shot_num_of_secondary_
 	// projectiles when it reaches the target point; they cannot hit the
-	// enemy the primary projectile hit. Part 2 ("Combined Average
-	// Projectiles") has PoB's dpsMultiplier for them (act_dex.lua TornadoShot).
-	add(shapeEntry{kind: projectile, subHitsStat: "tornado_shot_num_of_secondary_projectiles",
-		pobOverlap: true, overlapParts: []int{2}}, "Tornado Shot")
+	// enemy the primary projectile hit. Not pobOverlap until PoB's part 2
+	// preDamageFunc (act_dex.lua TornadoShot) is ported to offence.go.
+	add(shapeEntry{kind: projectile, subHitsStat: "tornado_shot_num_of_secondary_projectiles"}, "Tornado Shot")
 	add(shapeEntry{kind: projectile}, "Split Arrow", "Split Arrow of Splitting")
 	add(shapeEntry{kind: selfArea}, "Ice Nova", "Ice Nova of Deep Freeze")
 	// Ice Nova of Frostbolts is cast from Frostbolt projectiles.
@@ -77,13 +80,16 @@ var shapeTable = func() map[string]shapeEntry {
 	add(shapeEntry{kind: targetArea, pobOverlap: true},
 		"Toxic Rain", "Toxic Rain of Sporeburst", "Toxic Rain of Withering")
 	add(shapeEntry{kind: projectile, pobOverlap: true}, "Shrapnel Ballista", "Shrapnel Ballista of Steel")
-	// Storm Rain: beam overlap in part 2 (act_dex.lua StormRain preDamageFunc).
-	add(shapeEntry{kind: targetArea, pobOverlap: true, overlapParts: []int{2}},
-		"Storm Rain", "Storm Rain of the Conduit", "Storm Rain of the Fence")
-	// Perforate: dpsMultiplier from PerforateSpikeOverlap (act_str.lua statMap).
-	add(shapeEntry{kind: slam, pobOverlap: true}, "Perforate", "Perforate of Duality", "Perforate of Bloodshed")
-	add(shapeEntry{kind: projectile, pobOverlap: true, overlapParts: []int{1}},
-		"Kinetic Fusillade", "Kinetic Fusillade of Detonation")
+	// Storm Rain: not pobOverlap until PoB's part 2 beam overlap
+	// (act_dex.lua StormRain preDamageFunc) is ported to offence.go.
+	add(shapeEntry{kind: targetArea}, "Storm Rain", "Storm Rain of the Conduit", "Storm Rain of the Fence")
+	// Perforate: the statMap SkillData mod dpsMultiplier per
+	// PerforateSpikeOverlap (act_str.lua), in Blood Stance except for Bloodshed.
+	add(shapeEntry{kind: slam, pobOverlap: true, overlapCond: "BloodStance"}, "Perforate", "Perforate of Duality")
+	add(shapeEntry{kind: slam, pobOverlap: true}, "Perforate of Bloodshed")
+	// Kinetic Fusillade of Detonation is not in offence.go's preDamageFunc.
+	add(shapeEntry{kind: projectile, pobOverlap: true, overlapParts: []int{1}}, "Kinetic Fusillade")
+	add(shapeEntry{kind: projectile}, "Kinetic Fusillade of Detonation")
 	add(shapeEntry{kind: projectile, pobOverlap: true, overlapParts: []int{2}}, "Barrage", "Barrage of Volley Fire")
 	add(shapeEntry{kind: projectile, pobOverlap: true, overlapParts: []int{3, 4}}, "Ice Spear", "Ice Spear of Splitting")
 	add(shapeEntry{kind: projectile, pobOverlap: true, overlapParts: []int{2}}, "Spark", "Spark of the Nova")
@@ -109,7 +115,8 @@ func shapeOf(s *activeSkill, out map[string]float64) skillShape {
 		return withShotgun(s, skillShape{kind: kindByTypes(s.types), fromDefault: true})
 	}
 	sh := skillShape{kind: e.kind}
-	if e.pobOverlap && (e.overlapParts == nil || containsInt(e.overlapParts, s.part)) {
+	if e.pobOverlap && (e.overlapParts == nil || containsInt(e.overlapParts, s.part)) &&
+		(e.overlapCond == "" || skillCondition(s, e.overlapCond)) {
 		sh.pobOverlap = true
 		return sh
 	}
@@ -163,4 +170,10 @@ func withShotgun(s *activeSkill, sh skillShape) skillShape {
 		}
 	}
 	return sh
+}
+
+// skillCondition is a Condition tag check on the skill's mod list
+// (ModDB tag evaluation, case "Condition").
+func skillCondition(s *activeSkill, v string) bool {
+	return (s.mods != nil && s.mods.getCondition(v, s.cfg, false)) || (s.cfg != nil && s.cfg.SkillCond[v])
 }

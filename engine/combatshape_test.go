@@ -121,3 +121,30 @@ func TestShapeShotgunGMP(t *testing.T) {
 		t.Errorf("shape %+v without GMP, want no shotgun", sh)
 	}
 }
+
+// pobOverlap only where this engine applies the overlap multiplier.
+func TestShapePobOverlapEngineOnly(t *testing.T) {
+	skill := func(name string, part int) *activeSkill {
+		active := &skillEffect{ge: &gamedata.Skill{Name: name}}
+		return &activeSkill{active: active, effects: []*skillEffect{active}, part: part,
+			types: map[int]bool{stProjectile: true}, mods: NewModDB(), cfg: &Cfg{}}
+	}
+	// Not ported to offence.go's preDamageFunc.
+	for _, s := range []*activeSkill{skill("Tornado Shot", 2), skill("Storm Rain", 2), skill("Kinetic Fusillade of Detonation", 1)} {
+		if shapeOf(s, nil).pobOverlap {
+			t.Errorf("%s part %d: pobOverlap, engine has no overlap multiplier", s.active.ge.Name, s.part)
+		}
+	}
+	// Perforate: SkillData dpsMultiplier only in Blood Stance.
+	p := skill("Perforate", 0)
+	if shapeOf(p, nil).pobOverlap {
+		t.Error("Perforate in Sand Stance: pobOverlap")
+	}
+	p.mods.conditions["BloodStance"] = true
+	if !shapeOf(p, nil).pobOverlap {
+		t.Error("Perforate in Blood Stance: no pobOverlap")
+	}
+	if !shapeOf(skill("Perforate of Bloodshed", 0), nil).pobOverlap {
+		t.Error("Perforate of Bloodshed: no pobOverlap")
+	}
+}
