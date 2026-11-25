@@ -388,6 +388,15 @@ func (c *Calculator) offence(actor *ModDB, s *activeSkill, w1 hitSource, w2 *hit
 	combine("HitChance", "AVERAGE")
 	combine("Speed", "HARMONICMEAN")
 	if isAttack {
+		// CalcOffence: UseOffhandAttackSpeed (Dual Strike of Ambidexterity) takes
+		// the off hand's speed; forceMainHand is not ported.
+		if list.Flag("UseOffhandAttackSpeed") {
+			for _, p := range passes {
+				if p.label == "Off Hand" {
+					out["Speed"] = p.out["Speed"]
+				}
+			}
+		}
 		for _, st := range []string{"HitSpeed", "HitTime", "Cooldown"} {
 			for _, p := range passes {
 				if v, ok := p.out[st]; ok {
@@ -715,7 +724,15 @@ func (c *Calculator) hitDamage(actor *ModDB, s *activeSkill, p *hitPass) {
 			}
 			mn, mx = mn*allMult, mx*allMult
 			lucky := 0.0
-			if list.FlagCfg(cfg, "LuckyHits") || (pass == 1 && list.FlagCfg(cfg, "CritLucky")) {
+			ele := t == "Lightning" || t == "Cold" || t == "Fire"
+			if list.FlagCfg(cfg, "LuckyHits") ||
+				(pass == 2 && t == "Lightning" && list.FlagCfg(cfg, "LightningNoCritLucky")) ||
+				(pass == 1 && list.FlagCfg(cfg, "CritLucky")) ||
+				(t == "Lightning" && actor.Flag("LightningLuckHits")) ||
+				(t == "Chaos" && actor.Flag("ChaosLuckyHits")) ||
+				(t == "Fire" && actor.Flag("FireLuckyHits")) ||
+				(t == "Cold" && actor.Flag("ColdLuckyHits")) ||
+				(ele && list.FlagCfg(cfg, "ElementalLuckHits")) {
 				lucky = 1
 			} else {
 				lucky = math.Min(list.SumCfg(cfg, "BASE", "LuckyHitsChance"), 100) / 100
