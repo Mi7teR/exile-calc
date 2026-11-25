@@ -1303,15 +1303,6 @@ func abyssalSockets(it *itemtext.Item) int {
 	return n
 }
 
-func containsInt(s []int, v int) bool {
-	for _, x := range s {
-		if x == v {
-			return true
-		}
-	}
-	return false
-}
-
 // val is calcLib.val (Modules/CalcTools.lua).
 func val(db *ModDB, name string) float64 {
 	base := db.Sum("BASE", name)

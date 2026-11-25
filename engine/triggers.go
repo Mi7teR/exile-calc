@@ -14,8 +14,6 @@ import (
 
 const serverTickTime = 0.033
 
-const stInbuiltTrigger = 50 // SkillType.InbuiltTrigger
-
 // triggerConfig is an entry of CalcTriggers.lua configTable.
 type triggerConfig struct {
 	triggerOnUse       bool
@@ -65,7 +63,6 @@ func slotMatch(main, s *activeSkill) bool {
 
 var triggerConfigs = map[string]func(db *ModDB, main *activeSkill) *triggerConfig{
 	"doom blast": func(db *ModDB, main *activeSkill) *triggerConfig {
-		const stHex = 97 // SkillType.Hex
 		main.data["ignoresTickRate"] = true
 		cfg := &triggerConfig{doomBlast: true,
 			triggerSkillCond: func(main, s *activeSkill) bool { return s.types[stHex] && slotMatch(main, s) }}
@@ -85,7 +82,7 @@ var triggerConfigs = map[string]func(db *ModDB, main *activeSkill) *triggerConfi
 	},
 	"the covetous dark": func(*ModDB, *activeSkill) *triggerConfig {
 		return &triggerConfig{
-			triggerSkillCond:   func(main, s *activeSkill) bool { return s.types[20] }, // Melee
+			triggerSkillCond:   func(_, s *activeSkill) bool { return s.types[stMelee] },
 			triggeredSkillCond: func(main, s *activeSkill) bool { return truthy(s.data["triggeredByCovetousDark"]) }}
 	},
 	"cast when stunned": func(_ *ModDB, main *activeSkill) *triggerConfig {
@@ -260,7 +257,7 @@ func (c *Calculator) defaultTrigger(db *ModDB, main *activeSkill, by *skillEffec
 				value = cfg.sourceValue
 			}
 			if source == nil || value(o) > value(sourceOut) {
-				if s.cfg.SkillCond["usedByMirage"] || s.types[95] {
+				if s.cfg.SkillCond["usedByMirage"] || s.types[stOtherThingUsesSkill] {
 					continue
 				}
 				source, sourceOut, trigRate = s, o, rate(o)
@@ -285,8 +282,9 @@ func (c *Calculator) defaultTrigger(db *ModDB, main *activeSkill, by *skillEffec
 		return
 	}
 	main.data["triggered"] = true
-	if w2 != nil && main.weapons[0] != "" && main.weapons[1] != "" && !truthy(source.data["doubleHitsWhenDualWielding"]) &&
-		(source.types[20] || source.types[stAttack]) && by != nil && by.ge.FromItem {
+	if w2 != nil && main.weapons[0] != "" && main.weapons[1] != "" &&
+		!truthy(source.data["doubleHitsWhenDualWielding"]) &&
+		(source.types[stMelee] || source.types[stAttack]) && by != nil && by.ge.FromItem {
 		trigRate /= 2
 	}
 	ignoresTick := truthy(main.data["ignoresTickRate"]) || numOr(main.data["storedUses"], 0) > 1
@@ -331,7 +329,8 @@ func (c *Calculator) defaultTrigger(db *ModDB, main *activeSkill, by *skillEffec
 		c.doomBlastSourceRate(db, main, sourceOut, trigRate, icdr, w1, w2)
 	}
 	chance := 100.0
-	if (source.types[20] || source.types[stAttack]) && !cfg.triggerOnUse {
+	//nolint:nestif // pre-existing shape of the Lua port; only the SkillType constant was renamed
+	if (source.types[stMelee] || source.types[stAttack]) && !cfg.triggerOnUse {
 		if hc := sourceOut["HitChance"]; hc != 100 {
 			chance *= hc / 100
 		}
@@ -551,7 +550,8 @@ func (c *Calculator) snipeTrigger(db *ModDB, main *activeSkill, by *skillEffect,
 		s.data["hitTimeMultiplier"] = stages - 0.5
 		o := c.offenceOnCopy(db, s, w1, w2)
 		speed, ok := o["HitSpeed"]
-		if !s.disabled && !s.cfg.SkillCond["usedByMirage"] && !s.types[95] && ok && (source == nil || speed > trigRate) {
+		if !s.disabled && !s.cfg.SkillCond["usedByMirage"] && !s.types[stOtherThingUsesSkill] && ok &&
+			(source == nil || speed > trigRate) {
 			source, sourceOut, trigRate = s, o, speed
 			db.output["ChannelTimeToTrigger"] = o["HitTime"]
 		}

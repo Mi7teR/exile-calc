@@ -2,9 +2,6 @@ package engine
 
 import "math"
 
-// stTotemsAreBallistae is SkillType.TotemsAreBallistae (Data/Global.lua).
-const stTotemsAreBallistae = 114
-
 // sources describes where a skill's casts come from in combat: the player
 // directly, or mines, traps, totems or ballistas.
 type sources struct {

@@ -4,14 +4,6 @@ import (
 	"strings"
 )
 
-// Data/Global.lua SkillType ids.
-const (
-	stMark        = 98
-	stRemoteMined = 36
-
-	stMinionsAreUndamagable = 117
-)
-
 // cursePriority is Data.lua data.cursePriority.
 var cursePriority = map[string]float64{
 	"Temporal Chains": 1, "Enfeeble": 2, "Vulnerability": 3, "Elemental Weakness": 4,

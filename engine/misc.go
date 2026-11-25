@@ -425,7 +425,6 @@ func playerBaseMods(db *ModDB) {
 // heraldAuraCounts is "Calculate number of active heralds and auras
 // affecting self" of calcs.perform (mode_buffs).
 func heraldAuraCounts(db *ModDB, skills []*activeSkill) {
-	const stHerald, stAuraAffectsEnemies = 52, 53
 	heralds, auras := map[string]bool{}, map[string]bool{}
 	for _, s := range skills {
 		name := s.cfg.SkillName
@@ -860,11 +859,6 @@ func enemyAilments(db *ModDB, skills []*activeSkill, guaranteedBonechill bool) {
 	}
 }
 
-const (
-	stNonHitChill = 67 // SkillType.NonHitChill
-	stChillArea   = 68 // SkillType.ChillingArea
-)
-
 // sumSkillSource is skillModList:Sum("INC", { source = "Skill" }, name):
 // only mods whose source kind is "Skill".
 func sumSkillSource(db *ModDB, name string) float64 {
@@ -894,7 +888,7 @@ func chillSkills(db *ModDB, skills []*activeSkill) (guaranteed []*activeSkill, g
 			continue
 		}
 		bonechill := truthy(s.data["supportBonechill"])
-		if bonechill && (s.types[stChillArea] || s.types[stNonHitChill] || !s.mods.Flag("CannotChill")) {
+		if bonechill && (s.types[stChillingArea] || s.types[stNonHitChill] || !s.mods.Flag("CannotChill")) {
 			out["HasBonechill"] = 1
 		}
 		name := s.active.ge.Name
@@ -928,7 +922,7 @@ func chillSkills(db *ModDB, skills []*activeSkill) (guaranteed []*activeSkill, g
 					db.NewMod("SelfScorchOverride", "BASE", effect, name)
 				}
 			}
-		} else if s.flags["guaranteedChill"] || s.types[stChillArea] || (s.types[stNonHitChill] && !s.mods.Flag("CannotChill")) {
+		} else if s.flags["guaranteedChill"] || s.types[stChillingArea] || (s.types[stNonHitChill] && !s.mods.Flag("CannotChill")) {
 			guaranteed = append(guaranteed, s)
 			db.enemy.Add(Mod{Name: "Condition:Chilled", Type: "FLAG", Value: true, Source: name})
 			if bonechill {

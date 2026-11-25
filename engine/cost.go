@@ -189,10 +189,3 @@ func roundCost(v, mult float64) float64 {
 	}
 	return math.Max(0, math.Floor(mult*v))
 }
-
-func b2f(b bool) float64 {
-	if b {
-		return 1
-	}
-	return 0
-}

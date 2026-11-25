@@ -2,8 +2,6 @@ package engine
 
 import "math"
 
-const stHasReservation, stReservationBecomesCost = 12, 13 // SkillType ids
-
 const lowPoolThreshold = 0.5 // Data.lua data.misc.LowPoolThreshold
 
 func floorTo(v float64, places int) float64 {

@@ -20,39 +20,6 @@ import (
 // branches of CalcPerform.lua. Skill parts, minions, triggers, weapon flags
 // of attacks and party buffs are not ported.
 
-// Data/Global.lua SkillType ids used here.
-const (
-	stAttack                          = 1
-	stSpell                           = 2
-	stProjectile                      = 3
-	stArea                            = 8
-	stMelee                           = 20
-	stNova                            = 84
-	stRain                            = 89
-	stSlam                            = 92
-	stDamage                          = 7
-	stRequireShield                   = 10
-	stPhysical                        = 28
-	stFire                            = 29
-	stCold                            = 30
-	stLightning                       = 31
-	stTriggered                       = 37
-	stVaal                            = 38
-	stAura                            = 39
-	stChaos                           = 42
-	stWarcry                          = 63
-	stAppliesCurse                    = 69
-	stOR                              = 73
-	stAND                             = 74
-	stNOT                             = 75
-	stMovement                        = 34
-	stRequireStaff                    = 134
-	stDualWieldOnly                   = 4
-	stDualWieldRequiresDifferentTypes = 119
-
-	stSkillGrantedBySupport = 115
-)
-
 // Data/Global.lua ModFlag and KeywordFlag bits used here.
 const (
 	mfAttack     = 0x1
@@ -772,10 +739,6 @@ func mainSkill(skills []*activeSkill) *activeSkill {
 	return nil
 }
 
-const stChannel = 48 // SkillType.Channel
-
-const stRequiresShield = 10 // SkillType.RequiresShield
-
 // combatConditions ports the mode_combat part of doActorAttribsConditions:
 // conditions that follow from using the main skill.
 func combatConditions(db *ModDB, s *activeSkill) {
@@ -1096,7 +1059,7 @@ func processMod(ge *gamedata.Skill, id string, m map[string]any, stat string) Mo
 			mod.Value = v
 		}
 	}
-	if stat != "" && (ge.Support || containsInt(ge.SkillTypes, 5)) {
+	if stat != "" && (ge.Support || slices.Contains(ge.SkillTypes, stBuff)) {
 		for _, s := range ge.NotMinionStat {
 			if s == stat {
 				mod.Tags = append(append([]map[string]any(nil), mod.Tags...),
@@ -1204,10 +1167,11 @@ func (c *Calculator) buildSkillMods(db *ModDB, s *activeSkill, res *Result) {
 		flags["multiPart"] = true
 	}
 	w2, w1 := db.items["Weapon 2"], db.items["Weapon 1"]
-	if types[stRequireShield] && (w2 == nil || w2.Base == nil || w2.Base.Type != "Shield") {
+	//nolint:goconst // PoB base item type name
+	if types[stRequiresShield] && (w2 == nil || w2.Base == nil || w2.Base.Type != "Shield") {
 		s.disabled = true
 	}
-	if types[stRequireStaff] && (w1 == nil || w1.Base == nil || w1.Base.Type != "Staff") {
+	if types[stRequiresStaff] && (w1 == nil || w1.Base == nil || w1.Base.Type != "Staff") {
 		s.disabled = true
 	}
 	for stat, v := range skillStats(s.active, 0) {
@@ -1530,8 +1494,6 @@ func upperFirst(s string) string {
 	}
 	return strings.ToUpper(s[:1]) + s[1:]
 }
-
-func truthy(v any) bool { return v != nil && v != false }
 
 // separateBuffs is the "Separate global effect modifiers" loop of
 // buildActiveSkillModList: mods with a GlobalEffect tag leave the skill's

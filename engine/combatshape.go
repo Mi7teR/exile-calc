@@ -1,6 +1,9 @@
 package engine
 
-import "math"
+import (
+	"math"
+	"slices"
+)
 
 // The shape of the main skill: how one use turns into hits on targets.
 // Combat DPS (spec "DPS в бою", section "Форма скилла") reads it to add the
@@ -149,7 +152,8 @@ func shapeOf(s *activeSkill, out map[string]float64) skillShape {
 		sh = skillShape{kind: kindByTypes(s.types), fromDefault: true}
 	}
 	if sequentialProjectiles(s) ||
-		e.pobOverlap && (e.overlapParts == nil || containsInt(e.overlapParts, s.part)) && (e.overlapIf == nil || e.overlapIf(s)) {
+		e.pobOverlap && (e.overlapParts == nil || slices.Contains(e.overlapParts, s.part)) &&
+			(e.overlapIf == nil || e.overlapIf(s)) {
 		sh.pobOverlap = true
 		return sh
 	}

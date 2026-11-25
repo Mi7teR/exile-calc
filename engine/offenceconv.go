@@ -253,8 +253,6 @@ func (c *Calculator) offenceStatConversions(actor *ModDB, s *activeSkill, w1 hit
 	c.randomPhysConversions(s)
 }
 
-const stCanRapidFire = 70 // SkillType.CanRapidFire
-
 // unleashSeals is the "Applies DPS multiplier based on seals count" block
 // of calcs.offence (Unleash supports).
 func unleashSeals(actor *ModDB, s *activeSkill, out map[string]float64) {
@@ -337,7 +335,6 @@ func mulValue(v any, mult float64) any {
 // damage and area mods of repeating supports (Spell Echo, Multistrike),
 // for the config's repeatMode (default AVERAGE).
 func repeats(actor *ModDB, s *activeSkill, out map[string]float64) {
-	const stInstant, stRetaliation, stNonRepeatable = 64, 121, 94
 	list, cfg := s.mods, s.cfg
 	out["Repeats"] = 1
 	for _, t := range []int{stInstant, stChannel, stTriggered, stRetaliation, stNonRepeatable} {

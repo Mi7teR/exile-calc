@@ -23,9 +23,6 @@ const (
 	kfPoison  = 0x200000
 	kfBleed   = 0x400000
 	kfIgnite  = 0x800000
-
-	stBrand  = 65
-	stBanner = 88
 )
 
 // kfDot is KeywordFlag[<Type>Dot].

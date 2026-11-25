@@ -90,7 +90,6 @@ func setSkillCond(s *activeSkill, name string) {
 // generalsCry is the General's Cry branch of calcs.mirages
 // (CalcMirages.lua): the main skill used by the cry's mirage warriors.
 func (c *Calculator) generalsCry(db *ModDB, s *activeSkill, w1 hitSource, w2 *hitSource) {
-	const stOtherThingUsesSkill = 95
 	s.types[stTriggered] = true
 	s.types[stOtherThingUsesSkill] = true
 	setSkillCond(s, "usedByMirage")
@@ -147,7 +146,6 @@ func (c *Calculator) mirages(db *ModDB, s *activeSkill, w1 hitSource, w2 *hitSou
 	if s.disabled || s.cfg == nil || s.cfg.SkillCond["usedByMirage"] {
 		return
 	}
-	const stOtherThingUsesSkill = 95
 	m := c.copyActiveSkill(db, s, res)
 	setSkillCond(m, "usedByMirage")
 	delete(m.flags, "multiPart")

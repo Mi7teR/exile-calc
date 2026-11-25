@@ -1212,7 +1212,7 @@ func preDamageFunc(actor *ModDB, s *activeSkill, out map[string]float64) {
 			overlap := 1.0
 			if v, ok := num(data["ShrapnelBallistaProjectileOverlap"]); ok {
 				overlap = v
-			} else if s.types[89] { // Rain
+			} else if s.types[stRain] {
 				overlap = proj
 			}
 			mulDPS(math.Min(overlap, proj))
@@ -1286,20 +1286,11 @@ func preDamageFunc(actor *ModDB, s *activeSkill, out map[string]float64) {
 	}
 }
 
-// numOr is num(v) with a default.
-func numOr(v any, def float64) float64 {
-	if f, ok := num(v); ok {
-		return f
-	}
-	return def
-}
-
 // pacts is the Pact part of the damage passes of calcs.offence: each
 // "Pact of X" skill the actor has adds its damage scaled by its uptime to
 // the spells it empowers. Pact of Beidat's extra projectiles, chains and
 // cascades are not ported.
 func pacts(actor *ModDB, s *activeSkill, out map[string]float64) {
-	const stDamageOverTime, stCascadable = 35, 56
 	if !s.types[stSpell] || s.types[stBrand] {
 		return
 	}
@@ -1378,7 +1369,6 @@ func warcryCastTime(actor *ModDB, v *activeSkill) float64 {
 // mods scaled by uptime, and Seismic Cry's area. Ancestral Cry's extra
 // strikes are not ported.
 func warcries(actor *ModDB, s *activeSkill, cfg *Cfg, out map[string]float64) {
-	const stMelee, stMeleeSingleTarget, stSummonsTotem, stSlam, stOtherThingUsesSkill, stNeverExertable, stRetaliation = 20, 21, 26, 92, 95, 122, 121
 	out["OffensiveWarcryEffect"], out["MaxOffensiveWarcryEffect"], out["AilmentWarcryEffect"] = 1, 1, 1
 	out["GlobalWarcryUptimeRatio"] = 0
 	for _, t := range []int{stNeverExertable, stTriggered, stChannel, stOtherThingUsesSkill, stRetaliation, stSummonsTotem} {
@@ -1501,7 +1491,6 @@ func warcries(actor *ModDB, s *activeSkill, cfg *Cfg, out map[string]float64) {
 // pass (mode_combat): the hit effects, with ruthlessSupportMode AVERAGE (a
 // 1 in N chance) or MAX (every hit, at 1/N of the rate).
 func ruthlessAndFistOfWar(s *activeSkill, p *hitPass, global map[string]float64) {
-	const stSlam, stOtherThingUsesSkill = 92, 95
 	list, cfg, out := s.mods, p.cfg, p.out
 	out["RuthlessBlowHitEffect"], out["FistOfWarDamageEffect"] = 1, 1
 	mode := "AVERAGE"
@@ -2078,7 +2067,6 @@ func weaponRange(s *activeSkill, w1 hitSource, w2 *hitSource, out map[string]flo
 	if s.flags["weapon2Attack"] {
 		s.weaponRange2 = rangeOf(w2, s.weapon2Cfg)
 	}
-	const stMeleeSingleTarget = 21
 	if s.types[stMeleeSingleTarget] {
 		r := 100.0
 		if s.flags["weapon1Attack"] {
