@@ -525,6 +525,7 @@ func (c *Calculator) hitAndSpeed(actor *ModDB, s *activeSkill, p *hitPass) {
 	switch {
 	case ge.CastTime == 0 && !ge.NoCastTime && data["castTimeOverride"] == nil && !triggered:
 		out["Time"], out["Speed"] = 0, 0
+		hitTime(s, out, false)
 		return
 	case data["timeOverride"] != nil:
 		t, _ := num(data["timeOverride"])
@@ -534,9 +535,11 @@ func (c *Calculator) hitAndSpeed(actor *ModDB, s *activeSkill, p *hitPass) {
 			t = math.Max(t, p.cooldown)
 		}
 		out["Time"], out["Speed"] = t, 1/t
+		hitTime(s, out, false)
 		return
 	case truthy(data["fixedCastTime"]):
 		out["Time"], out["Speed"] = ge.CastTime, 1/ge.CastTime
+		hitTime(s, out, false)
 		return
 	case data["triggerTime"] != nil && triggered:
 		t, _ := num(data["triggerTime"])
@@ -545,11 +548,13 @@ func (c *Calculator) hitAndSpeed(actor *ModDB, s *activeSkill, p *hitPass) {
 			t *= n
 		}
 		out["Time"], out["TriggerTime"], out["Speed"] = t, t, 1/t
+		hitTime(s, out, false)
 		return
 	case data["triggerRate"] != nil && triggered:
 		r, _ := num(data["triggerRate"])
 		out["Time"], out["TriggerTime"], out["Speed"] = 1/r, 1/r, r
 		data["showAverage"] = false
+		hitTime(s, out, false)
 		return
 	}
 	var baseTime float64
@@ -1080,6 +1085,9 @@ func preDamageFunc(actor *ModDB, s *activeSkill, out map[string]float64) {
 			Tags: []map[string]any{{"type": "DistanceRamp", "ramp": []any{[]any{0.0, 0.0}, []any{r, 1.0}}}}})
 		s.mods.Add(Mod{Name: "EnemyFreezeChance", Type: "BASE", Value: 25.0, Source: "Skill:FreezingPulse",
 			Tags: []map[string]any{{"type": "DistanceRamp", "ramp": []any{[]any{0.0, 1.0}, []any{15 * out["ProjectileSpeedMod"], 0.0}}}}})
+	case "Tornado of Elemental Turbulence":
+		data["hitTimeOverride"] = data["damageInterval"]
+		mulDPS(s.mods.SumCfg(s.cfg, "BASE", "Multiplier:TornadoofElementalTurbulenceStage"))
 	case "Storm Burst":
 		freq, _ := num(data["repeatFrequency"])
 		dur := numOr(data["duration"], 0) * out["DurationMod"]

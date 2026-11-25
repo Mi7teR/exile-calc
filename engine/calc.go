@@ -859,9 +859,13 @@ func (c *Calculator) itemLines(item *pobcode.Item, res *Result) (*itemtext.Item,
 			it.VariantAlt[i] = v
 		}
 	}
+	// ItemsTab:Load ignores the ModRange ids when there are more of them than
+	// saved mod lines (lines that stopped being mod lines).
 	ranges := map[int]float64{}
-	for _, mr := range item.ModRanges {
-		ranges[mr.ID] = mr.Range
+	if len(item.ModRanges) <= len(it.Enchants)+len(it.Scourge)+len(it.Implicits)+len(it.Explicits)+len(it.Crucible) {
+		for _, mr := range item.ModRanges {
+			ranges[mr.ID] = mr.Range
+		}
 	}
 	type entry struct {
 		kind   string // enchant, scourge, implicit, explicit, crucible
@@ -870,7 +874,11 @@ func (c *Calculator) itemLines(item *pobcode.Item, res *Result) (*itemtext.Item,
 		scalar float64
 	}
 	var entries []entry
+	// The ids count the base flask buff lines (buffModLines) first.
 	id := 0
+	if it.Base != nil && it.Base.Flask != nil {
+		id = len(it.Base.Flask.Buff)
+	}
 	for gi, group := range [][]itemtext.ModLine{it.Enchants, it.Scourge, it.Implicits, it.Explicits, it.Crucible} {
 		kind := []string{"enchant", "scourge", "implicit", "explicit", "crucible"}[gi]
 		for _, l := range group {

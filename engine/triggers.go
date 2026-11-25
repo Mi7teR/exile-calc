@@ -75,6 +75,13 @@ var triggerConfigs = map[string]func(db *ModDB, main *activeSkill) *triggerConfi
 			triggerSkillCond:   func(main, s *activeSkill) bool { return s.types[20] }, // Melee
 			triggeredSkillCond: func(main, s *activeSkill) bool { return truthy(s.data["triggeredByCovetousDark"]) }}
 	},
+	"spellslinger": func(*ModDB, *activeSkill) *triggerConfig {
+		// skipEffectiveRate / sourceRateIsFinal only change the breakdown.
+		return &triggerConfig{triggerOnUse: true,
+			triggerSkillCond: func(main, s *activeSkill) bool {
+				return s.types[stAttack] && s.types[stProjectile] && s.cfg.Flags&modFlagByName["Wand"] > 0 && !truthy(s.data["triggeredBySpellSlinger"])
+			}}
+	},
 	"cast on critical strike": func(*ModDB, *activeSkill) *triggerConfig {
 		return &triggerConfig{
 			triggerSkillCond:   func(main, s *activeSkill) bool { return s.types[stAttack] && slotMatch(main, s) },
