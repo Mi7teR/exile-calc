@@ -665,7 +665,10 @@ func (c *Calculator) hitDamage(actor *ModDB, s *activeSkill, p *hitPass) {
 
 	c.crit(s, p, enemy, actor)
 
-	// Double and triple damage.
+	// Double and triple damage. PoB differs: its
+	// Sum(TripleDamageChance) or 0 + self + onCrit parses as
+	// Sum or (0 + ...), so it drops the enemy's SelfTripleDamageChance and
+	// triple damage on crit; both count here.
 	triple := math.Min(list.SumCfg(p.cfg, "BASE", "TripleDamageChance")+enemy.SumCfg(p.cfg, "BASE", "SelfTripleDamageChance")+
 		math.Min(list.SumCfg(p.cfg, "BASE", "TripleDamageChanceOnCrit"), 100)*out["CritChance"]/100, 100)
 	double := math.Min(list.SumCfg(p.cfg, "BASE", "DoubleDamageChance")+enemy.SumCfg(p.cfg, "BASE", "SelfDoubleDamageChance")+
