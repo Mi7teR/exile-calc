@@ -166,6 +166,23 @@ func TestKindsOnBoss(t *testing.T) {
 	}
 }
 
+func TestKindsWalkIntoPack(t *testing.T) {
+	// A Cyclone-like channel of radius 30 from the pack centre covers most
+	// of a cluster of radius 30; from the pack's edge it hit 5.
+	pack := packModel(PackParams{})
+	if h := sumHits(expectedHits(skillShape{kind: channel}, 1, 0, 0, 0, 30, 0, pack, 1)); h < 6 {
+		t.Errorf("channel of radius 30 in the pack: %v of 10, want >= 6", h)
+	}
+	if h := sumHits(expectedHits(skillShape{kind: selfArea}, 1, 0, 0, 0, 30, 0, pack, 1)); h < 6 {
+		t.Errorf("nova of radius 30 in the pack: %v of 10, want >= 6", h)
+	}
+	// The boss keeps contact range: a channel of radius 10 reaches a Medium
+	// boss only when the player stands r+10 from its centre.
+	if h := expectedHits(skillShape{kind: channel}, 1, 0, 0, 0, 10, 0, bossModel(BossMedium), 1); h[0] != 1 {
+		t.Errorf("channel of radius 10 on the boss: %v, want 1", h)
+	}
+}
+
 func TestKindsOnPack(t *testing.T) {
 	pack := packModel(PackParams{})
 	if h := sumHits(expectedHits(skillShape{kind: singleHit}, 1, 0, 0, 0, 30, 5, pack, 1)); h != 1 {

@@ -30,20 +30,20 @@ type PackParams struct {
 }
 
 const (
-	bossDistance       = 40 // boss centre for ranged and spell shapes
-	meleeGap           = 10 // gap between a melee player and the nearest target's hitbox
-	defaultPackCount   = 10 // mobs in the default pack
-	defaultPackRadius  = 30 // ~3 m cluster
-	defaultMobRadius   = 4  // a trash mob hitbox
-	defaultPackDist    = 60 // pack centre distance
-	geomTrials         = 4000
-	pcgStream          = 0x9e3779b97f4a7c15
-	packSeed           = 1  // fixed seed of the pack layout: packModel takes no seed
-	aimScatter         = 5  // aim point spread per trial for ranged shapes
-	chainRange         = 40 // max gap between hitboxes a chain or fork reaches (approximation)
-	defaultFanDeg      = 60 // fan width of several projectiles without a shotgun support's spread
-	coneHalfDeg        = 45 // half-angle of a cone shape (approximation)
-	packPlacementTries = 100
+	bossDistance       = 40                 // boss centre for ranged and spell shapes
+	meleeGap           = 10                 // gap between a melee player and the nearest target's hitbox
+	defaultPackCount   = 10                 // mobs in the default pack
+	defaultPackRadius  = 30                 // ~3 m cluster
+	defaultMobRadius   = 4                  // a trash mob hitbox
+	defaultPackDist    = 60                 // pack centre distance
+	geomTrials         = 4000               // Monte Carlo trials: the brief's count, ~1% noise on a mean
+	pcgStream          = 0x9e3779b97f4a7c15 // PCG stream constant from the brief
+	packSeed           = 1                  // fixed seed of the pack layout: packModel takes no seed
+	aimScatter         = 5                  // aim point spread per trial for ranged shapes
+	chainRange         = 40                 // max gap between hitboxes a chain or fork reaches (approximation)
+	defaultFanDeg      = 60                 // fan width of several projectiles without a shotgun support's spread
+	coneHalfDeg        = 45                 // half-angle of a cone shape (approximation)
+	packPlacementTries = 100                // rejection tries before a mob may overlap another
 )
 
 // target is a circular hitbox, PoB units.
@@ -53,6 +53,9 @@ type target struct{ x, y, r float64 }
 type targetModel struct {
 	targets  []target
 	distance float64 // aim point distance for ranged/spell shapes
+	// inside: a pack the player walks into: self-centred and melee kinds
+	// stand at the cluster centre (distance, 0) instead of at its edge.
+	inside bool
 }
 
 // bossModel is one boss at (40, 0); melee shapes walk up to it (see stance).
@@ -94,7 +97,7 @@ func packModel(p PackParams) targetModel {
 		}
 		ts = append(ts, target{x, y, p.MobRadius})
 	}
-	return targetModel{targets: ts, distance: p.Distance}
+	return targetModel{targets: ts, distance: p.Distance, inside: true}
 }
 
 func overlapsAny(x, y, r float64, ts []target) bool {
@@ -129,7 +132,9 @@ func overlapsAny(x, y, r float64, ts []target) bool {
 //   - singleHit: one hit on the target nearest the player.
 //
 // Melee-range kinds (selfArea, channel, slam, cone, meleeStrike) put the
-// player meleeGap from the nearest target's hitbox; the rest stay at (0, 0).
+// player meleeGap from the nearest target's hitbox (r+10 from the boss
+// centre); in a pack selfArea, channel, slam and meleeStrike stand at the
+// cluster centre instead. The rest stay at (0, 0).
 // With pobOverlap the engine's dpsMultiplier already counts the overlap, so
 // each target counts at most one hit per cast, without shotgun or sub-hits.
 func expectedHits(sh skillShape, projectiles, pierce, chain, fork, radius, strikeTargets float64, m targetModel, seed uint64) []float64 {
@@ -141,7 +146,7 @@ func expectedHits(sh skillShape, projectiles, pierce, chain, fork, radius, strik
 		sh.canShotgun, sh.subHits = false, 0
 	}
 	s := &hitSim{
-		sh: sh, ts: m.targets, aim: m.distance, radius: radius,
+		sh: sh, ts: m.targets, aim: m.distance, inside: m.inside, radius: radius,
 		rng:    rand.New(rand.NewPCG(seed, pcgStream)),
 		pierce: int(pierce), chain: int(chain), fork: int(fork),
 		hits: make([]float64, len(m.targets)),
@@ -169,6 +174,7 @@ type hitSim struct {
 	sh                  skillShape
 	ts                  []target
 	aim, radius         float64
+	inside              bool
 	rng                 *rand.Rand
 	pierce, chain, fork int
 	hits                []float64
@@ -179,15 +185,15 @@ func (s *hitSim) cast(projectiles, strikes int) {
 	case projectile:
 		s.projectiles(projectiles)
 	case selfArea, channel:
-		px, py, _, _ := s.stance()
+		px, py, _, _ := s.stance(true)
 		s.area(px, py)
 	case slam:
-		px, py, dx, dy := s.stance()
+		px, py, dx, dy := s.stance(true)
 		s.area(px+dx*meleeGap, py+dy*meleeGap)
 	case targetArea:
 		s.area(uniformInDisk(s.rng, s.aim, 0, aimScatter))
 	case cone:
-		px, py, dx, dy := s.stance()
+		px, py, dx, dy := s.stance(false)
 		for i, t := range s.ts {
 			if inCone(px, py, dx, dy, s.radius, t) {
 				s.hits[i]++
@@ -219,11 +225,16 @@ func (s *hitSim) nearest(x, y float64) int {
 	return best
 }
 
-// stance moves a melee player up to meleeGap from the nearest target's
-// hitbox and faces it; it returns the position and the unit direction.
-func (s *hitSim) stance() (px, py, dx, dy float64) {
-	t := s.ts[s.nearest(0, 0)]
-	if d := math.Hypot(t.x, t.y); d > t.r+meleeGap {
+// stance places a melee player and faces the nearest target; it returns
+// the position and the unit direction. With walkIn in a pack the player
+// stands at the cluster centre, else meleeGap from the nearest hitbox.
+func (s *hitSim) stance(walkIn bool) (px, py, dx, dy float64) {
+	inPack := walkIn && s.inside
+	if inPack {
+		px = s.aim
+	}
+	t := s.ts[s.nearest(px, py)]
+	if d := math.Hypot(t.x, t.y); !inPack && d > t.r+meleeGap {
 		k := 1 - (t.r+meleeGap)/d
 		px, py = t.x*k, t.y*k
 	}
@@ -237,7 +248,7 @@ func (s *hitSim) stance() (px, py, dx, dy float64) {
 // strike hits the n targets nearest the melee player within reach; the
 // nearest one is always in reach because the player walked up to it.
 func (s *hitSim) strike(n int) {
-	px, py, _, _ := s.stance()
+	px, py, _, _ := s.stance(true)
 	reach := max(s.radius, meleeGap)
 	done := make([]bool, len(s.ts))
 	for k := 0; k < n; k++ {
