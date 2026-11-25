@@ -101,8 +101,13 @@ func dotScale(component string, hitsPerCast float64, s *activeSkill, out map[str
 }
 
 // stackScale raises a DoT holding min(stacks, maxStacks) stacks by the
-// hits, up to maxStacks.
+// hits, up to maxStacks. With a stack limit of 0 PoB holds
+// activeBleeds = m_min(bleedStacks, maxStacks) = 0 (CalcOffence.lua:4635),
+// a zero DoT the hits cannot raise: scale 0, not 0/0.
 func stackScale(stacks, maxStacks, hitsPerCast float64) float64 {
+	if maxStacks <= 0 {
+		return 0
+	}
 	if stacks <= 0 {
 		return math.Min(hitsPerCast, maxStacks)
 	}

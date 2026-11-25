@@ -94,3 +94,15 @@ func TestDotScale(t *testing.T) {
 		t.Errorf("stacking skill DoT x3 = %v, want 3", got)
 	}
 }
+
+// TestStackScaleZeroMax: Crimson Dance with bleed stacks but no stack limit.
+// PoB holds m_min(bleedStacks, maxStacks) = 0 active bleeds (CalcOffence.lua
+// bleed section), so its BleedDPS is 0 and the hits add nothing either.
+func TestStackScaleZeroMax(t *testing.T) {
+	crimson := &activeSkill{data: &skillData{}, mods: NewModDB(), flags: map[string]bool{}}
+	crimson.mods.Add(Mod{Name: "Condition:HaveCrimsonDance", Type: "FLAG", Value: true})
+	got := dotScale("BleedDPS", 3, crimson, map[string]float64{"BleedStacks": 2, "BleedStacksMax": 0})
+	if math.IsNaN(got) || math.IsInf(got, 0) || got != 0 {
+		t.Errorf("dotScale(BleedDPS) with BleedStacksMax 0 = %v, want 0", got)
+	}
+}
