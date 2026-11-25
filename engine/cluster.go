@@ -86,12 +86,15 @@ func readJewelData(mods []modparser.Mod, cj *gamedata.ClusterJewel) (jewelData, 
 // BuildSubgraph (Classes/PassiveSpec.lua) as far as stats go: it returns
 // the generated nodes by id and the subgraphs' links (both directions).
 // Positions are not needed: the build lists the allocated ids itself.
-func (c *Calculator) clusterGraph(spec *pobcode.Spec, b *pobcode.Build, res *Result) (map[int]clusterNode, map[int][]int) {
+func (c *Calculator) clusterGraph(spec *pobcode.Spec, b *pobcode.Build, res *Result) (map[int]clusterNode, map[int][]int, map[int]bool) {
+	// subSockets: the tree sockets the subgraphs create (PassiveSpec keeps
+	// nested cluster sockets out of self.nodes until a subgraph adds them).
+	subSockets := map[int]bool{}
 	tree, data := c.data.Tree, c.data.Cluster
 	out := map[int]clusterNode{}
 	links := map[int][]int{}
 	if data == nil {
-		return out, links
+		return out, links, subSockets
 	}
 	linkNodes := func(a, b int) {
 		links[a] = append(links[a], b)
@@ -189,6 +192,7 @@ func (c *Calculator) clusterGraph(spec *pobcode.Spec, b *pobcode.Build, res *Res
 				used[nodeIndex] = true
 				byIndex[nodeIndex] = s.ID
 				sockets = append(sockets, s)
+				subSockets[s.ID] = true
 			}
 		}
 		if cj.Size == "Large" && socketCount == 1 {
@@ -277,7 +281,7 @@ func (c *Calculator) clusterGraph(spec *pobcode.Spec, b *pobcode.Build, res *Res
 			build(jewel, n.ExpansionJewel, 0x10000, id)
 		}
 	}
-	return out, links
+	return out, links, subSockets
 }
 
 // notableIndices ports itemLib.getClusterJewelNotableIndices (ItemTools.lua).

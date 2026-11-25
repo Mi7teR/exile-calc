@@ -374,6 +374,22 @@ func Parse(data []byte) (*Build, error) {
 				Title: cm.Title, Enabled: boolAttr(cm.Enabled, true), Text: strings.TrimSpace(cm.Text),
 			})
 		}
+		// ConfigTab.lua "Migration check for legacy builds": the old
+		// customMods input becomes the Default block when there is no block
+		// text, and the input is dropped either way.
+		legacy := ""
+		inputs := set.Inputs[:0]
+		for _, in := range set.Inputs {
+			if in.Name == "customMods" {
+				legacy = in.String
+				continue
+			}
+			inputs = append(inputs, in)
+		}
+		set.Inputs = inputs
+		if legacy != "" && (len(set.CustomMods) == 0 || (len(set.CustomMods) == 1 && set.CustomMods[0].Text == "")) {
+			set.CustomMods = []CustomModBlock{{Title: "Default", Enabled: true, Text: legacy}}
+		}
 		b.ConfigSets = append(b.ConfigSets, set)
 	}
 

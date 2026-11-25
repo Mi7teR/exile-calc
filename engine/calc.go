@@ -89,6 +89,7 @@ func (c *Calculator) Calc(b *pobcode.Build) (*Result, error) {
 		return nil, fmt.Errorf("engine: build has no passive tree")
 	}
 	tree := c.data.Tree
+	spec = c.pruneSpec(spec, b)
 	if spec.ClassID < 0 || spec.ClassID >= len(tree.Classes) {
 		return nil, fmt.Errorf("engine: unknown class id %d", spec.ClassID)
 	}
@@ -173,7 +174,7 @@ func (c *Calculator) Calc(b *pobcode.Build) (*Result, error) {
 	for _, m := range spec.MasteryEffects {
 		mastery[m.Node] = m.Effect
 	}
-	cluster, clusterLinks := c.clusterGraph(spec, b, res)
+	cluster, clusterLinks, _ := c.clusterGraph(spec, b, res)
 	treeCounts(db, tree, spec.Nodes, cluster)
 	conquered := c.conquests(spec, b, allocated, res)
 	radiusFuncs := c.radiusFuncs(spec, b, allocated, res)

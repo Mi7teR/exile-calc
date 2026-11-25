@@ -34,6 +34,13 @@ var hooks = map[string]Hook{
 		return []any{withTags(newMod("ChaosDamage", "INC", n, 0, 0),
 			map[string]any{"type": "PerStat", "stat": "Mana", "div": div, "globalLimit": limit, "globalLimitKey": "DarkIdeation"})}
 	},
+	// ["nearby enemies convert (%d+)%% of their (%a+) damage to (%a+)"] = function(num, _, damageFrom, damageTo) return {
+	//   mod("EnemyModifier", "LIST", { mod = mod(<From>.."DamageConvertTo"..<To>, "BASE", num) }) } end,
+	"specialModList[^nearby enemies convert (%d+)%% of their (%a+) damage to (%a+)$]": func(p *Parser, a []any) any {
+		n, _ := toNumber(arg(a, 0)).(float64)
+		name := firstToUpper(argS(a, 2)) + "DamageConvertTo" + firstToUpper(argS(a, 3))
+		return []any{newMod("EnemyModifier", "LIST", map[string]any{"mod": newMod(name, "BASE", n, 0, 0)}, 0, 0)}
+	},
 	// ["(%d+)%% increased area of effect per power charge, up to a maximum of (%d+)%%"] = function(num, _, limit) return {
 	//   mod("AreaOfEffect", "INC", num, { type = "Multiplier", var = "PowerCharge", globalLimit = tonumber(limit), globalLimitKey = "VastPower" }) } end,
 	"specialModList[^(%d+)%% increased area of effect per power charge, up to a maximum of (%d+)%%$]": func(p *Parser, a []any) any {

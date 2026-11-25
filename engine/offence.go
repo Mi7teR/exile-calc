@@ -1243,6 +1243,10 @@ func preDamageFunc(actor *ModDB, s *activeSkill, out map[string]float64) {
 			f *= s.mods.SumCfg(s.cfg, "BASE", "Multiplier:PenanceBrandMaxEnergy")
 		}
 		data["hitTimeOverride"] = f / (1 + s.mods.SumCfg(s.cfg, "INC", "Speed", "BrandActivationFrequency")/100) / s.mods.MoreCfg(s.cfg, "BrandActivationFrequency")
+	case "Flameblast", "Flameblast of Celerity", "Flameblast of Contraction":
+		// One release per channelled stage beyond the starting stages.
+		stage := "Multiplier:" + strings.Join(strings.Fields(s.active.ge.Name), "") + "Stage"
+		data["hitTimeMultiplier"] = math.Max(s.mods.SumCfg(s.cfg, "BASE", stage)-s.mods.SumCfg(s.cfg, "BASE", "Multiplier:FlameblastMinimumStage"), 1)
 	case "Static Strike":
 		if s.part == 2 {
 			f, _ := num(data["repeatFrequency"])
