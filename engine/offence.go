@@ -1113,34 +1113,6 @@ func preDamageFunc(actor *ModDB, s *activeSkill, out map[string]float64) {
 	switch s.active.ge.Name {
 	case "On Kill Monster Explosion":
 		enemyExplode(s, out)
-	case "Barrage", "Barrage of Volley Fire", "Blast Rain", "Vaal Lightning Arrow":
-		if s.part == 2 {
-			data["dpsMultiplier"] = proj
-		}
-	case "Blazing Salvo":
-		if s.part == 2 {
-			mulDPS(proj)
-		}
-	case "Forbidden Rite", "Forbidden Rite of Soul Sacrifice":
-		if s.part == 2 {
-			mulDPS(proj + 1)
-		}
-	case "Freezing Pulse":
-		r := 60 * out["ProjectileSpeedMod"]
-		s.mods.Add(Mod{Name: "Damage", Type: "MORE", Value: -50.0, Source: "Skill:FreezingPulse",
-			Tags: []map[string]any{{"type": "DistanceRamp", "ramp": []any{[]any{0.0, 0.0}, []any{r, 1.0}}}}})
-		s.mods.Add(Mod{Name: "EnemyFreezeChance", Type: "BASE", Value: 25.0, Source: "Skill:FreezingPulse",
-			Tags: []map[string]any{{"type": "DistanceRamp", "ramp": []any{[]any{0.0, 1.0}, []any{15 * out["ProjectileSpeedMod"], 0.0}}}}})
-	case "Kinetic Fusillade":
-		if s.part == 1 {
-			data["dpsMultiplier"] = proj
-			// Each projectile deals more damage per earlier one: the average.
-			if per := numOr(data["damagePerProjectile"], 0); per != 0 && proj > 1 {
-				avg := per * (proj - 1) / 2
-				s.mods.NewMod("Damage", "MORE", avg, "Skill:KineticFusillade")
-				out["KineticFusilladeAvgMoreMult"] = avg
-			}
-		}
 	case "Molten Strike", "Molten Strike of the Zenith":
 		if s.part == 1 {
 			break
@@ -1178,26 +1150,6 @@ func preDamageFunc(actor *ModDB, s *activeSkill, out map[string]float64) {
 	case "Tornado of Elemental Turbulence":
 		data["hitTimeOverride"] = data["damageInterval"]
 		mulDPS(s.mods.SumCfg(s.cfg, "BASE", "Multiplier:TornadoofElementalTurbulenceStage"))
-	case "Spark", "Spark of the Nova":
-		if s.part == 2 {
-			mulDPS(1 + math.Floor(out["Duration"]/0.66))
-		}
-	case "Ice Spear", "Ice Spear of Splitting":
-		if s.part == 3 || s.part == 4 {
-			mulDPS(proj)
-		}
-	case "Toxic Rain", "Toxic Rain of Sporeburst", "Toxic Rain of Withering":
-		data["dpsMultiplier"] = math.Min(numOr(data["podOverlapMultiplier"], 1), proj)
-	case "Shrapnel Ballista", "Shrapnel Ballista of Steel":
-		if !s.mods.Flag("SequentialProjectiles") {
-			overlap := 1.0
-			if v, ok := num(data["ShrapnelBallistaProjectileOverlap"]); ok {
-				overlap = v
-			} else if s.types[stRain] {
-				overlap = proj
-			}
-			mulDPS(math.Min(overlap, proj))
-		}
 	case "Bodyswap", "Bodyswap of Sacrifice":
 		if s.part == 1 {
 			m, _ := num(data["selfFireExplosionLifeMultiplier"])
@@ -1206,16 +1158,6 @@ func preDamageFunc(actor *ModDB, s *activeSkill, out map[string]float64) {
 				life = out["TotemLife"]
 			}
 			data["FireBonusMin"], data["FireBonusMax"] = life*m, life*m
-		}
-	case "Ball Lightning of Orbiting":
-		if s.part == 2 || s.part == 3 {
-			interval, _ := num(data["strikeInterval"])
-			dur, _ := num(data["duration"])
-			if interval > 0 {
-				if n := math.Floor(dur / interval); n != 1 {
-					data["dpsMultiplier"] = numOr(data["dpsMultiplier"], 1) * n
-				}
-			}
 		}
 	case "Static Strike":
 		if s.part == 2 {
@@ -1887,28 +1829,6 @@ func areaOfEffect(s *activeSkill, out map[string]float64) {
 func postCritFunc(s *activeSkill, out, global map[string]float64) {
 	if h := hooksOf(s); h != nil && h.postCrit != nil {
 		h.postCrit(s, out, global)
-	}
-	switch s.active.ge.Name {
-	case "Kinetic Fusillade":
-		// Attacking faster than the projectiles fire wastes damage.
-		n := 1.0
-		if s.part == 1 {
-			n = global["ProjectileCount"]
-		}
-		delay := (numOr(s.data["duration"], 0) + numOr(s.data["delayPerProjectile"], 0)*(n-1)) * global["DurationMod"]
-		maxAPS := 1 / (math.Ceil(delay/serverTickTime) * serverTickTime)
-		// PoB differs: it scales the current dpsMultiplier on every pass, so
-		// a dual wielder's off hand gets the efficiency twice. It applies
-		// once here, to the multiplier before the first pass.
-		if s.part == 1 && global["Speed"] > maxAPS {
-			base, ok := num(s.data["kineticFusilladeBaseDps"])
-			if !ok {
-				base = numOr(s.data["dpsMultiplier"], global["ProjectileCount"])
-				s.data["kineticFusilladeBaseDps"] = base
-			}
-			s.data["dpsMultiplier"] = base * maxAPS / global["Speed"]
-		}
-		global["KineticFusilladeMaxEffectiveAPS"] = maxAPS
 	}
 }
 
