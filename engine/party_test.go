@@ -155,3 +155,34 @@ func checkPartyAuras(t *testing.T, a *partyActor) {
 		t.Errorf("Smite = %+v", smite)
 	}
 }
+
+// TestLinkToMinion: with "Linked To Minion?" on, Flame Link reaches the
+// Animated Guardian; the link's non-unique flasks would too, which is not
+// ported and is reported.
+func TestLinkToMinion(t *testing.T) {
+	c := newCalc(t)
+	var dps []float64
+	for _, tc := range []struct {
+		id     string
+		linked bool
+	}{{"b7vXBYdtxO95", false}, {"link-b7vXBYdtxO95", true}} {
+		res, err := c.Calc(withMainSkill(corpusBuild(t, tc.id), 2, 2))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if res.Minion == nil || res.Minion.Minion != "Animated Guardian" {
+			t.Fatalf("%s: main minion = %+v", tc.id, res.Minion)
+		}
+		note := false
+		for _, s := range res.Incomplete {
+			note = note || s == "flask effects on the minion are not applied"
+		}
+		if note != tc.linked {
+			t.Errorf("%s: flask note = %v, want %v (%v)", tc.id, note, tc.linked, res.Incomplete)
+		}
+		dps = append(dps, res.Minion.Stats["TotalDPS"])
+	}
+	if dps[1] <= dps[0] {
+		t.Errorf("Flame Link must raise the guardian's DPS: %v", dps)
+	}
+}

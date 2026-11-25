@@ -517,6 +517,13 @@ func (c *Calculator) mainMinion(db *ModDB, skills []*activeSkill, buffs map[stri
 			mdb.Add(x)
 		}
 	}
+	// mergeFlasks' flaskBuffsNonPlayer (CalcPerform.lua) is not ported: flasks
+	// that apply to the minion (FlasksApplyToMinion, QuickSilverAppliesToAllies,
+	// a link's ParentNonUniqueFlasksAppliedToYou) do not reach it.
+	if db.FlagCfg(s.cfg, "FlasksApplyToMinion") || db.FlagCfg(s.cfg, "QuickSilverAppliesToAllies") ||
+		mdb.Flag("ParentNonUniqueFlasksAppliedToYou") {
+		res.Incomplete = append(res.Incomplete, "flask effects on the minion are not applied")
+	}
 	extraAurasToMinion(db, mdb)
 	db.party.partyExtraAuras(mdb)
 	defenceForConditionals(mdb, gear)
