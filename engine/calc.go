@@ -51,6 +51,8 @@ type Result struct {
 	UnsupportedTags map[string]int
 	Skills          []SkillInfo   // the player's active skills, in PoB's order
 	Minion          *MinionResult // the main skill's minion (env.minion)
+	// main is env.player.mainSkill, nil when there is none.
+	main *activeSkill
 }
 
 // SkillInfo describes one active skill: its effective gem level and
@@ -517,7 +519,8 @@ func (c *Calculator) Calc(b *pobcode.Build) (*Result, error) {
 	recoup(db)
 	buildDefenceEstimations(db)
 	res.Minion = c.mainMinion(db, skills, buffs, b.Level, res)
-	if s := mainSkill(skills); s != nil {
+	res.main = mainSkill(skills)
+	if s := res.main; s != nil {
 		w1, w2 := playerWeapons(db, gearMods, spec.ClassID)
 		c.triggers(db, s, w1, w2)
 		if truthy(s.data["triggeredByGeneralsCry"]) && !s.disabled {

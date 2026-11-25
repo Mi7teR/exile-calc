@@ -25,6 +25,10 @@ const (
 	stAttack                          = 1
 	stSpell                           = 2
 	stProjectile                      = 3
+	stArea                            = 8
+	stMelee                           = 20
+	stNova                            = 84
+	stSlam                            = 92
 	stDamage                          = 7
 	stRequireShield                   = 10
 	stPhysical                        = 28
