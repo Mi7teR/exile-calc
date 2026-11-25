@@ -694,7 +694,7 @@ var hooks = map[string]Hook{
 	"specialModList[^([%a%s]+) can affect hexproof enemies$]": func(p *Parser, a []any) any {
 		tag := map[string]any{"type": "SkillId"}
 		if id, ok := p.t.exact["gemIdLookup"][argS(a, cap1)]; ok {
-			tag["skillId"] = id
+			tag[keySkillID] = id
 		}
 		v := map[string]any{"key": "ignoreHexproof", "value": true}
 		return []any{withTags(newMod("SkillData", "LIST", v, 0, 0), tag)}
@@ -704,6 +704,74 @@ var hooks = map[string]Hook{
 	"specialModList[^items and gems have (%d+)%% reduced attribute requirements$]": func(_ *Parser, a []any) any {
 		n, _ := toNumber(arg(a, argNum)).(float64)
 		return []any{newMod("GlobalAttributeRequirements", "INC", -n, 0, 0)}
+	},
+	// ["every (%d+) seconds, regenerate (%d+)%% of life over one second"] = function (num, _, percent) return {
+	//   mod("LifeRegenPercent", "BASE", tonumber(percent), { type = "Condition", var = "LifeRegenBurstFull" }),
+	//   mod("LifeRegenPercent", "BASE", tonumber(percent) / num, { type = "Condition", var = "LifeRegenBurstAvg" }) } end
+	"specialModList[^every (%d+) seconds, regenerate (%d+)%% of life over one second$]": func(_ *Parser, a []any) any {
+		n, _ := toNumber(arg(a, argNum)).(float64)
+		pct, _ := toNumber(argS(a, cap2)).(float64)
+		return []any{
+			withTags(newMod("LifeRegenPercent", "BASE", pct, 0, 0), condTag("LifeRegenBurstFull")),
+			withTags(newMod("LifeRegenPercent", "BASE", pct/n, 0, 0), condTag("LifeRegenBurstAvg")),
+		}
+	},
+	// ["socketed skill gems get a (%d+)%% cost & reservation multiplier"] = function(num) return {
+	//   mod("ExtraSkillMod", "LIST", { mod = mod("SupportManaMultiplier", "MORE", num - 100) }, { type = "SocketedIn", slotName = "{SlotName}" }) } end
+	"specialModList[^socketed skill gems get a (%d+)%% cost & reservation multiplier$]": func(_ *Parser, a []any) any {
+		n, _ := toNumber(arg(a, argNum)).(float64)
+		mult := newMod("SupportManaMultiplier", "MORE", n-100, 0, 0) //nolint:mnd // PoB literal
+		return []any{withTags(newMod("ExtraSkillMod", "LIST", map[string]any{"mod": mult}, 0, 0),
+			map[string]any{"type": "SocketedIn", "slotName": "{SlotName}"})}
+	},
+	// ["summoned arbalists have (%d+)%% chance to inflict (.+) exposure on hit"] = function(num, _, type) return {
+	//   mod(Type.."ExposureChance", "BASE", num, { type = "SkillName", skillName = "Summon Arbalists" }) } end
+	"specialModList[^summoned arbalists have (%d+)%% chance to inflict (.+) exposure on hit$]": func(_ *Parser, a []any) any {
+		return []any{withTags(newMod(firstToUpper(argS(a, cap2))+"ExposureChance", "BASE", arg(a, argNum), 0, 0),
+			map[string]any{"type": "SkillName", "skillName": "Summon Arbalists"})}
+	},
+	// ["(%d+)%% chance to [c?t?][a?r?][s?i?][t?g?]g?e?r? socketed spells when you spend at least (%d+) mana on an upfront cost
+	//   to use or trigger a skill, with a ([%d%.]+) second cooldown"] = function(num, _, amount, _) return {
+	//   mod("KitavaTriggerChance", "BASE", num, "Kitava's Thirst"),
+	//   mod("KitavaRequiredManaCost", "BASE", tonumber(amount), "Kitava's Thirst"),
+	//   mod("ExtraSupport", "LIST", { skillId = "SupportCastOnManaSpent", level = 1 }, { type = "SocketedIn", slotName = "{SlotName}" }) } end
+	"specialModList[^(%d+)%% chance to [c?t?][a?r?][s?i?][t?g?]g?e?r? socketed spells when you spend at least (%d+) mana on an upfront cost to use or trigger a skill, with a ([%d%.]+) second cooldown$]": func(_ *Parser, a []any) any {
+		chance := newMod("KitavaTriggerChance", "BASE", arg(a, argNum), 0, 0)
+		chance["source"] = "Kitava's Thirst"
+		cost := newMod("KitavaRequiredManaCost", "BASE", toNumber(argS(a, cap2)), 0, 0)
+		cost["source"] = "Kitava's Thirst"
+		sup := map[string]any{keySkillID: "SupportCastOnManaSpent", "level": 1.0}
+		support := newMod("ExtraSupport", "LIST", sup, 0, 0)
+		return []any{chance, cost, withTags(support, map[string]any{"type": "SocketedIn", "slotName": "{SlotName}"})}
+	},
+	// ["(%d+)%% chance to gain (%d+)%% of non%-chaos damage with hits as extra chaos damage"] = function(num, _, perc) return {
+	//   mod("NonChaosDamageGainAsChaos", "BASE", num / 100 * tonumber(perc)) } end
+	"specialModList[^(%d+)%% chance to gain (%d+)%% of non%-chaos damage with hits as extra chaos damage$]": func(_ *Parser, a []any) any {
+		n, _ := toNumber(arg(a, argNum)).(float64)
+		perc, _ := toNumber(argS(a, cap2)).(float64)
+		return []any{newMod("NonChaosDamageGainAsChaos", "BASE", n/100*perc, 0, 0)}
+	},
+	// ["([%+%-]%d+) to level of all (%a+) skill gems if (%d+) (%a+) items are equipped"] = function(num, _, element, thresh, influence) return {
+	//   mod("GemProperty", "LIST", { keyword = element, key = "level", value = num, keyOfScaledMod = "value" },
+	//   { type = "MultiplierThreshold", var = firstToUpper(influence) .. "Item", threshold = tonumber(thresh) }) } end
+	"specialModList[^([%+%-]%d+) to level of all (%a+) skill gems if (%d+) (%a+) items are equipped$]": func(_ *Parser, a []any) any {
+		prop := map[string]any{
+			"keyword":        argS(a, cap2),
+			"key":            "level",
+			"value":          arg(a, argNum),
+			"keyOfScaledMod": "value",
+		}
+		tag := map[string]any{
+			"type":      "MultiplierThreshold",
+			"var":       firstToUpper(argS(a, cap4)) + "Item",
+			"threshold": toNumber(argS(a, cap3)),
+		}
+		return []any{withTags(newMod("GemProperty", "LIST", prop, 0, 0), tag)}
+	},
+	// ["nearby corpses explode when you warcry, dealing (%d+)%% of their life as (.+) damage"] = function(amount, _, type)
+	//   return explodeFunc(100, amount, type) end
+	"specialModList[^nearby corpses explode when you warcry, dealing (%d+)%% of their life as (.+) damage$]": func(_ *Parser, a []any) any {
+		return explodeFunc(100, argS(a, cap1), argS(a, cap2)) //nolint:mnd // PoB literal
 	},
 	// The "Extra skill/support" block of ModParser.lua specialModList: one-line
 	// functions that return triggerExtraSkill, as named by the helper used.
@@ -812,7 +880,7 @@ var hooks = map[string]Hook{
 		for _, i := range []int{cap2, cap3, cap4} {
 			v := map[string]any{"level": arg(a, argNum), keyTriggered: true}
 			if id, ok := p.t.exact["gemIdLookup"][argS(a, i)].(string); ok {
-				v["skillId"] = id
+				v[keySkillID] = id
 			}
 			mods = append(mods, newMod("ExtraSkill", "LIST", v, 0, 0))
 		}
@@ -1056,13 +1124,13 @@ func (p *Parser) triggerExtraSkill(name string, level any, o triggerOpts) []any 
 	idTag := func() map[string]any {
 		t := map[string]any{"type": "SkillId"}
 		if known {
-			t["skillId"] = id
+			t[keySkillID] = id
 		}
 		return t
 	}
 	mods := []any{}
 	if known {
-		v := map[string]any{"skillId": id, keyTriggered: true}
+		v := map[string]any{keySkillID: id, keyTriggered: true}
 		if l := toNumber(level); l != nil {
 			v["level"] = l
 		}
@@ -1093,7 +1161,7 @@ func (p *Parser) triggerExtraSkill(name string, level any, o triggerOpts) []any 
 func (p *Parser) curseSkill(name string) map[string]any {
 	v := map[string]any{"level": 1.0, "noSupports": true, keyTriggered: true}
 	if id, ok := p.t.exact["gemIdLookup"][name].(string); ok {
-		v["skillId"] = id
+		v[keySkillID] = id
 	}
 	return newMod("ExtraSkill", "LIST", v, 0, 0)
 }
@@ -1115,8 +1183,11 @@ const (
 	cap4   = 4
 )
 
-// keyTriggered is the ExtraSkill value key for a triggered skill.
-const keyTriggered = "triggered"
+// Value keys of ExtraSkill and SkillId tables.
+const (
+	keyTriggered = "triggered"
+	keySkillID   = "skillId"
+)
 
 // The one-line triggerExtraSkill functions of ModParser.lua specialModList,
 // by argument shape and options.
@@ -1551,3 +1622,6 @@ func reflectedTaken(name string, a []any, minions bool) []any {
 	}
 	return out
 }
+
+// condTag is { type = "Condition", var = v }.
+func condTag(v string) map[string]any { return map[string]any{"type": "Condition", "var": v} }
