@@ -464,11 +464,20 @@ func (db *ModDB) eval(m *Mod, cfg *Cfg) (any, bool) {
 			if tagBool(t, "noFloor") {
 				mult = base / div
 			}
+			// limitVar and limitStat read limitTarget: this actor, or limitActor.
+			limitTarget := db
+			if la := tagStr(t, "limitActor"); la != "" {
+				lt, ok := db.target(map[string]any{"actor": la})
+				if !ok {
+					return nil, false
+				}
+				limitTarget = lt
+			}
 			limit, hasLimit := tagNum(t, "limit")
 			if lv := tagStr(t, "limitVar"); !hasLimit && lv != "" {
-				limit, hasLimit = target.getMultiplier(lv, cfg, false), true
+				limit, hasLimit = limitTarget.getMultiplier(lv, cfg, false), true
 			} else if ls := tagStr(t, "limitStat"); !hasLimit && ls != "" {
-				limit, hasLimit = target.GetStat(ls), true
+				limit, hasLimit = limitTarget.GetStat(ls), true
 			}
 			if hasLimit && !tagBool(t, "limitTotal") && !tagBool(t, "limitNegTotal") {
 				mult = math.Min(mult, limit)
