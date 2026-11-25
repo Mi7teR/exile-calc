@@ -173,7 +173,12 @@ func (db *ModDB) itemCondition(t map[string]any) bool {
 	}
 	if nc := tagStr(t, "nameCond"); nc != "" {
 		for _, it := range items {
-			matches = append(matches, strings.EqualFold(it.Name, nc))
+			// Item.lua: item.name is "<title>, <base>" for named items.
+			name := it.Name
+			if it.BaseName != "" && it.Name != "" && it.Name != it.BaseName {
+				name = it.Name + ", " + it.BaseName
+			}
+			matches = append(matches, strings.EqualFold(name, nc))
 		}
 	}
 	neg := tagBool(t, "neg")
