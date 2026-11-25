@@ -2,7 +2,7 @@
 // testdata/golden: real PoB builds and the stats headless PoB computes for
 // them (github.com/Mi7teR/poe-pob-oracle).
 //
-//	goldencorpus add -name ID -source URL < code    # sanitise and store a build
+//	goldencorpus add -name ID -source URL [-tree 3_30] < code    # sanitise and store a build
 //	goldencorpus input > builds.jsonl               # oracle input: {"name","xml","minions"}
 //	goldencorpus expected < results.jsonl            # store oracle output
 //
@@ -39,8 +39,9 @@ func main() {
 		fs := flag.NewFlagSet("add", flag.ExitOnError)
 		name := fs.String("name", "", "build id (file name)")
 		source := fs.String("source", "", "where the build was published")
+		tree := fs.String("tree", "", "move the active spec to this tree version (engine data has one tree)")
 		_ = fs.Parse(os.Args[2:])
-		err = add(*name, *source, os.Stdin)
+		err = add(*name, *source, *tree, os.Stdin)
 	case "input":
 		err = input(os.Stdout)
 	case "expected":
@@ -54,7 +55,7 @@ func main() {
 	}
 }
 
-func add(name, source string, r io.Reader) error {
+func add(name, source, tree string, r io.Reader) error {
 	if name == "" || strings.ContainsAny(name, "/\\. ") {
 		return errors.New("-name must be a plain id")
 	}
@@ -65,6 +66,11 @@ func add(name, source string, r io.Reader) error {
 	b, err := pobcode.FromCode(strings.TrimSpace(string(raw)))
 	if err != nil {
 		return err
+	}
+	if spec := b.ActiveSpec(); tree != "" && spec != nil {
+		// PoB drops allocated nodes the new tree lacks, as on its own
+		// tree conversion; the oracle and the engine see the same build.
+		spec.TreeVersion = tree
 	}
 	code, err := b.Code()
 	if err != nil {
@@ -82,7 +88,7 @@ func add(name, source string, r io.Reader) error {
 	}
 	defer f.Close()
 	spec := b.ActiveSpec()
-	tree := ""
+	tree = ""
 	if spec != nil {
 		tree = spec.TreeVersion
 	}
