@@ -28,6 +28,34 @@ type Build struct {
 
 	ActiveConfigSetID int
 	ConfigSets        []ConfigSet
+
+	// Party is the Party tab, nil when the build has no imported party
+	// buffs and does not export its own.
+	Party *Party
+}
+
+// Party is the Party tab (Classes/PartyTab.lua Save/Load). PoB keeps no
+// list of party members: each member's export is pasted into one text
+// block per buff kind, and the tab stores those blocks. The tab's own
+// export (<ExportedBuffs>) is output that PoB ignores on load, so it is not
+// kept.
+type Party struct {
+	// Buffs are the <ImportedBuffs> blocks in file order.
+	Buffs []PartyBuffs
+	// ExportBuffs is the Import tab's "Export Support" checkbox
+	// (Classes/ImportTab.lua, <Import exportParty>): the build exports its
+	// buffs for the Party tab. It does not change the build's own numbers.
+	ExportBuffs bool
+}
+
+// PartyBuffs is one <ImportedBuffs> block.
+type PartyBuffs struct {
+	// Name is the block: PartyMemberStats, Aura, Curse, Warcry Skills,
+	// Link Skills, EnemyConditions or EnemyMods.
+	Name string
+	// Text is the block in PoB's export format, without the surrounding
+	// whitespace (runtime/lua/xml.lua trims text nodes).
+	Text string
 }
 
 type PlayerStat struct {

@@ -11,6 +11,11 @@ the engine compute the same build. The engine matches PoB on all
 15 compared stats (attributes, life, mana, resistances, armour, evasion,
 energy shield, ward, block) within 0.5% for every build.
 
+`party-<base id>` builds are synthetic: a corpus build with a Party tab
+(imported auras, curses, warcries, links, party member stats and enemy
+mods) taken from public builds or written by hand; `sources.tsv` names
+both. They check the Party tab, which few public builds fill.
+
 - `builds/*.code` — PoB codes after a `pobcode` round trip (notes, import
   links and UI state removed). `sources.tsv`: id, public link, ascendancy,
   tree, level.

@@ -275,6 +275,9 @@ func minionBuffs(db *ModDB, skills []*activeSkill, mdb *ModDB, mainCfg *Cfg, res
 				inc := list.SumCfg(cfg, "INC", "AuraEffect", "BuffEffect") + mdb.SumCfg(cfg, "INC", "BuffEffectOnSelf", "AuraEffectOnSelf")
 				more := list.MoreCfg(cfg, "AuraEffect", "BuffEffect") * mdb.MoreCfg(cfg, "BuffEffectOnSelf", "AuraEffectOnSelf")
 				mult := (1 + inc/100) * more
+				if db.party.auraBeats("Aura", b.name, mult) {
+					continue
+				}
 				mdb.conditions["AffectedBy"+name] = true
 				mdb.conditions["AffectedByAura"] = true
 				mergeBuff(append(scaleMods(b.mods, mult), scaleMods(extraAuraMods(db, cfg), mult)...), out, b.name)
@@ -476,6 +479,7 @@ func (c *Calculator) mainMinion(db *ModDB, skills []*activeSkill, buffs map[stri
 	for k, l := range c.minionSkillBuffs(db, mdb, skills, s, mskills, charLevel, res) {
 		mergeBuff(l, mb, k)
 	}
+	db.party.partyBuffsOnMinion(mdb, mb)
 	for _, l := range buffMinionModifiers(buffs, s.cfg) {
 		addMinionModifiers(mdb, l, m.typ)
 	}
@@ -485,6 +489,7 @@ func (c *Calculator) mainMinion(db *ModDB, skills []*activeSkill, buffs map[stri
 		}
 	}
 	extraAurasToMinion(db, mdb)
+	db.party.partyExtraAuras(mdb)
 	defenceForConditionals(mdb, gear)
 	charges(mdb)
 	actorMisc(mdb, ms, false, 0)
@@ -663,6 +668,9 @@ func (c *Calculator) minionSkillBuffs(db, mdb *ModDB, skills []*activeSkill, mai
 					inc := skillList.SumCfg(cfg, "INC", "AuraEffect", "BuffEffect") + mdb.SumCfg(cfg, "INC", "BuffEffectOnSelf", "AuraEffectOnSelf")
 					more := skillList.MoreCfg(cfg, "AuraEffect", "BuffEffect") * mdb.MoreCfg(cfg, "BuffEffectOnSelf", "AuraEffectOnSelf")
 					mult := (1 + inc/100) * more
+					if db.party.auraBeats("Aura", b.name, mult) {
+						continue
+					}
 					mdb.conditions["AffectedBy"+name] = true
 					mdb.conditions["AffectedByAura"] = true
 					mergeBuff(append(scaleMods(b.mods, mult), scaleMods(extraAuraMods(casting, cfg), mult)...), out, b.name)

@@ -59,7 +59,8 @@ func (c *Calculator) skillCurse(db *ModDB, s *activeSkill, b *skillBuff) *enemyC
 	list, cfg, enemy := s.mods, s.cfg, db.enemy
 	mark := s.types[stMark]
 	db.conditions["SelfCast"+strings.ReplaceAll(b.name, " ", "")] = !(s.types[stTriggered] || s.types[stAura])
-	if !mark && db.enemyEnv != nil && db.enemyEnv.checks["balanceOfTerrorSelfCast"+strings.ReplaceAll(b.name, " ", "")] {
+	if !mark && db.enemyEnv != nil &&
+		db.enemyEnv.checks["balanceOfTerrorSelfCast"+strings.ReplaceAll(b.name, " ", "")] {
 		return nil
 	}
 	if !mark && enemy.Flag("Hexproof") && !db.Flag("CursesIgnoreHexproof") &&
@@ -96,16 +97,58 @@ func (c *Calculator) skillCurse(db *ModDB, s *activeSkill, b *skillBuff) *enemyC
 }
 
 // applyCurses ports "Assign curses to slots" of calcs.perform for the
-// player's curses (minion and party curses are not ported) and puts the
-// slotted curses on the enemy.
+// player's and the party's curses (allyCurses; minion curses are not
+// ported) and puts the slotted curses on the enemy.
 func (c *Calculator) applyCurses(db *ModDB, skills []*activeSkill, curses []*enemyCurse, res *Result) {
 	limit := int(db.Sum("BASE", "EnemyCurseLimit"))
 	if db.Flag("CurseLimitIsMaximumPowerCharges") {
 		limit = int(db.Sum("BASE", "PowerChargesMax"))
 		res.Incomplete = append(res.Incomplete, "curse limit from maximum power charges uses the base maximum")
 	}
+	allyCurses, allyLimit := db.party.partyCurses(db.enemy)
+	sources := []struct {
+		curses []*enemyCurse
+		limit  int
+	}{{curses, limit}, {allyCurses, allyLimit}}
 	var slots []*enemyCurse
 	markSlotted := false
+	for _, src := range sources {
+		slots, markSlotted = slotCurses(db, skills, src.curses, src.limit, slots, markSlotted)
+	}
+	// Lua's #curseSlots stops at the first hole.
+	for i, s := range slots {
+		if s == nil {
+			slots = slots[:i]
+			break
+		}
+	}
+	slots = placeUnlimitedCurses(db, curses, slots)
+	db.multipliers["CurseOnEnemy"] = float64(len(slots))
+	for _, s := range slots {
+		db.enemy.conditions["Cursed"] = true
+		if s.isMark {
+			db.enemy.conditions["Marked"] = true
+		}
+		for _, m := range s.mods {
+			db.enemy.Add(m)
+		}
+		for _, m := range s.buffMods {
+			db.Add(m)
+		}
+	}
+}
+
+// slotCurses is one source of the first slot loop of "Assign curses to
+// slots": curses within the hex limit, by priority, up to the source's
+// limit. Slots and the mark flag are shared between sources.
+func slotCurses(
+	db *ModDB,
+	skills []*activeSkill,
+	curses []*enemyCurse,
+	limit int,
+	slots []*enemyCurse,
+	markSlotted bool,
+) ([]*enemyCurse, bool) {
 	for _, cu := range curses {
 		if cu.ignoreHexLimit || cu.socketedLimit {
 			continue
@@ -113,7 +156,8 @@ func (c *Calculator) applyCurses(db *ModDB, skills []*activeSkill, curses []*ene
 		skip := false
 		for _, s := range skills {
 			if len(s.buffs) > 0 && cu.name == s.buffs[0].name && s.types[stAura] {
-				if db.Flag("SelfAurasOnlyAffectYou") || s.mods.FlagCfg(mainCfg(skills), "SelfAurasAffectYouAndLinkedTarget") {
+				if db.Flag("SelfAurasOnlyAffectYou") ||
+					s.mods.FlagCfg(mainCfg(skills), "SelfAurasAffectYouAndLinkedTarget") {
 					skip = true
 				}
 				break
@@ -155,13 +199,12 @@ func (c *Calculator) applyCurses(db *ModDB, skills []*activeSkill, curses []*ene
 			markSlotted = true
 		}
 	}
-	// Lua's #curseSlots stops at the first hole.
-	for i, s := range slots {
-		if s == nil {
-			slots = slots[:i]
-			break
-		}
-	}
+	return slots, markSlotted
+}
+
+// placeUnlimitedCurses is the second slot loop: the player's curses that
+// ignore the hex limit or have the socketed curses' own limit.
+func placeUnlimitedCurses(db *ModDB, curses []*enemyCurse, slots []*enemyCurse) []*enemyCurse {
 	for _, cu := range curses {
 		if cu.ignoreHexLimit {
 			found := false
@@ -198,17 +241,5 @@ func (c *Calculator) applyCurses(db *ModDB, skills []*activeSkill, curses []*ene
 			}
 		}
 	}
-	db.multipliers["CurseOnEnemy"] = float64(len(slots))
-	for _, s := range slots {
-		db.enemy.conditions["Cursed"] = true
-		if s.isMark {
-			db.enemy.conditions["Marked"] = true
-		}
-		for _, m := range s.mods {
-			db.enemy.Add(m)
-		}
-		for _, m := range s.buffMods {
-			db.Add(m)
-		}
-	}
+	return slots
 }

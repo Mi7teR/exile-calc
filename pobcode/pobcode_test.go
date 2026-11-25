@@ -140,7 +140,9 @@ func TestParseLegacyBuild(t *testing.T) {
 		t.Fatalf("group 0: %+v", g)
 	}
 	gem := g.Gems[0]
-	if gem.NameSpec != "Flame Dash" || gem.SkillID != "FlameDash" || gem.Level != 20 || gem.Quality != 20 || !gem.Enabled || gem.Count != 1 {
+	if gem.NameSpec != "Flame Dash" || gem.SkillID != "FlameDash" || gem.Level != 20 || gem.Quality != 20 ||
+		!gem.Enabled ||
+		gem.Count != 1 {
 		t.Errorf("gem 0: %+v", gem)
 	}
 
@@ -216,7 +218,8 @@ func TestParseModernBuild(t *testing.T) {
 	if len(cfg.Placeholders) != 1 || cfg.Placeholders[0].Number != 50000 {
 		t.Errorf("placeholders: %+v", cfg.Placeholders)
 	}
-	if len(cfg.CustomMods) != 1 || cfg.CustomMods[0].Text != "+10% to all Elemental Resistances" || !cfg.CustomMods[0].Enabled {
+	if len(cfg.CustomMods) != 1 || cfg.CustomMods[0].Text != "+10% to all Elemental Resistances" ||
+		!cfg.CustomMods[0].Enabled {
 		t.Errorf("custom mods: %+v", cfg.CustomMods)
 	}
 }
@@ -289,5 +292,71 @@ func TestXMLUsesOnlyEntitiesPoBDecodes(t *testing.T) {
 	}
 	if back.Items[0].Raw != b.Items[0].Raw {
 		t.Errorf("item text changed: %q", back.Items[0].Raw)
+	}
+}
+
+func TestPartyRoundTrip(t *testing.T) {
+	x := []byte(`<?xml version="1.0" encoding="UTF-8"?>
+<PathOfBuilding>
+	<Build level="90" className="Witch" ascendClassName="Necromancer" mainSocketGroup="1"/>
+	<Import exportParty="true" lastRealm="PC"/>
+	<Party destination="All" ShowAdvanceTools="false" append="true">
+		<ImportedBuffs name="PartyMemberStats">
+			MovementSpeedMod|percent|max=174
+		</ImportedBuffs>
+		<ImportedBuffs name="Aura">
+			Hatred
+362
+31|Skill:Hatred|PhysicalDamageGainAsCold|BASE|-|-|type=GlobalEffect/effectType=Aura
+---
+Assassin's Mark
+		</ImportedBuffs>
+		<ImportedBuffs>no name</ImportedBuffs>
+		<ExportedBuffs name="Aura">
+			Wrath
+200
+		</ExportedBuffs>
+	</Party>
+</PathOfBuilding>`)
+	b, err := Parse(x)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := &Party{ExportBuffs: true, Buffs: []PartyBuffs{
+		{Name: "PartyMemberStats", Text: "MovementSpeedMod|percent|max=174"},
+		{
+			Name: "Aura",
+			Text: "Hatred\n362\n31|Skill:Hatred|PhysicalDamageGainAsCold|BASE|-|-|type=GlobalEffect/effectType=Aura\n" +
+				"---\nAssassin's Mark",
+		},
+	}}
+	if !reflect.DeepEqual(b.Party, want) {
+		t.Fatalf("Party = %+v, want %+v", b.Party, want)
+	}
+	code, err := b.Code()
+	if err != nil {
+		t.Fatal(err)
+	}
+	back, err := FromCode(code)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(back.Party, want) {
+		t.Fatalf("Party after round trip = %+v", back.Party)
+	}
+
+	// Without imported buffs or export there is no Party; an empty tab is
+	// not written back.
+	b.Party = &Party{Buffs: nil}
+	out, err := b.XML()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(out), "<Party") || strings.Contains(string(out), "<Import") {
+		t.Errorf("empty party written: %s", out)
+	}
+	empty, err := Parse(out)
+	if err != nil || empty.Party != nil {
+		t.Errorf("empty party read back as %+v (%v)", empty, err)
 	}
 }

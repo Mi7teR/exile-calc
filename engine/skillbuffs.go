@@ -163,8 +163,10 @@ func (c *Calculator) applyBuffs(db *ModDB, skills []*activeSkill, res *Result) (
 				}
 			case "Aura":
 				extra := extraAuraMods(db, cfg)
-				if !truthy(s.data.val("auraCannotAffectSelf")) {
-					mult := (1 + list.SumCfg(cfg, "INC", auraEffectNames...)/100) * list.MoreCfg(cfg, auraEffectNames...)
+				mult := (1 + list.SumCfg(cfg, "INC", auraEffectNames...)/100) * list.MoreCfg(cfg, auraEffectNames...)
+				// A stronger party aura of that name applies instead.
+				if !truthy(s.data.val("auraCannotAffectSelf")) &&
+					(db.Flag("AlliesAurasCannotAffectSelf") || !db.party.auraBeats("Aura", b.name, mult)) {
 					db.conditions["AffectedByAura"] = true
 					if strings.HasPrefix(b.name, "Vaal") && len(b.name) > 5 {
 						db.conditions["AffectedBy"+strings.ReplaceAll(b.name[5:], " ", "")] = true
@@ -216,6 +218,9 @@ func (c *Calculator) applyBuffs(db *ModDB, skills []*activeSkill, res *Result) (
 					mult = 0
 					if !db.Flag("SelfAurasOnlyAffectYou") {
 						mult = (1 + list.SumCfg(cfg, "INC", "AuraEffect", "BuffEffect", "DebuffEffect")/100) * list.MoreCfg(cfg, "AuraEffect", "BuffEffect", "DebuffEffect")
+						if db.party.auraBeats("AuraDebuff", b.name, mult) {
+							mult = 0
+						}
 					}
 				} else {
 					mult = (1 + list.SumCfg(cfg, "INC", "DebuffEffect")/100) * list.MoreCfg(cfg, "DebuffEffect")
@@ -265,6 +270,12 @@ func (c *Calculator) applyBuffs(db *ModDB, skills []*activeSkill, res *Result) (
 		}
 		c.minionAurasOnPlayer(db, s, add, res)
 	}
+	db.party.partyBuffsOnPlayer(db, add, func(src []Mod, name string) {
+		if _, ok := debuffs[name]; !ok {
+			debuffOrder = append(debuffOrder, name)
+		}
+		mergeBuff(src, debuffs, name)
+	})
 	// Guard buffs: a Vaal Molten Shell alone, else every Vaal guard and the
 	// first other guard (in PoB's pairs order; here the order of skills).
 	var slots []string
@@ -593,6 +604,9 @@ func (c *Calculator) minionAurasOnPlayer(db *ModDB, s *activeSkill, add func([]M
 				}
 				inc := list.SumCfg(cfg, "INC", "AuraEffect", "BuffEffect", "BuffEffectOnPlayer", "AuraBuffEffect") + db.SumCfg(cfg, "INC", "BuffEffectOnSelf", "AuraEffectOnSelf")
 				more := list.MoreCfg(cfg, "AuraEffect", "BuffEffect", "AuraBuffEffect") * db.MoreCfg(cfg, "BuffEffectOnSelf", "AuraEffectOnSelf")
+				if db.party.auraBeats("Aura", b.name, (1+inc/100)*more) {
+					continue
+				}
 				db.conditions["AffectedByAura"] = true
 				if strings.HasPrefix(b.name, "Vaal") && len(b.name) > 5 {
 					db.conditions["AffectedBy"+strings.ReplaceAll(b.name[5:], " ", "")] = true

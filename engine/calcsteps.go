@@ -535,6 +535,19 @@ func stepConfig(c *Calculator, st *calcState) error {
 	c.applyConfig(db, res, st.config)
 	db.enemyEnv = newEnemyEnv(st.config, c.data.Config, b.Level, c.data.Monster, res)
 	db.enemy.NewMod("Accuracy", "BASE", enemyAccuracy(c.data.Monster, db.enemyEnv.level), "Base")
+	// CalcSetup.lua: env.enemyDB:AddList(build.partyTab.enemyModList).
+	db.party = newPartyActor(b.Party)
+	if db.party != nil {
+		for _, m := range db.party.enemyMods {
+			db.enemy.Add(m)
+		}
+		// The party member's ModDB flags (PartyMemberStats) are read by
+		// mods such as "your nearby party members maximum endurance charges
+		// is equal to yours"; none of those reads is ported.
+		for _, m := range db.party.flags {
+			res.Incomplete = append(res.Incomplete, "party member flag not applied: "+m.Name)
+		}
+	}
 	shrineBaseMods(db)
 	return nil
 }
@@ -685,6 +698,7 @@ func stepExtraAuras(c *Calculator, st *calcState) error {
 	db := st.db
 	impaleStacks(db)
 	extraAuras(db)
+	db.party.partyExtraAuras(db)
 	c.mergeKeystones(db, st.keystones, st.res)
 	return nil
 }

@@ -54,6 +54,7 @@ type ModDB struct {
 	// skill, built once per calculation.
 	minionSkillCache map[*activeSkill][]*activeSkill
 	gameIDs          func(gemName string) string // calcLib.getGameIdFromGemName(name, true)
+	party            *partyActor                 // the player's: env.partyMembers (Party tab)
 
 	// UnsupportedTags counts tag types EvalMod does not port yet; mods
 	// carrying them are left out of every sum.

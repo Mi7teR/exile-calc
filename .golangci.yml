@@ -486,6 +486,12 @@ linters:
       - path: 'engine/(calc(items|tree)|offence_(area|crit|hit|speed|warcry|dps)|skill(setup|mods|buffs)|ailments_dot|ehp_(pools|maxhit)|misc_(counts|enemy)|moddb_eval)\.go'
         linters: [ mnd, funlen, gocognit, gocyclo, cyclop, nestif, goconst, gochecknoglobals, exhaustive, intrange,
                    modernize, revive ]
+      # why: party.go ports PartyTab.lua ParseBuffs and the party branches of calcs.perform line by line: PoB's
+      # buff-type and mod-type strings stay inline, the flag tables are Data/Global.lua ModFlag/KeywordFlag (hex
+      # literals, package-level like PoB's), and the parser keeps ParseBuffs' single state machine. curses.go's
+      # two slot loops are the legacy applyCurses body split per curse source (no body edits).
+      - path: 'engine/(party|curses)\.go'
+        linters: [ mnd, goconst, gochecknoglobals, gocognit ]
       - text: 'should have a package comment'
         linters: [ revive ]
       - text: 'exported \S+ \S+ should have comment( \(or a comment on this block\))? or be unexported'

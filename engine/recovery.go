@@ -213,6 +213,9 @@ func avoidanceAndRecovery(db *ModDB) {
 	// Movement speed.
 	if o, ok := db.Override("MovementSpeed"); ok {
 		out["MovementSpeedMod"] = o
+	} else if v, has := db.partyStat("MovementSpeedMod"); has && db.Flag("MovementSpeedEqualHighestLinkedPlayers") {
+		// CalcDefence.lua: the party member's MovementSpeedMod (PartyMemberStats).
+		out["MovementSpeedMod"] = v
 	} else {
 		out["MovementSpeedMod"] = calcMod(db, nil, "MovementSpeed")
 	}

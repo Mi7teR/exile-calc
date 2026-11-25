@@ -19,6 +19,23 @@ type xPoB struct {
 	Items   xItems   `xml:"Items"`
 	Skills  xSkills  `xml:"Skills"`
 	Config  xConfig  `xml:"Config"`
+	Import  *xImport `xml:"Import"`
+	Party   *xParty  `xml:"Party"`
+}
+
+// xImport is Classes/ImportTab.lua Save; only exportParty is kept.
+type xImport struct {
+	ExportParty string `xml:"exportParty,attr,omitempty"`
+}
+
+// xParty is Classes/PartyTab.lua Save; only the imported buffs are kept.
+type xParty struct {
+	Imported []xPartyBuffs `xml:"ImportedBuffs"`
+}
+
+type xPartyBuffs struct {
+	Name string `xml:"name,attr"`
+	Text string `xml:",chardata"`
 }
 
 type xBuild struct {
@@ -393,10 +410,31 @@ func Parse(data []byte) (*Build, error) {
 		b.ConfigSets = append(b.ConfigSets, set)
 	}
 
+	b.Party = parseParty(&x)
+
 	if p.err != nil {
 		return nil, p.err
 	}
 	return b, nil
+}
+
+// parseParty is PartyTabClass:Load and ImportTabClass:Load: blocks without
+// a name are skipped, as PoB does. A build with no blocks and no export is
+// a nil Party.
+func parseParty(x *xPoB) *Party {
+	party := &Party{ExportBuffs: x.Import != nil && x.Import.ExportParty == "true"}
+	if x.Party != nil {
+		for _, ib := range x.Party.Imported {
+			if ib.Name == "" {
+				continue
+			}
+			party.Buffs = append(party.Buffs, PartyBuffs{Name: ib.Name, Text: strings.TrimSpace(ib.Text)})
+		}
+	}
+	if len(party.Buffs) == 0 && !party.ExportBuffs {
+		return nil
+	}
+	return party
 }
 
 func (p *parser) input(in xInput) Input {
@@ -545,6 +583,18 @@ func (b *Build) XML() ([]byte, error) {
 			xc.CustomMods = append(xc.CustomMods, xCustomMB{Title: cm.Title, Enabled: btoa(cm.Enabled), Text: cm.Text})
 		}
 		x.Config.ConfigSets = append(x.Config.ConfigSets, xc)
+	}
+
+	if p := b.Party; p != nil {
+		if p.ExportBuffs {
+			x.Import = &xImport{ExportParty: "true"}
+		}
+		if len(p.Buffs) > 0 {
+			x.Party = &xParty{}
+			for _, pb := range p.Buffs {
+				x.Party.Imported = append(x.Party.Imported, xPartyBuffs(pb))
+			}
+		}
 	}
 
 	out, err := xml.MarshalIndent(x, "", "\t")
