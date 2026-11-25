@@ -36,6 +36,10 @@ func (r Result) Parsed() bool { return r.Mods != nil && r.Extra == "" }
 // Parser holds the compiled tables; it is safe for concurrent use.
 type Parser struct {
 	t *tables
+	// cache maps a line to its Result. Parsing is a pure function of the
+	// line, and the same tree and item texts are parsed on every Calc.
+	// Entries are never handed out: Parse returns a deep copy.
+	cache sync.Map // string -> Result
 }
 
 var (
@@ -53,10 +57,38 @@ func PoE1() (*Parser, error) {
 	return defaultP, defaultErr
 }
 
-// Parse parses one mod line (modLib.parseMod).
+// Parse parses one mod line (modLib.parseMod). Results are cached per
+// line; the returned Result is the caller's own copy and may be modified.
 func (p *Parser) Parse(line string) Result {
+	if v, ok := p.cache.Load(line); ok {
+		r, _ := v.(Result)
+		return r.clone()
+	}
 	mods, extra := p.parseRaw(line)
-	return Result{Mods: decodeMods(mods), Extra: extra}
+	r := Result{Mods: decodeMods(mods), Extra: extra}
+	p.cache.Store(line, r)
+	return r.clone()
+}
+
+// clone deep-copies the mods: the slice, each Tags slice and map, and
+// table values. Nil stays nil, so Parsed() is unchanged.
+func (r Result) clone() Result {
+	if r.Mods == nil {
+		return r
+	}
+	mods := make([]Mod, len(r.Mods))
+	for i, m := range r.Mods {
+		m.Value = deepCopy(m.Value)
+		if m.Tags != nil {
+			tags := make([]map[string]any, len(m.Tags))
+			for j, t := range m.Tags {
+				tags[j], _ = deepCopy(t).(map[string]any)
+			}
+			m.Tags = tags
+		}
+		mods[i] = m
+	}
+	return Result{Mods: mods, Extra: r.Extra}
 }
 
 // parseRaw returns mods in the generic encoding used by the data and the
