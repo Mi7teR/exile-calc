@@ -436,3 +436,57 @@ func repeats(actor *ModDB, s *activeSkill, out map[string]float64) {
 		list.NewMod("DPS", "MORE", (n-1)*100, "Repeat Count")
 	}
 }
+
+type convEntry struct {
+	to   map[string]float64 // conversion + gain, per destination
+	mult float64            // what stays
+}
+
+// conversionTable is buildConversionTable.
+//
+//nolint:mnd,intrange,modernize // moved verbatim from offence.go (Task 6 split); PoB's percent literals stay inline
+func conversionTable(list *ModDB, cfg *Cfg) map[string]*convEntry {
+	out := map[string]*convEntry{}
+	for i := 0; i < 4; i++ {
+		t := dmgTypeList[i]
+		global, skill, add := map[string]float64{}, map[string]float64{}, map[string]float64{}
+		var globalTotal, skillTotal float64
+		for _, o := range dmgTypeList[i+1:] {
+			names := []string{t + "DamageConvertTo" + o}
+			gainNames := []string{t + "DamageGainAs" + o}
+			if isElemental[t] {
+				names = append(names, "ElementalDamageConvertTo"+o)
+				gainNames = append(gainNames, "ElementalDamageGainAs"+o)
+			}
+			names = append(names, "NonChaosDamageConvertTo"+o)
+			gainNames = append(gainNames, "NonChaosDamageGainAs"+o)
+			global[o] = math.Max(list.SumCfg(cfg, "BASE", names...), 0)
+			globalTotal += global[o]
+			skill[o] = math.Max(list.SumCfg(cfg, "BASE", "Skill"+t+"DamageConvertTo"+o), 0)
+			skillTotal += skill[o]
+			add[o] = math.Max(list.SumCfg(cfg, "BASE", gainNames...), 0)
+		}
+		if skillTotal > 100 {
+			for o := range skill {
+				skill[o] *= 100 / skillTotal
+				global[o] = 0
+			}
+		} else if globalTotal+skillTotal > 100 {
+			f := (100 - skillTotal) / globalTotal
+			for o := range global {
+				global[o] *= f
+			}
+		}
+		e := &convEntry{to: map[string]float64{}}
+		converted := 0.0
+		for o := range global {
+			conv := round(global[o]+skill[o], 0)
+			e.to[o] = (conv + add[o]) / 100
+			converted += conv
+		}
+		e.mult = 1 - math.Min(converted/100, 1)
+		out[t] = e
+	}
+	out["Chaos"] = &convEntry{to: map[string]float64{}, mult: 1}
+	return out
+}
