@@ -9,7 +9,7 @@ import (
 	"github.com/Mi7teR/poe-lib/pobcode"
 )
 
-// Combat DPS (spec "DPS в бою", section "Расчёт"): the main skill's DPS
+// Combat DPS (spec "Combat DPS", section "Calculation"): the main skill's DPS
 // against one boss and against a pack, from PoB's per-hit outputs plus the
 // hit geometry, the sources (mines, traps, totems, ballistas) and the DoT
 // stacking rules. Calc and its outputs are left as they are.
@@ -107,10 +107,13 @@ func combinedMult(s *activeSkill, out map[string]float64) float64 {
 	return cull * res
 }
 
+// unitsPerMetre: PoB distances are in units of 0.1 m.
+const unitsPerMetre = 10
+
 var kindNames = map[deliveryKind]string{
-	selfArea: "область вокруг игрока", targetArea: "область в точке", projectile: "снаряды",
-	meleeStrike: "удар в ближнем бою", slam: "слэм", channel: "поддерживаемый", beam: "луч",
-	cone: "конус", singleHit: "одиночный хит",
+	selfArea: "area around the player", targetArea: "area at a point", projectile: "projectiles",
+	meleeStrike: "melee strike", slam: "slam", channel: "channelled", beam: "beam",
+	cone: "cone", singleHit: "single hit",
 }
 
 // Combat computes combat DPS for the build's main skill. The boss run is
@@ -124,7 +127,7 @@ func (c *Calculator) Combat(b *pobcode.Build, opts CombatOptions) (*CombatResult
 	r := &CombatResult{}
 	s := bossRes.main
 	if s == nil {
-		r.Assumptions = []string{"нет главного скилла: DPS в бою не считается"}
+		r.Assumptions = []string{"no main skill: combat DPS is not computed"}
 		return r, nil
 	}
 	packRes, err := c.Calc(nonBossBuild(b))
@@ -139,19 +142,20 @@ func (c *Calculator) Combat(b *pobcode.Build, opts CombatOptions) (*CombatResult
 	// CombinedDPS is 0 and so is combat DPS.
 	if r.Boss.PoB == 0 && r.Pack.PoB == 0 {
 		if s.flags["minion"] {
-			r.Assumptions = []string{"главный скилл — миньоны: DPS в бою для миньонов не считается"}
+			r.Assumptions = []string{"main skill is minions: combat DPS is not computed for minions"}
 		} else {
-			r.Assumptions = []string{"у главного скилла CombinedDPS PoB = 0 (скилл не наносит урона): DPS в бою 0"}
+			r.Assumptions = []string{"main skill has PoB CombinedDPS = 0 (it deals no damage): combat DPS is 0"}
 		}
 		return r, nil
 	}
 	size := opts.Boss
 	if !validBossSize(size) {
-		r.Assumptions = append(r.Assumptions, fmt.Sprintf("неизвестный размер босса %d: взят средний", size))
+		r.Assumptions = append(r.Assumptions, fmt.Sprintf("unknown boss size %d: medium used", size))
 		size = BossMedium
 	}
 	if opts.Pack.Count > maxPackCount {
-		r.Assumptions = append(r.Assumptions, fmt.Sprintf("мобов в паке %d: ограничено %d", opts.Pack.Count, maxPackCount))
+		r.Assumptions = append(r.Assumptions,
+			fmt.Sprintf("mobs in pack %d: capped at %d", opts.Pack.Count, maxPackCount))
 	}
 	boss := bossModel(size)
 	pack := opts.Pack.withDefaults()
@@ -169,21 +173,42 @@ func (c *Calculator) Combat(b *pobcode.Build, opts CombatOptions) (*CombatResult
 	r.Pack, packNotes = combatDPS(packRes, pm, false, opts.Seed, spread)
 	r.PackPerMob = perMob(r.Pack, float64(pack.Count))
 
-	bossName := map[BossSize]string{BossSmall: "маленький", BossMedium: "средний", BossLarge: "большой"}[size]
-	r.Assumptions = append(r.Assumptions,
-		fmt.Sprintf("босс: %s, радиус хитбокса %.0f (%.1f м), конфиг врага из билда", bossName, boss.targets[0].r, boss.targets[0].r/10),
-		fmt.Sprintf("пак: %d мобов радиуса %.0f в круге радиуса %.0f на дистанции %.0f, враг не босс (enemyIsBoss = None)",
-			pack.Count, pack.MobRadius, pack.Radius, pack.Distance),
-		fmt.Sprintf("попаданий за каст: по боссу %.2f, по паку %.2f (сумма по мобам)", r.Boss.HitsPerCast, r.Pack.HitsPerCast),
-		"мобы бессмертны, сумма = пропускная способность",
-		fmt.Sprintf("в среднем на моба = сумма / %d (устойчивый DPS и бурст пака)", pack.Count),
+	bossName := map[BossSize]string{BossSmall: "small", BossMedium: "medium", BossLarge: "large"}[size]
+	r.Assumptions = append(
+		r.Assumptions,
+		fmt.Sprintf(
+			"boss: %s, hitbox radius %.0f (%.1f m), enemy config from the build",
+			bossName,
+			boss.targets[0].r,
+			boss.targets[0].r/unitsPerMetre,
+		),
+		fmt.Sprintf(
+			"pack: %d mobs of radius %.0f in a circle of radius %.0f at distance %.0f, enemy is not a boss (enemyIsBoss = None)",
+			pack.Count,
+			pack.MobRadius,
+			pack.Radius,
+			pack.Distance,
+		),
+		fmt.Sprintf("hits per cast: boss %.2f, pack %.2f (sum over mobs)", r.Boss.HitsPerCast, r.Pack.HitsPerCast),
+		"mobs are immortal, sum = throughput",
+		fmt.Sprintf("average per mob = sum / %d (pack sustained DPS and burst)", pack.Count),
 	)
 	if spread.radius > 0 {
-		r.Assumptions = append(r.Assumptions, fmt.Sprintf(
-			"пак: %s разносит DoT %s с цели на мобов в радиусе %.0f (%.1f м); считается, что разнос уже случился (мобы бессмертны)",
-			spread.name, r.Skill, spread.radius, spread.radius/10),
-			fmt.Sprintf("собственный DoT %s (%s на врага) считается поддерживаемым на цели и на мобах в его радиусе; время на его каст не вычитается",
-				spread.name, humanNum(spread.dot)))
+		r.Assumptions = append(
+			r.Assumptions,
+			fmt.Sprintf(
+				"pack: %s spreads DoT %s from the target to mobs within radius %.0f (%.1f m); the spread is assumed to have already happened (mobs are immortal)",
+				spread.name,
+				r.Skill,
+				spread.radius,
+				spread.radius/unitsPerMetre,
+			),
+			fmt.Sprintf(
+				"own DoT %s (%s per enemy) is assumed to be kept up on the target and on mobs in its radius; its cast time is not subtracted",
+				spread.name,
+				humanNum(spread.dot),
+			),
+		)
 	}
 	r.Assumptions = append(r.Assumptions, bossNotes...)
 	r.Assumptions = append(r.Assumptions, packNotes...)
@@ -426,45 +451,74 @@ func combatDPS(res *Result, m targetModel, isBoss bool, seed uint64, spread cont
 	if !isBoss {
 		return d, nil
 	}
-	notes := []string{"форма: " + kindNames[sh.kind]}
+	notes := []string{"shape: " + kindNames[sh.kind]}
 	if noRadius {
-		notes = append(notes, "радиус области неизвестен (AreaOfEffectRadius 0): считается как одиночный хит")
+		notes = append(notes, "area radius unknown (AreaOfEffectRadius 0): treated as a single hit")
 	}
 	if sh.fromDefault {
-		notes = append(notes, "форма по умолчанию (выведена из типов скилла, цифра грубая)")
+		notes = append(notes, "default shape (inferred from skill types, the figure is rough)")
 	}
 	if sh.pobOverlap {
-		notes = append(notes, "перекрытие уже учтено PoB (dpsMultiplier): по боссу 1 попадание за каст; на паке урон одного снаряда (DPS PoB / dpsMultiplier) × попадания по мобу")
+		notes = append(notes, "overlap is already counted by PoB (dpsMultiplier): 1 hit per cast on the boss; "+
+			"on the pack, damage of one projectile (PoB DPS / dpsMultiplier) × hits per mob")
 		if sequentialProjectiles(s) {
-			notes = append(notes, "последовательные снаряды (Barrage): геометрия под-ударов (взрывов) не применяется")
+			notes = append(notes, "sequential projectiles (Barrage): geometry of sub-hits (explosions) is not applied")
 		}
 	}
 	if sh.subHits > 0 && sh.subRadius > 0 && !sh.pobOverlap {
 		proj := max(math.Round(out["ProjectileCount"]), 1)
-		notes = append(notes, fmt.Sprintf("по боссу попадают %.1f из %.0f взрывов за каст (%.0f снарядов × %.0f взрывов радиуса %.0f в разбросе %.0f)",
+		notes = append(notes, fmt.Sprintf("%.1f of %.0f explosions hit the boss per cast "+
+			"(%.0f projectiles × %.0f explosions of radius %.0f in a spread of %.0f)",
 			hits[0], proj*sh.subHits, proj, sh.subHits, sh.subRadius, sh.scatter))
 	} else if sh.subHits > 0 && !sh.pobOverlap {
-		notes = append(notes, fmt.Sprintf("вторичные снаряды: %.0f с каждой точки попадания", sh.subHits))
+		notes = append(notes, fmt.Sprintf("secondary projectiles: %.0f from each hit point", sh.subHits))
 	}
 	if sh.canShotgun {
-		notes = append(notes, fmt.Sprintf("шотган: взрывы снарядов веером %.0f° могут попасть в одну цель", sh.spreadDeg))
+		notes = append(notes,
+			fmt.Sprintf("shotgun: explosions of projectiles in a %.0f° fan can hit one target", sh.spreadDeg))
 	}
 	if sh.kind == projectile && sh.subHits == 0 && radius > 0 {
-		notes = append(notes, fmt.Sprintf("снаряд взрывается при попадании (радиус %.0f): цель за каст поражается не больше одного раза", radius))
+		notes = append(
+			notes,
+			fmt.Sprintf("projectile explodes on hit (radius %.0f): a target is hit at most once per cast", radius),
+		)
 	}
 	if src.kind != "" {
-		srcName := map[string]string{"mine": "мины", "trap": "ловушки", "totem": "тотемы", "ballista": "баллисты"}[src.kind]
-		notes = append(notes, fmt.Sprintf("источники: %s, активных %.0f; бурст = урон всех %.0f разом (урон, не в секунду): хиты плюс DoT скилла за его длительность (один дебафф на цель, если не стакается); ignite, poison, bleed в бурст не входят", srcName, src.active, src.burstHits))
+		srcName := map[string]string{"mine": "mines", "trap": "traps", "totem": "totems", "ballista": "ballistas"}[src.kind] //nolint:goconst // skill kind names, as in combatsources.go
+		notes = append(
+			notes,
+			fmt.Sprintf(
+				"sources: %s, %.0f active; burst = damage of all %.0f at once (damage, not per second): hits plus the skill's DoT over its duration (one debuff per target unless it stacks); ignite, poison, bleed are not part of burst",
+				srcName,
+				src.active,
+				src.burstHits,
+			),
+		)
 		if src.kind == "mine" || src.kind == "trap" {
-			notes = append(notes, "устойчивый DPS ограничен скоростью установки/броска")
+			notes = append(notes, "sustained DPS is limited by the placement/throw rate")
 		} else {
-			notes = append(notes, fmt.Sprintf("устойчивый DPS: хиты и стакающиеся DoT × %.0f, сильнейший DoT один", src.sustainMul))
+			notes = append(
+				notes,
+				fmt.Sprintf(
+					"sustained DPS: hits and stacking DoTs × %.0f, only the strongest DoT counts once",
+					src.sustainMul,
+				),
+			)
 		}
 	}
 	if truthy(s.data.val("showAverage")) {
-		notes = append(notes, "PoB показывает для скилла средний урон (showAverage), а не DPS: цифра PoB не сравнима")
+		notes = append(
+			notes,
+			"PoB shows average damage (showAverage) for this skill, not DPS: the PoB figure is not comparable",
+		)
 	}
-	notes = append(notes, fmt.Sprintf("состав как у CombinedDPS PoB: миражи как хиты, наземные DoT по числу задетых целей, culling и резервация × %.2f", mult))
+	notes = append(
+		notes,
+		fmt.Sprintf(
+			"composition as in PoB CombinedDPS: mirages as hits, ground DoTs by number of targets hit, culling and reservation × %.2f",
+			mult,
+		),
+	)
 	return d, notes
 }
 

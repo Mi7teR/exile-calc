@@ -5,7 +5,7 @@ import (
 	"math/rand/v2"
 )
 
-// Hit geometry for combat DPS (spec "DPS в бою", section "Модель цели"):
+// Hit geometry for combat DPS (spec "Combat DPS", section "Target model"):
 // how many hits one use of the main skill lands on each target. Distances
 // are PoB units, 10 = 1 metre. The player stands at (0, 0) facing +x.
 

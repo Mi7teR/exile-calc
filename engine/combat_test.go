@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"unicode"
 
 	"github.com/google/go-cmp/cmp"
 
@@ -151,7 +152,7 @@ func TestCombatNoMainSkill(t *testing.T) {
 	}
 	found := false
 	for _, a := range cr.Assumptions {
-		found = found || strings.Contains(a, "главного скилла")
+		found = found || strings.Contains(a, "no main skill")
 	}
 	if !found {
 		t.Errorf("no assumption about the missing main skill: %q", cr.Assumptions)
@@ -198,7 +199,7 @@ func TestCombatKineticBlast(t *testing.T) {
 	found := false
 	for _, a := range cr.Assumptions {
 		t.Log(a)
-		found = found || strings.Contains(a, "по боссу попадают")
+		found = found || strings.Contains(a, "hit the boss")
 	}
 	if !found {
 		t.Error("no assumption on the explosions that hit the boss")
@@ -241,8 +242,8 @@ func assumed(cr *CombatResult, sub string) bool {
 func TestCombatZeroDPSSkills(t *testing.T) {
 	c := newCalc(t)
 	for id, note := range map[string]string{
-		"rfm48XKZzz4v": "главный скилл — миньоны", // Summon Skeletons
-		"LuQygQN4SdUj": "CombinedDPS PoB = 0",     // Purity of Fire
+		"rfm48XKZzz4v": "main skill is minions", // Summon Skeletons
+		"LuQygQN4SdUj": "CombinedDPS = 0",       // Purity of Fire
 	} {
 		cr, err := c.Combat(corpusBuild(t, id), CombatOptions{})
 		if err != nil {
@@ -261,7 +262,7 @@ func TestCombatAreaWithoutRadius(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cr.Pack.HitsPerCast < 1 || !assumed(cr, "радиус области неизвестен") {
+	if cr.Pack.HitsPerCast < 1 || !assumed(cr, "area radius unknown") {
 		t.Errorf("%s: pack hits %v, assumptions %q", cr.Skill, cr.Pack.HitsPerCast, cr.Assumptions)
 	}
 }
@@ -317,7 +318,7 @@ func TestCombatOptionsAndPerMob(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if odd.Boss.Sustained != def.Boss.Sustained || !assumed(odd, "неизвестный размер босса") || !assumed(odd, "ограничено 50") {
+	if odd.Boss.Sustained != def.Boss.Sustained || !assumed(odd, "unknown boss size") || !assumed(odd, "capped at 50") {
 		t.Errorf("unknown boss size: %v (medium %v), assumptions %q", odd.Boss.Sustained, def.Boss.Sustained, odd.Assumptions)
 	}
 	for _, r := range []struct {
@@ -329,7 +330,7 @@ func TestCombatOptionsAndPerMob(t *testing.T) {
 			t.Errorf("PackPerMob %+v, Pack %+v / %v", pm, r.cr.Pack, r.n)
 		}
 	}
-	if !assumed(def, "в среднем на моба = сумма / 10") {
+	if !assumed(def, "average per mob = sum / 10") {
 		t.Errorf("no per-mob assumption: %q", def.Assumptions)
 	}
 }
@@ -363,7 +364,7 @@ func TestCombatContagionSpread(t *testing.T) {
 	}
 	found := false
 	for _, a := range cr.Assumptions {
-		if strings.Contains(a, "разносит DoT") {
+		if strings.Contains(a, "spreads DoT") {
 			found = true
 		}
 	}
@@ -373,4 +374,16 @@ func TestCombatContagionSpread(t *testing.T) {
 	if sp := c.contagionOf(b); sp.radius <= 0 || !strings.HasPrefix(sp.name, "Contagion") {
 		t.Errorf("contagionOf = %+v, want a Contagion with a radius", sp)
 	}
+}
+
+// TestCombatTextIsEnglish: Assumptions of every corpus build with a main
+// skill are free of Cyrillic.
+func TestCombatTextIsEnglish(t *testing.T) {
+	corpusCombat(t, func(id string, _ *Result, cr *CombatResult) {
+		for _, a := range cr.Assumptions {
+			if strings.IndexFunc(a, func(r rune) bool { return unicode.Is(unicode.Cyrillic, r) }) >= 0 {
+				t.Errorf("%s: Cyrillic in assumption %q", id, a)
+			}
+		}
+	})
 }

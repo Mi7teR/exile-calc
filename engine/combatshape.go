@@ -6,7 +6,7 @@ import (
 )
 
 // The shape of the main skill: how one use turns into hits on targets.
-// Combat DPS (spec "DPS в бою", section "Форма скилла") reads it to add the
+// Combat DPS (spec "Combat DPS", section "Skill shape") reads it to add the
 // overlap PoB does not model. Named skills come from shapeTable; the rest
 // are inferred from their skill types and marked fromDefault.
 
