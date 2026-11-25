@@ -197,11 +197,18 @@ func ailmentDotCfg(s *activeSkill, p *hitPass, keywords uint64) *Cfg {
 
 // ailmentSourceDamage is calcAilmentSourceDamage: the min and max damage
 // of type t with the ailment cfg, less what is converted away.
-func ailmentSourceDamage(list *ModDB, p *hitPass, dotCfg *Cfg, t string, typeFlags int) (float64, float64) {
+//
+// PoB quirk: the ailment cfg has no conversionTable, so calcDamage falls
+// back to activeSkill.conversionTable (built from skillCfg) instead of the
+// hand's; per-hand conversion and gain mods do not reach ailments.
+func ailmentSourceDamage(list *ModDB, s *activeSkill, p *hitPass, dotCfg *Cfg, t string, typeFlags int) (float64, float64) {
 	q := *p
 	q.cfg = dotCfg
+	if p.cfg != s.cfg {
+		q.conv = conversionTable(list, s.cfg)
+	}
 	mn, mx := calcDamage(list, &q, t, typeFlags, false)
-	m := p.conv[t].mult
+	m := q.conv[t].mult
 	return mn * m, mx * m
 }
 
@@ -275,7 +282,7 @@ func ignite(actor *ModDB, s *activeSkill, p *hitPass, global map[string]float64,
 			if !ok || !canDeal(s, t) {
 				return
 			}
-			mn, mx := ailmentSourceDamage(list, p, dotCfg, t, typeFlags)
+			mn, mx := ailmentSourceDamage(list, s, p, dotCfg, t, typeFlags)
 			out["Ignite"+t+"Min"], out["Ignite"+t+"Max"] = mn, mx
 			totalMin += mn
 			totalMax += mx
@@ -830,7 +837,7 @@ func bleed(actor *ModDB, s *activeSkill, p *hitPass, global map[string]float64, 
 	var avgCrit, maxCrit, avgHit, minHit, maxHit float64
 	for sub := 1; sub <= 2; sub++ {
 		dotCfg.SkillCond["CriticalStrike"] = sub != 1
-		mn, mx := ailmentSourceDamage(list, p, dotCfg, "Physical", 0)
+		mn, mx := ailmentSourceDamage(list, s, p, dotCfg, "Physical", 0)
 		out["BleedPhysicalMin"], out["BleedPhysicalMax"] = mn, mx
 		if sub == 2 {
 			if actor.Flag("AilmentsAreNeverFromCrit") {
@@ -917,7 +924,7 @@ func poison(actor *ModDB, s *activeSkill, p *hitPass, global map[string]float64,
 	var hitDmg, critDmg, maxCritDmg, minHitDmg, maxHitDmg float64
 	for sub := 1; sub <= 2; sub++ {
 		dotCfg.SkillCond["CriticalStrike"] = sub != 1
-		totalMin, totalMax := ailmentSourceDamage(list, p, dotCfg, "Chaos", 0)
+		totalMin, totalMax := ailmentSourceDamage(list, s, p, dotCfg, "Chaos", 0)
 		out["PoisonChaosMin"], out["PoisonChaosMax"] = totalMin, totalMax
 		nonChaosMult := 1.0
 		if out["ChaosPoisonChance"] > 0 && out["PoisonChaosMax"] > 0 {
@@ -942,7 +949,7 @@ func poison(actor *ModDB, s *activeSkill, p *hitPass, global map[string]float64,
 			if !x.ok || !canDeal(s, x.t) {
 				continue
 			}
-			mn, mx := ailmentSourceDamage(list, p, dotCfg, x.t, chaosFlag)
+			mn, mx := ailmentSourceDamage(list, s, p, dotCfg, x.t, chaosFlag)
 			out["Poison"+x.t+"Min"], out["Poison"+x.t+"Max"] = mn, mx
 			totalMin += mn * nonChaosMult
 			totalMax += mx * nonChaosMult
