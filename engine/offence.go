@@ -84,14 +84,14 @@ type hitPass struct {
 // calcs.offence's combineStat does.
 func (c *Calculator) offence(actor *ModDB, s *activeSkill, w1 hitSource, w2 *hitSource) map[string]float64 {
 	out := map[string]float64{}
-	list, cfg, data := s.mods, s.cfg, s.data
+	list, cfg, data := s.mods, s.cfg, &s.data
 	if s.disabled {
 		out["CombinedDPS"] = 0
 		return out
 	}
 	initialFunc(actor, s, w1, w2)
 	for _, e := range list.List(cfg, "SkillData") {
-		skillData(data, e.Value)
+		applySkillData(data, e.Value)
 	}
 	// Additional stat bonuses.
 	if list.Flag("IronGrip") {
@@ -126,14 +126,14 @@ func (c *Calculator) offence(actor *ModDB, s *activeSkill, w1 hitSource, w2 *hit
 	projectileStats(s, out)
 	pierceForkStats(actor, s, out)
 	weaponRange(s, w1, w2, out)
-	if s.flags["area"] || s.data["radius"] != nil || (s.flags["mine"] && s.types[stAura]) {
+	if s.flags["area"] || s.data.val("radius") != nil || (s.flags["mine"] && s.types[stAura]) {
 		areaOfEffect(s, out)
 	}
 	if s.types[stBrand] {
 		out["BrandAttachmentRange"] = 30 * calcMod(list, s.cfg, "BrandAttachmentRange") // data.misc.BrandAttachmentRangeBase
 		out["BrandAttachmentRangeMetre"] = out["BrandAttachmentRange"] / 10
 		out["ActiveBrandLimit"] = list.SumCfg(s.cfg, "BASE", "ActiveBrandLimit")
-		out["AttachedBrandCount"] = numOr(s.data["attachedBrandCount"], 0)
+		out["AttachedBrandCount"] = numOr(s.data.val("attachedBrandCount"), 0)
 	}
 	trapMineStats(actor, s, out)
 	offenceDuration(actor, s, out)
@@ -152,12 +152,12 @@ func (c *Calculator) offence(actor *ModDB, s *activeSkill, w1 hitSource, w2 *hit
 		out[k] = v
 	}
 	// Sacrifice Support: added chaos damage from unreserved life.
-	if pct, ok := num(data["sacrificeLifePercent"]); ok {
+	if pct, ok := num(data.val("sacrificeLifePercent")); ok {
 		life := actor.output["LifeUnreserved"]
 		if s.flags["totem"] {
 			life = c.totemLife(s)
 		}
-		asChaos, _ := num(data["sacrificeLifeAsChaos"])
+		asChaos, _ := num(data.val("sacrificeLifeAsChaos"))
 		add := math.Floor(life * pct / 100 * (asChaos / 100))
 		list.Add(Mod{Name: "ChaosMin", Type: "BASE", Value: add, Source: "Sacrifice Support"})
 		list.Add(Mod{Name: "ChaosMax", Type: "BASE", Value: add, Source: "Sacrifice Support"})
@@ -168,27 +168,29 @@ func (c *Calculator) offence(actor *ModDB, s *activeSkill, w1 hitSource, w2 *hit
 	preDamageFunc(actor, s, out)
 	// Corpse and enemy explosions: base damage from the monster's life.
 	monsterLife := 100.0
-	if v, ok := num(data["corpseLife"]); ok {
+	if v, ok := num(data.val("corpseLife")); ok {
 		monsterLife = v
 	} else if actor.enemyEnv != nil && actor.enemyEnv.level > 0 && actor.enemyEnv.level <= len(c.data.Monster.Life) {
 		lv := actor.enemyEnv.level
 		monsterLife = c.data.Monster.Life[lv-1]
 	}
-	if truthy(data["explodeCorpse"]) {
+	if truthy(data.val("explodeCorpse")) {
 		t := "Fire"
-		if v, ok := data["corpseExplosionDamageType"].(string); ok {
+		if v, ok := data.val("corpseExplosionDamageType").(string); ok {
 			t = v
 		}
-		m, ok := num(data["corpseExplosionLifeMultiplier"])
+		m, ok := num(data.val("corpseExplosionLifeMultiplier"))
 		if !ok {
-			m, _ = num(data["selfFireExplosionLifeMultiplier"])
+			m, _ = num(data.val("selfFireExplosionLifeMultiplier"))
 		}
-		data[t+"BonusMin"], data[t+"BonusMax"] = monsterLife*m, monsterLife*m
+		data.set(t+"BonusMin", monsterLife*m)
+		data.set(t+"BonusMax", monsterLife*m)
 	}
 	if s.flags["monsterExplode"] {
 		for _, t := range dmgTypeList {
-			p, _ := num(data[t+"EffectiveExplodePercentage"])
-			data[t+"Min"], data[t+"Max"] = p*monsterLife/100, p*monsterLife/100
+			p, _ := num(data.val(t + "EffectiveExplodePercentage"))
+			data.set(t+"Min", p*monsterLife/100) //nolint:mnd // PoB literal
+			data.set(t+"Max", p*monsterLife/100) //nolint:mnd // PoB literal
 		}
 	}
 	isAttack := s.flags["attack"]
@@ -205,18 +207,18 @@ func (c *Calculator) offence(actor *ModDB, s *activeSkill, w1 hitSource, w2 *hit
 		}
 		if s.flags["weapon2Attack"] && w2 != nil {
 			src := *w2
-			if cc, ok := num(data["CritChance"]); ok {
+			if cc, ok := num(data.val("CritChance")); ok {
 				src.critChance = cc
 			}
 			for _, t := range []string{"Physical", "Fire", "Cold"} {
-				mn, ok1 := num(data["setOffHand"+t+"Min"])
-				mx, ok2 := num(data["setOffHand"+t+"Max"])
+				mn, ok1 := num(data.val("setOffHand" + t + "Min"))
+				mx, ok2 := num(data.val("setOffHand" + t + "Max"))
 				if ok1 && ok2 {
 					src.min, src.max = maps.Clone(src.min), maps.Clone(src.max)
 					src.min[t], src.max[t] = mn, mx
 				}
 			}
-			if at, ok := num(data["attackTime"]); ok && at != 0 {
+			if at, ok := num(data.val("attackTime")); ok && at != 0 {
 				src.attackRate = 1000 / at
 			}
 			p := &hitPass{src: src, cfg: s.weapon2Cfg, out: map[string]float64{}, label: "Off Hand"}
@@ -231,13 +233,13 @@ func (c *Calculator) offence(actor *ModDB, s *activeSkill, w1 hitSource, w2 *hit
 		// (skill("FireMin")) and crit chance.
 		src := hitSource{min: map[string]float64{}, max: map[string]float64{}}
 		for _, t := range dmgTypeList {
-			mn, _ := num(data[t+"Min"])
-			mx, _ := num(data[t+"Max"])
-			bmn, _ := num(data[t+"BonusMin"])
-			bmx, _ := num(data[t+"BonusMax"])
+			mn, _ := num(data.val(t + "Min"))
+			mx, _ := num(data.val(t + "Max"))
+			bmn, _ := num(data.val(t + "BonusMin"))
+			bmx, _ := num(data.val(t + "BonusMax"))
 			src.min[t], src.max[t] = mn+bmn, mx+bmx
 		}
-		if cc, ok := num(data["CritChance"]); ok {
+		if cc, ok := num(data.val("CritChance")); ok {
 			src.critChance = cc
 		}
 		passes = append(passes, &hitPass{src: src, cfg: cfg, out: out, label: "Skill"})
@@ -264,7 +266,7 @@ func (c *Calculator) offence(actor *ModDB, s *activeSkill, w1 hitSource, w2 *hit
 			}
 		case "DPS":
 			out[stat] = mh + oh
-			if !truthy(data["doubleHitsWhenDualWielding"]) {
+			if !truthy(data.val("doubleHitsWhenDualWielding")) {
 				out[stat] /= 2
 			}
 		}
@@ -319,7 +321,7 @@ func (c *Calculator) offence(actor *ModDB, s *activeSkill, w1 hitSource, w2 *hit
 	// skillData.dpsMultiplier is read when used: Ruthless (MAX) changes it
 	// in the damage passes.
 	dpsMod := (1 + list.SumCfg(cfg, "INC", "DPS")/100) * list.MoreCfg(cfg, "DPS")
-	if s.types[stBrand] && !truthy(data["countsAttachedBrandsInDamage"]) {
+	if s.types[stBrand] && !truthy(data.val("countsAttachedBrandsInDamage")) {
 		dpsMod *= out["AttachedBrandCount"]
 		if v, ok := out["SkillDPSMultiplier"]; ok {
 			out["SkillDPSMultiplier"] = v * out["AttachedBrandCount"]
@@ -327,7 +329,7 @@ func (c *Calculator) offence(actor *ModDB, s *activeSkill, w1 hitSource, w2 *hit
 			out["SkillDPSMultiplier"] = out["AttachedBrandCount"]
 		}
 	}
-	dpsMult := numOr(data["dpsMultiplier"], 1) * dpsMod
+	dpsMult := data.dpsMultiplier.or(1) * dpsMod
 	quantity := math.Max(list.SumCfg(cfg, "BASE", "QuantityMultiplier"), 1)
 	warcries(actor, s, passes[0].cfg, out)
 	pacts(actor, s, out)
@@ -337,7 +339,7 @@ func (c *Calculator) offence(actor *ModDB, s *activeSkill, w1 hitSource, w2 *hit
 		c.hitDamage(actor, s, p)
 		// After hitDamage: postCritFunc may change it too (CalcOffence reads
 		// skillData.dpsMultiplier for TotalDPS after postCritFunc).
-		dpsMult = numOr(data["dpsMultiplier"], 1) * dpsMod
+		dpsMult = data.dpsMultiplier.or(1) * dpsMod
 		speed := out["Speed"]
 		if hs, ok := out["HitSpeed"]; ok {
 			speed = hs
@@ -439,11 +441,11 @@ func pacts(actor *ModDB, s *activeSkill, out map[string]float64) {
 		if !applies || done[key] || v.disabled {
 			continue
 		}
-		cooldown, _ := skillCooldown(v.mods, v.cfg, v.data)
+		cooldown, _ := skillCooldown(v.mods, v.cfg, &v.data)
 		castRate := 1 / v.active.ge.CastTime * calcMod(v.mods, v.cfg, "Speed") * actionSpeedMod(actor)
 		castTime := 1 / math.Min(castRate, serverTickRate)
 		count := v.mods.SumCfg(v.cfg, "BASE", key+"EmpoweredSpells")
-		stored, _ := num(v.data["storedUses"])
+		stored, _ := v.data.storedUses.get()
 		stored += v.mods.SumCfg(v.cfg, "BASE", "AdditionalCooldownUses")
 		rate := out["Speed"] / out["Repeats"]
 		uptime := 100.0

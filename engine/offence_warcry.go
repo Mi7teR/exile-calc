@@ -4,7 +4,7 @@ import "math"
 
 // warcryCastTime is calcWarcryCastTime (CalcOffence.lua).
 func warcryCastTime(actor *ModDB, v *activeSkill) float64 {
-	if v.mods.FlagCfg(v.cfg, "InstantWarcry") || truthy(v.data["triggeredByAutoexertion"]) {
+	if v.mods.FlagCfg(v.cfg, "InstantWarcry") || truthy(v.data.val("triggeredByAutoexertion")) {
 		return 0
 	}
 	base := v.mods.SumCfg(v.cfg, "BASE", "WarcryCastTime")
@@ -38,12 +38,12 @@ func warcries(actor *ModDB, s *activeSkill, cfg *Cfg, out map[string]float64) {
 	maxHit := list.Flag("Condition:WarcryMaxHit")
 	ratios := map[string]float64{}
 	uptime := func(v *activeSkill, count float64) float64 {
-		cd, _ := skillCooldown(v.mods, v.cfg, v.data)
+		cd, _ := skillCooldown(v.mods, v.cfg, &v.data)
 		r := 100.0
 		if speed != 0 {
 			r = math.Min((count/speed)/(cd+warcryCastTime(actor, v)), 1) * 100
 		}
-		stored := numOr(v.data["storedUses"], 0) + v.mods.SumCfg(v.cfg, "BASE", "AdditionalCooldownUses")
+		stored := v.data.storedUses.or(0) + v.mods.SumCfg(v.cfg, "BASE", "AdditionalCooldownUses")
 		return math.Min(100, r*stored)
 	}
 	done := map[string]bool{}
@@ -152,13 +152,13 @@ func ruthlessAndFistOfWar(s *activeSkill, p *hitPass, global map[string]float64)
 	chance := 0.0
 	n := list.SumCfg(cfg, "BASE", "RuthlessBlowMaxCount")
 	out["RuthlessBlowMaxCount"] = n
-	if n > 0 && (!cfg.SkillCond["usedByMirage"] || numOr(s.data["mirageUses"], 0) > n) {
+	if n > 0 && (!cfg.SkillCond["usedByMirage"] || numOr(s.data.val("mirageUses"), 0) > n) {
 		switch mode {
 		case "AVERAGE":
 			chance = round(100/n, 0)
 		case "MAX":
 			chance = 100
-			s.data["dpsMultiplier"] = numOr(s.data["dpsMultiplier"], 1) / n
+			s.data.dpsMultiplier = optF{s.data.dpsMultiplier.or(1) / n, true}
 		}
 	}
 	out["RuthlessBlowChance"] = chance

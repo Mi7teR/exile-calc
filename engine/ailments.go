@@ -264,7 +264,7 @@ func combineAilments(s *activeSkill, out map[string]float64, passes []*hitPass) 
 		}
 		out[stat] = (passes[0].out[stat] + passes[1].out[stat]) / 2
 	}
-	double := truthy(s.data["doubleHitsWhenDualWielding"])
+	double := truthy(s.data.val("doubleHitsWhenDualWielding"))
 	sum := func(stat string) {
 		if len(passes) < 2 {
 			if v, ok := passes[0].out[stat]; ok {
@@ -284,7 +284,7 @@ func combineAilments(s *activeSkill, out map[string]float64, passes []*hitPass) 
 	combineAilment(out, passes, "CausticGroundDPS", "PoisonChance", false, double)
 	sum("TotalPoisonDPS")
 	combineAilment(out, passes, "PoisonDamage", "PoisonChance", false, double)
-	if truthy(s.data["showAverage"]) {
+	if truthy(s.data.val("showAverage")) {
 		sum("TotalPoisonAverageDamage")
 	} else {
 		sum("TotalPoisonStacks")

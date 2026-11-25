@@ -77,7 +77,7 @@ func enemyMaxResistFor(configMax float64) float64 {
 // hitDamage is the crit and hit damage part of calcs.offence for one pass:
 // AverageHit and AverageDamage.
 func (c *Calculator) hitDamage(actor *ModDB, s *activeSkill, p *hitPass) {
-	list, cfg, data, out := s.mods, s.cfg, s.data, p.out
+	list, cfg, data, out := s.mods, s.cfg, &s.data, p.out
 	enemy := actor.enemy
 	ge := s.active.ge
 
@@ -118,12 +118,12 @@ func (c *Calculator) hitDamage(actor *ModDB, s *activeSkill, p *hitPass) {
 	baseMult, eff := 1.0, 1.0
 	if lv := ge.Levels[s.active.level]; lv != nil && lv.BaseMultiplier != 0 {
 		baseMult = lv.BaseMultiplier
-	} else if v, ok := num(data["baseMultiplier"]); ok {
+	} else if v, ok := num(data.val("baseMultiplier")); ok {
 		baseMult = v
 	}
 	if lv := ge.Levels[s.active.level]; lv != nil && lv.DamageEffectiveness != 0 {
 		eff = lv.DamageEffectiveness
-	} else if v, ok := num(data["damageEffectiveness"]); ok {
+	} else if v, ok := num(data.val("damageEffectiveness")); ok {
 		eff = v
 	}
 	p.base = map[string][2]float64{}
@@ -219,7 +219,7 @@ func (c *Calculator) hitDamage(actor *ModDB, s *activeSkill, p *hitPass) {
 	p.cfg.SkillCond = skillCond
 
 	out["AverageHit"] = totalHitAvg*(1-out["CritChance"]/100) + totalCritAvg*out["CritChance"]/100
-	if s.flags["monsterExplode"] && truthy(s.data["hitChanceIsExplodeChance"]) {
+	if s.flags["monsterExplode"] && truthy(s.data.val("hitChanceIsExplodeChance")) {
 		out["HitChance"] = out["ExplodeChance"]
 	}
 	out["AverageDamage"] = out["AverageHit"] * out["HitChance"] / 100

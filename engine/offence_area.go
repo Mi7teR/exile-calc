@@ -97,11 +97,11 @@ func valCfg(db *ModDB, cfg *Cfg, name string) float64 {
 // trapMineStats is the trap and mine part of calcs.offence's skill type
 // stats: throwing and laying rates become skillData.timeOverride.
 func trapMineStats(actor *ModDB, s *activeSkill, out map[string]float64) {
-	list, cfg, data := s.mods, s.cfg, s.data
-	_, hasCD := data["cooldown"]
-	_, hasTrapCD := data["trapCooldown"]
+	list, cfg, data := s.mods, s.cfg, &s.data
+	_, hasCD := data.get("cooldown")
+	_, hasTrapCD := data.get("trapCooldown")
 	if (s.flags["trap"] || s.flags["mine"]) && !hasCD && !hasTrapCD {
-		data["showAverage"] = false
+		data.set("showAverage", false)
 	}
 	action := actor.output["ActionSpeedMod"]
 	if s.flags["trap"] {
@@ -120,10 +120,10 @@ func trapMineStats(actor *ModDB, s *activeSkill, out map[string]float64) {
 		out["TrapThrowCount"] = count
 		out["TrapThrowingSpeed"] = math.Min(speed, serverTickRate)
 		out["TrapThrowingTime"] = 1 / out["TrapThrowingSpeed"]
-		data["timeOverride"] = out["TrapThrowingTime"] / count
-		baseCD, ok := num(data["trapCooldown"])
+		data.timeOverride = optF{out["TrapThrowingTime"] / count, true}
+		baseCD, ok := num(data.val("trapCooldown"))
 		if !ok {
-			baseCD, ok = num(data["cooldown"])
+			baseCD, ok = data.cooldown.get()
 		}
 		if ok || list.SumCfg(cfg, "BASE", "CooldownRecovery") != 0 {
 			if ok {
@@ -157,9 +157,9 @@ func trapMineStats(actor *ModDB, s *activeSkill, out map[string]float64) {
 		out["MineLayingSpeed"] = math.Min(speed, serverTickRate)
 		out["MineLayingTime"] = 1 / out["MineLayingSpeed"]
 		if s.flags["trap"] {
-			data["timeOverride"] = out["MineLayingTime"] / count / out["TrapThrowCount"]
+			data.timeOverride = optF{out["MineLayingTime"] / count / out["TrapThrowCount"], true}
 		} else {
-			data["timeOverride"] = out["MineLayingTime"] / count
+			data.timeOverride = optF{out["MineLayingTime"] / count, true}
 		}
 	}
 }
@@ -167,18 +167,18 @@ func trapMineStats(actor *ModDB, s *activeSkill, out map[string]float64) {
 // offenceDuration is the "Skill duration" part of calcs.offence: the primary
 // duration (output.Duration), rounded up to a server tick.
 func offenceDuration(actor *ModDB, s *activeSkill, out map[string]float64) {
-	list, cfg, data := s.mods, s.cfg, s.data
+	list, cfg, data := s.mods, s.cfg, &s.data
 	names := []string{"Duration", "PrimaryDuration"}
-	if truthy(data["mineDurationAppliesToSkill"]) {
+	if truthy(data.val("mineDurationAppliesToSkill")) {
 		names = append(names, "MineDuration")
 	}
 	out["DurationMod"] = math.Max(calcMod(list, cfg, names...), 0)
-	base := numOr(data["duration"], 0) + list.SumCfg(cfg, "BASE", "Duration", "PrimaryDuration")
+	base := data.duration.or(0) + list.SumCfg(cfg, "BASE", "Duration", "PrimaryDuration")
 	if base <= 0 {
 		return
 	}
 	d := base * out["DurationMod"]
-	if truthy(data["debuff"]) {
+	if truthy(data.val("debuff")) {
 		d /= math.Max(0.25, calcMod(actor.enemy, cfg, "BuffExpireFaster")) // BuffExpirationSlowCap
 	}
 	out["Duration"] = math.Ceil(d*serverTickRate) / serverTickRate
@@ -197,7 +197,7 @@ func impaleDuration(actor *ModDB, s *activeSkill, out map[string]float64) {
 // explode chance and the <Type>EffectiveExplodePercentage of this skill's
 // source (parts 1 and 2) or of all sources (part 3).
 func enemyExplode(s *activeSkill, out map[string]float64) {
-	data := s.data
+	data := &s.data
 	entries := s.mods.List(s.cfg, "ExplodeMod")
 	explodeVal := func(e ListEntry) (string, float64, float64) {
 		v, _ := e.Value.(map[string]any)
@@ -214,10 +214,10 @@ func enemyExplode(s *activeSkill, out map[string]float64) {
 			t, amount, c := explodeVal(e)
 			if t == "RandomElement" {
 				for _, el := range []string{"Fire", "Cold", "Lightning"} {
-					data[el+"EffectiveExplodePercentage"] = amount / 3
+					data.set(el+"EffectiveExplodePercentage", amount/3)
 				}
 			} else {
-				data[t+"EffectiveExplodePercentage"] = amount
+				data.set(t+"EffectiveExplodePercentage", amount)
 			}
 			chance = c
 			if s.part == 2 {
@@ -247,10 +247,10 @@ func enemyExplode(s *activeSkill, out map[string]float64) {
 			ac := k.amount * c
 			if k.t == "RandomElement" {
 				for _, el := range []string{"Fire", "Cold", "Lightning"} {
-					data[el+"EffectiveExplodePercentage"] = numOr(data[el+"EffectiveExplodePercentage"], 0) + ac/3
+					data.set(el+"EffectiveExplodePercentage", numOr(data.val(el+"EffectiveExplodePercentage"), 0)+ac/3)
 				}
 			} else {
-				data[k.t+"EffectiveExplodePercentage"] = numOr(data[k.t+"EffectiveExplodePercentage"], 0) + ac
+				data.set(k.t+"EffectiveExplodePercentage", numOr(data.val(k.t+"EffectiveExplodePercentage"), 0)+ac)
 			}
 			if k.t == "Physical" {
 				phys = 1 - (1-phys)*(1-c)
@@ -331,14 +331,14 @@ func calcRadius(base, areaMod, radiusMod float64) float64 {
 // radius from projectile speed; random base radius margins; the
 // weapon-range radius of radiusIsWeaponRange).
 func areaOfEffect(s *activeSkill, out map[string]float64) {
-	list, cfg, data := s.mods, s.cfg, s.data
+	list, cfg, data := s.mods, s.cfg, &s.data
 	mods := func(names ...string) (float64, float64) {
 		return 1 + list.SumCfg(cfg, "INC", names...)/100, list.MoreCfg(cfg, names...)
 	}
 	inc, more := mods("AreaOfEffect", "AreaOfEffectPrimary")
 	out["AreaOfEffectMod"] = calcAreaMod(inc, more)
 	radiusMod := calcMod(list, cfg, "AreaOfEffectRadius")
-	if truthy(data["radiusIsWeaponRange"]) {
+	if truthy(data.val("radiusIsWeaponRange")) {
 		r := 0.0
 		if s.flags["weapon1Attack"] {
 			r = math.Max(r, s.weaponRange1)
@@ -346,24 +346,24 @@ func areaOfEffect(s *activeSkill, out map[string]float64) {
 		if s.flags["weapon2Attack"] {
 			r = math.Max(r, s.weaponRange2)
 		}
-		data["radius"] = r + 2
+		data.set("radius", r+2)
 	}
-	radius, ok := num(data["radius"])
+	radius, ok := num(data.val("radius"))
 	if !ok {
 		return
 	}
 	s.flags["area"] = true
-	extra := numOr(data["radiusExtra"], 0)
+	extra := numOr(data.val("radiusExtra"), 0)
 	out["AreaOfEffectRadius"] = calcRadius(radius+extra+list.SumCfg(cfg, "BASE", "AreaOfEffect"), out["AreaOfEffectMod"], radiusMod)
 	out["AreaOfEffectRadiusMetres"] = out["AreaOfEffectRadius"] / 10
-	secondary, hasSecondary := num(data["radiusSecondary"])
+	secondary, hasSecondary := num(data.val("radiusSecondary"))
 	if hasSecondary {
 		i, m := mods("AreaOfEffect", "AreaOfEffectSecondary")
 		out["AreaOfEffectModSecondary"] = calcAreaMod(i, m)
 		out["AreaOfEffectRadiusSecondary"] = calcRadius(secondary+extra, out["AreaOfEffectModSecondary"], radiusMod)
 		out["AreaOfEffectRadiusSecondaryMetres"] = out["AreaOfEffectRadiusSecondary"] / 10
 	}
-	tertiary, ok := num(data["radiusTertiary"])
+	tertiary, ok := num(data.val("radiusTertiary"))
 	if !ok {
 		return
 	}
@@ -372,15 +372,15 @@ func areaOfEffect(s *activeSkill, out map[string]float64) {
 	out["AreaOfEffectModTertiary"] = areaMod
 	base := tertiary + extra
 	switch {
-	case truthy(data["projectileSpeedAppliesToMSAreaOfEffect"]):
+	case truthy(data.val("projectileSpeedAppliesToMSAreaOfEffect")):
 		si, sm := mods("ProjectileSpeed")
 		speedMod := round(round(si*sm, 10), 2)
 		out["SpeedModTertiary"] = speedMod
 		// calcMoltenStrikeTertiaryRadius: the deadzone is the secondary radius.
 		maxDist := math.Sqrt(base*base*areaMod - secondary*secondary*(areaMod-1))
 		out["AreaOfEffectRadiusTertiary"] = math.Floor((maxDist-secondary)*speedMod + secondary)
-	case data["radiusTertiaryBaseMargin"] != nil:
-		marginPct := numOr(data["radiusTertiaryBaseMargin"], 0)
+	case data.val("radiusTertiaryBaseMargin") != nil:
+		marginPct := numOr(data.val("radiusTertiaryBaseMargin"), 0)
 		margin := marginPct / 100
 		width := marginPct*2 + 1
 		occ := map[float64]float64{}

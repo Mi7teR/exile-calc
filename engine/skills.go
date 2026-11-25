@@ -237,7 +237,7 @@ type activeSkill struct {
 	gem            *pobcode.Gem // srcInstance: the gem of the active effect
 	cfg            *Cfg
 	mods           *ModDB // skillModList
-	data           map[string]any
+	data           skillData
 	buffs          []*skillBuff
 	disabled       bool
 	main           bool // env.player.mainSkill
@@ -326,7 +326,8 @@ func combatConditions(db *ModDB, s *activeSkill) {
 		return
 	}
 	cond, f := db.conditions, s.flags
-	if !truthy(s.data["triggered"]) && !f["trap"] && !f["mine"] && !f["totem"] {
+	//nolint:nestif // pre-existing shape of the Lua port; only the skillData access changed
+	if !truthy(s.data.val("triggered")) && !f["trap"] && !f["mine"] && !f["totem"] {
 		if f["attack"] {
 			cond["AttackedRecently"] = true
 		} else if f["spell"] {

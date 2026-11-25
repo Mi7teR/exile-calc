@@ -28,17 +28,17 @@ func init() {
 // One release per channelled stage beyond the starting stages.
 func flameblastPreDamage(_ *ModDB, s *activeSkill, _ map[string]float64) {
 	stage := "Multiplier:" + strings.Join(strings.Fields(s.active.ge.Name), "") + "Stage"
-	s.data["hitTimeMultiplier"] = math.Max(
+	s.data.set("hitTimeMultiplier", math.Max(
 		s.mods.SumCfg(s.cfg, "BASE", stage)-s.mods.SumCfg(s.cfg, "BASE", "Multiplier:FlameblastMinimumStage"),
 		1,
-	)
+	))
 }
 
 // Data/Skills/act_int.lua Lightning Tendrils of Eccentricity preDamageFunc.
 //
 // The DPS of each pulse part.
 func lightningTendrilsOfEccentricityPreDamage(_ *ModDB, s *activeSkill, _ map[string]float64) {
-	interval := numOr(s.data["pulseInterval"], 0)
+	interval := numOr(s.data.val("pulseInterval"), 0)
 	part := []map[string]any{{"type": "SkillPart", "skillPart": float64(s.part)}}
 	switch s.part {
 	case 2:
@@ -63,8 +63,8 @@ func lightningTendrilsOfEccentricityPostCrit(s *activeSkill, out, _ map[string]f
 	if s.part != 1 {
 		return
 	}
-	interval := numOr(s.data["pulseInterval"], 0)
-	pulse := numOr(s.data["pulseDamage"], 0) / 100
+	interval := numOr(s.data.val("pulseInterval"), 0)
+	pulse := numOr(s.data.val("pulseDamage"), 0) / 100
 	crit, eff, multi := out["PreEffectiveCritChance"]/100, out["CritChance"]/100, out["CritMultiplier"]
 	avg := 100 * (((interval-1)*(1+crit*(multi-1))+(1+pulse)*multi)/(interval*((1-eff)+multi*eff)) - 1)
 	s.mods.Add(
@@ -75,16 +75,16 @@ func lightningTendrilsOfEccentricityPostCrit(s *activeSkill, out, _ map[string]f
 
 // Data/Skills/act_int.lua Storm Burst preDamageFunc.
 func stormBurstPreDamage(_ *ModDB, s *activeSkill, out map[string]float64) {
-	data := s.data
-	freq, _ := num(data["repeatFrequency"])
-	dur := numOr(data["duration"], 0) * out["DurationMod"]
+	data := &s.data
+	freq, _ := num(data.val("repeatFrequency"))
+	dur := data.duration.or(0) * out["DurationMod"]
 	switch s.part {
 	case 2:
 		// duration * 10 / (jump * 10) avoids floating point issues; +1 tick on spawn.
 		mulDPS(data, 1+math.Floor(dur*10/(freq*10)))
 	case 3:
 		jumps := math.Floor((dur + 0.001) / freq)
-		per, _ := num(data["remainingDurationDamage"])
+		per, _ := num(data.val("remainingDurationDamage"))
 		s.mods.Add(Mod{Name: "Damage", Type: "MORE", Value: math.Max(per*jumps-100, 0), Source: "Skill:StormBurst"})
 	}
 }
@@ -100,7 +100,7 @@ func bloodSacramentInitial(actor *ModDB, s *activeSkill, _ hitSource, _ *hitSour
 	if actor.output["LifeReservedPercent"] >= 100 {
 		return
 	}
-	pct, base := numOr(s.data["LifeReservedPercent"], 3), numOr(s.data["LifeReservedBase"], 0)
+	pct, base := numOr(s.data.val("LifeReservedPercent"), 3), numOr(s.data.val("LifeReservedBase"), 0)
 	s.mods.NewMod("Multiplier:ChannelledLifeReservedPercentPerStage", "BASE", pct, "Blood Sacrament")
 	s.mods.NewMod("Multiplier:ChannelledLifeReservedPerStage", "BASE", base, "Blood Sacrament")
 }

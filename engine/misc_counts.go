@@ -18,7 +18,8 @@ func heraldAuraCounts(db *ModDB, skills []*activeSkill) {
 			heralds[name] = true
 			db.multipliers["Herald"]++
 			db.conditions["AffectedByHerald"] = true
-		case !s.types[stHerald] && s.types[stAura] && !s.types[stAuraAffectsEnemies] && !truthy(s.data["auraCannotAffectSelf"]) && !auras[name]:
+		case !s.types[stHerald] && s.types[stAura] && !s.types[stAuraAffectsEnemies] &&
+			!truthy(s.data.val("auraCannotAffectSelf")) && !auras[name]:
 			auras[name] = true
 			db.multipliers["AuraAffectingSelf"]++
 		}
@@ -174,7 +175,7 @@ func brandCounts(db *ModDB, skills []*activeSkill) {
 		if configured := db.Sum("BASE", "Multiplier:ConfigBrandsAttachedToEnemy"); configured > 0 {
 			attached = math.Min(configured, limit)
 		}
-		s.data["attachedBrandCount"] = attached
+		s.data.set("attachedBrandCount", attached)
 		active := math.Min(db.Sum("BASE", "Multiplier:ConfigActiveBrands"), s.mods.SumCfg(s.cfg, "BASE", "ActiveBrandLimit"))
 		db.multipliers["ActiveBrand"] = math.Max(active, db.multipliers["ActiveBrand"])
 		db.multipliers["BrandsAttachedToEnemy"] = math.Max(attached, db.multipliers["BrandsAttachedToEnemy"])

@@ -353,7 +353,7 @@ func (db *ModDB) getStat(stat string, cfg *Cfg) float64 {
 				match = match || b.name == cfg.SkillName || (cfg.SummonSkillName != "" && b.name == cfg.SummonSkillName)
 			}
 			if match {
-				pct = math.Floor(numOr(s.data[pool+"ReservedBase"], 0) / total * 100)
+				pct = math.Floor(numOr(s.data.val(pool+"ReservedBase"), 0) / total * 100) //nolint:mnd // PoB literal
 				break
 			}
 		}

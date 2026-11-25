@@ -63,14 +63,14 @@ func (c *Calculator) skillCurse(db *ModDB, s *activeSkill, b *skillBuff) *enemyC
 		return nil
 	}
 	if !mark && enemy.Flag("Hexproof") && !db.Flag("CursesIgnoreHexproof") &&
-		!truthy(s.data["ignoreHexLimit"]) && !truthy(s.data["ignoreHexproof"]) {
+		!truthy(s.data.val("ignoreHexLimit")) && !truthy(s.data.val("ignoreHexproof")) {
 		return nil
 	}
 	cu := &enemyCurse{
 		name:           b.name,
 		priority:       c.cursePriorityOf(b.name, s),
 		isMark:         mark,
-		ignoreHexLimit: (list.FlagCfg(cfg, "CursesIgnoreHexLimit") || truthy(s.data["ignoreHexLimit"])) && !mark,
+		ignoreHexLimit: (list.FlagCfg(cfg, "CursesIgnoreHexLimit") || truthy(s.data.val("ignoreHexLimit"))) && !mark,
 		socketedLimit:  db.FlagCfg(cfg, "SocketedCursesAdditionalLimit"),
 	}
 	inc := list.SumCfg(cfg, "INC", "CurseEffect") + enemy.Sum("INC", "CurseEffectOnSelf")

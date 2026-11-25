@@ -8,8 +8,8 @@ import (
 // skillCooldown is calcSkillCooldown, for skills with a cooldown (the
 // "Calculate skill type stats" branch of calcs.offence; trap cooldowns are
 // not ported).
-func skillCooldown(list *ModDB, cfg *Cfg, data map[string]any) (float64, bool) {
-	base, has := num(data["cooldown"])
+func skillCooldown(list *ModDB, cfg *Cfg, data *skillData) (float64, bool) {
+	base, has := data.cooldown.get()
 	added := list.SumCfg(cfg, "BASE", "CooldownRecovery")
 	if !has && added == 0 {
 		return 0, false
@@ -18,7 +18,7 @@ func skillCooldown(list *ModDB, cfg *Cfg, data map[string]any) (float64, bool) {
 		return o, true
 	}
 	cd := (base + added) / math.Max(0, calcMod(list, cfg, "CooldownRecovery"))
-	stored, _ := num(data["storedUses"])
+	stored, _ := data.storedUses.get()
 	if stored > 1 || list.SumCfg(cfg, "BASE", "AdditionalCooldownUses") > 0 {
 		return cd, true
 	}
@@ -28,7 +28,7 @@ func skillCooldown(list *ModDB, cfg *Cfg, data map[string]any) (float64, bool) {
 // hitAndSpeed is the hit chance and attack/cast speed part of
 // calcs.offence for one pass.
 func (c *Calculator) hitAndSpeed(actor *ModDB, s *activeSkill, p *hitPass) {
-	list, cfg, data, out := s.mods, s.cfg, s.data, p.out
+	list, cfg, data, out := s.mods, s.cfg, &s.data, p.out
 	enemy := actor.enemy
 	isAttack := s.flags["attack"]
 	// PoB calls skillModList:More("MORE", cfg, ...): the cfg is the string
@@ -50,7 +50,8 @@ func (c *Calculator) hitAndSpeed(actor *ModDB, s *activeSkill, p *hitPass) {
 			out["Accuracy"], accVsEnemy = p.shared.mainAcc, p.shared.mainAccVsEnemy
 		}
 	}
-	if !isAttack || list.FlagCfg(p.cfg, "CannotBeEvaded") || truthy(data["cannotBeEvaded"]) || enemy.Flag("CannotEvade") {
+	if !isAttack || list.FlagCfg(p.cfg, "CannotBeEvaded") || truthy(data.val("cannotBeEvaded")) ||
+		enemy.Flag("CannotEvade") {
 		out["AccuracyHitChance"] = 100
 	} else {
 		ev := math.Max(round(val(enemy, "Evasion"), 0), 0)
@@ -64,14 +65,14 @@ func (c *Calculator) hitAndSpeed(actor *ModDB, s *activeSkill, p *hitPass) {
 
 	ge := s.active.ge
 	repeats := math.Max(1, p.repeats)
-	triggered := truthy(data["triggered"])
+	triggered := truthy(data.val("triggered"))
 	switch {
-	case ge.CastTime == 0 && !ge.NoCastTime && data["castTimeOverride"] == nil && !triggered:
+	case ge.CastTime == 0 && !ge.NoCastTime && data.val("castTimeOverride") == nil && !triggered:
 		out["Time"], out["Speed"] = 0, 0
 		hitTime(s, out, false)
 		return
-	case data["timeOverride"] != nil:
-		t, _ := num(data["timeOverride"])
+	case data.timeOverride.set:
+		t, _ := data.timeOverride.get()
 		if p.trapCooldown > 0 {
 			t = math.Max(t, p.trapCooldown)
 		} else if p.hasCooldown {
@@ -80,12 +81,12 @@ func (c *Calculator) hitAndSpeed(actor *ModDB, s *activeSkill, p *hitPass) {
 		out["Time"], out["Speed"] = t, 1/t
 		hitTime(s, out, false)
 		return
-	case truthy(data["fixedCastTime"]):
+	case truthy(data.val("fixedCastTime")):
 		out["Time"], out["Speed"] = ge.CastTime, 1/ge.CastTime
 		hitTime(s, out, false)
 		return
-	case data["triggerTime"] != nil && triggered:
-		t, _ := num(data["triggerTime"])
+	case data.val("triggerTime") != nil && triggered:
+		t, _ := num(data.val("triggerTime"))
 		t /= 1 + list.SumCfg(p.cfg, "INC", "CooldownRecovery")/100
 		if n := list.SumCfg(p.cfg, "BASE", "ActiveSkillsLinkedToTrigger"); n > 0 {
 			t *= n
@@ -93,24 +94,24 @@ func (c *Calculator) hitAndSpeed(actor *ModDB, s *activeSkill, p *hitPass) {
 		out["Time"], out["TriggerTime"], out["Speed"] = t, t, 1/t
 		hitTime(s, out, false)
 		return
-	case data["triggerRate"] != nil && triggered:
-		r, _ := num(data["triggerRate"])
+	case data.val("triggerRate") != nil && triggered:
+		r, _ := num(data.val("triggerRate"))
 		out["Time"], out["TriggerTime"], out["Speed"] = 1/r, 1/r, r
-		data["showAverage"] = false
+		data.set("showAverage", false)
 		hitTime(s, out, false)
 		return
 	}
 	var baseTime float64
 	if isAttack {
 		rate := p.src.attackRate
-		if m, ok := num(data["attackSpeedMultiplier"]); ok && rate != 0 {
+		if m, ok := num(data.val("attackSpeedMultiplier")); ok && rate != 0 {
 			rate *= 1 + m/100
 		}
 		if rate == 0 {
 			rate = 1
 		}
 		switch {
-		case truthy(data["castTimeOverridesAttackTime"]):
+		case truthy(data.val("castTimeOverridesAttackTime")):
 			baseTime = ge.CastTime
 		case calcMod(list, cfg, "SkillAttackTime") > 0:
 			baseTime = (1/rate + list.SumCfg(p.cfg, "BASE", "Speed")) * calcMod(list, cfg, "SkillAttackTime")
@@ -119,10 +120,10 @@ func (c *Calculator) hitAndSpeed(actor *ModDB, s *activeSkill, p *hitPass) {
 		}
 	} else {
 		baseTime = ge.CastTime
-		if v, ok := num(data["castTimeOverride"]); ok {
+		if v, ok := num(data.val("castTimeOverride")); ok {
 			baseTime = v
 		}
-		if ge.NoCastTime && data["castTimeOverride"] == nil {
+		if ge.NoCastTime && data.val("castTimeOverride") == nil {
 			baseTime = 1 // castTimeOverride or castTime or 1
 		}
 	}
@@ -146,7 +147,7 @@ func (c *Calculator) hitAndSpeed(actor *ModDB, s *activeSkill, p *hitPass) {
 		out["Cooldown"] = p.cooldown
 		out["Speed"] = math.Min(out["Speed"], 1/p.cooldown*repeats)
 		if s.flags["selfCast"] {
-			data["showAverage"] = false
+			data.set("showAverage", false)
 		}
 	}
 	if !s.types[stChannel] {
@@ -163,22 +164,22 @@ func (c *Calculator) hitAndSpeed(actor *ModDB, s *activeSkill, p *hitPass) {
 // hitTime is the HitTime and HitSpeed part of the speed calculation:
 // skills that hit on their own timer (hitTimeOverride, hitTimeMultiplier).
 func hitTime(s *activeSkill, out map[string]float64, tickCap bool) {
-	data := s.data
-	if truthy(data["triggeredOnDeath"]) {
+	data := &s.data
+	if truthy(data.val("triggeredOnDeath")) {
 		return
 	}
-	if v, ok := num(data["hitTimeOverride"]); ok && v != 0 {
+	if v, ok := data.hitTimeOverride.get(); ok && v != 0 {
 		out["HitTime"], out["HitSpeed"] = v, 1/v
 		return
 	}
-	m, ok := num(data["hitTimeMultiplier"])
+	m, ok := num(data.val("hitTimeMultiplier"))
 	if !ok || out["Time"] == 0 {
 		return
 	}
 	out["HitTime"] = out["Time"] * m
 	cd, hasCD := out["Cooldown"]
 	switch {
-	case hasCD && truthy(data["triggered"]):
+	case hasCD && truthy(data.val("triggered")):
 		out["HitSpeed"] = 1 / math.Max(out["HitTime"], cd)
 	case hasCD:
 		out["HitSpeed"] = 1 / (out["HitTime"] + cd)

@@ -9,10 +9,7 @@ import (
 // for one offence run): its own skill mod list, data, flags, types and cfgs.
 func cloneSkill(s *activeSkill) *activeSkill {
 	c := *s
-	c.data = make(map[string]any, len(s.data))
-	for k, v := range s.data {
-		c.data[k] = v
-	}
+	c.data = s.data.clone()
 	c.flags = make(map[string]bool, len(s.flags))
 	for k, v := range s.flags {
 		c.flags[k] = v
@@ -98,7 +95,7 @@ func (c *Calculator) generalsCry(db *ModDB, s *activeSkill, w1 hitSource, w2 *hi
 	var gc *activeSkill
 	for _, v := range db.activeSkills {
 		if v.active.ge.Name == "General's Cry" && v.group != nil && s.group != nil && v.group.Slot == s.group.Slot {
-			cooldown, _ = skillCooldown(v.mods, v.cfg, v.data)
+			cooldown, _ = skillCooldown(v.mods, v.cfg, &v.data)
 			gc = v
 			break
 		}
@@ -111,7 +108,7 @@ func (c *Calculator) generalsCry(db *ModDB, s *activeSkill, w1 hitSource, w2 *hi
 		list.Add(Mod{Name: "QuantityMultiplier", Type: m.Type, Value: m.Value, Flags: m.Flags, KeywordFlags: m.KeywordFlags, Source: m.Source})
 	}
 	if !s.types[stChannel] {
-		s.data["hitTimeOverride"] = 1.0
+		s.data.hitTimeOverride = optF{1.0, true}
 	}
 	t, ok := cached["HitTime"]
 	if !ok {
@@ -149,18 +146,18 @@ func (c *Calculator) mirages(db *ModDB, s *activeSkill, w1 hitSource, w2 *hitSou
 	m := c.copyActiveSkill(db, s, res)
 	setSkillCond(m, "usedByMirage")
 	delete(m.flags, "multiPart")
-	m.data["mirageUses"] = s.data["storedUses"]
+	m.data.set("mirageUses", s.data.val("storedUses"))
 	m.types[stOtherThingUsesSkill] = true
 	// The less damage and speed mods have no flags, so they also reach the
 	// mirage's ailments, as in game (PoB reads mainSkill.ModFlags, which do
 	// not exist, and gets the same result).
 	var count float64
 	switch {
-	case truthy(s.data["triggeredByMirageArcher"]):
+	case truthy(s.data.val("triggeredByMirageArcher")):
 		count = s.mods.SumCfg(s.cfg, "BASE", "MirageArcherMaxCount")
 		m.mods.NewMod("Damage", "MORE", m.mods.SumCfg(m.cfg, "BASE", "MirageArcherLessDamage"), "Mirage Archer")
 		m.mods.NewMod("Speed", "MORE", m.mods.SumCfg(m.cfg, "BASE", "MirageArcherLessAttackSpeed"), "Mirage Archer")
-	case truthy(s.data["triggeredBySacredWisps"]):
+	case truthy(s.data.val("triggeredBySacredWisps")):
 		var wisps *activeSkill
 		for _, v := range db.activeSkills {
 			if v.active.ge.Name == "Summon Sacred Wisps" {

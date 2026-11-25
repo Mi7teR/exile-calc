@@ -39,7 +39,7 @@ func (db *ModDB) replaceMod(m Mod) {
 // calcs.offence (CalcOffence.lua, from "account for Battlemage" to the
 // random physical conversions): mods that apply to other stats.
 func (c *Calculator) offenceStatConversions(actor *ModDB, s *activeSkill, w1 hitSource, w2 *hitSource, out map[string]float64) {
-	list, cfg, data := s.mods, s.cfg, s.data
+	list, cfg, data := s.mods, s.cfg, &s.data
 	mfClaw, mfUnarmed, mfBow := modFlagByName["Claw"], modFlagByName["Unarmed"], modFlagByName["Bow"]
 	improved := func(name string) float64 {
 		if v, ok := list.MaxCfg(cfg, name); ok {
@@ -206,7 +206,7 @@ func (c *Calculator) offenceStatConversions(actor *ModDB, s *activeSkill, w1 hit
 	}
 	if list.Flag("SequentialProjectiles") && !list.Flag("OneShotProj") && !list.Flag("NoAdditionalProjectiles") &&
 		!list.Flag("SingleProjectile") && !list.Flag("TriggeredBySnipe") {
-		data["dpsMultiplier"] = list.SumCfg(cfg, "BASE", "ProjectileCount")
+		data.dpsMultiplier = optF{list.SumCfg(cfg, "BASE", "ProjectileCount"), true}
 	}
 	repeats(actor, s, out)
 	if list.Flag("WeaponPhysAppliesToSpells") {
@@ -216,7 +216,7 @@ func (c *Calculator) offenceStatConversions(actor *ModDB, s *activeSkill, w1 hit
 		list.Add(Mod{Name: "PhysicalMin", Type: "BASE", Value: math.Floor(w1.min["Physical"] * mult), Flags: mfSpell, Source: "Runegraft of the Spellbound"})
 		list.Add(Mod{Name: "PhysicalMax", Type: "BASE", Value: math.Floor(w1.max["Physical"] * mult), Flags: mfSpell, Source: "Runegraft of the Spellbound"})
 	}
-	if pct, ok := num(data["gainPercentBaseWandDamageToSpells"]); ok {
+	if pct, ok := num(data.val("gainPercentBaseWandDamageToSpells")); ok {
 		mult := pct / 100
 		wand1, wand2 := s.weapons[0] == "Wand", s.weapons[1] == "Wand" && w2 != nil
 		switch {
@@ -231,7 +231,7 @@ func (c *Calculator) offenceStatConversions(actor *ModDB, s *activeSkill, w1 hit
 			addDamage(*w2, mult, "Spellslinger")
 		}
 	}
-	if pct, ok := num(data["gainPercentBaseDaggerDamageToSpells"]); ok {
+	if pct, ok := num(data.val("gainPercentBaseDaggerDamageToSpells")); ok {
 		d1, d2 := s.weapons[0] == "Dagger", s.weapons[1] == "Dagger" && w2 != nil
 		mult := pct / 100
 		if d1 && d2 {
@@ -256,14 +256,14 @@ func (c *Calculator) offenceStatConversions(actor *ModDB, s *activeSkill, w1 hit
 // unleashSeals is the "Applies DPS multiplier based on seals count" block
 // of calcs.offence (Unleash supports).
 func unleashSeals(actor *ModDB, s *activeSkill, out map[string]float64) {
-	list, cfg, data := s.mods, s.cfg, s.data
+	list, cfg, data := s.mods, s.cfg, &s.data
 	if !list.Flag("HasSeals") || !s.types[stCanRapidFire] || list.Flag("NoRepeatBonuses") {
 		return
 	}
 	cooldown := list.SumCfg(cfg, "BASE", "SealGainFrequency") / calcMod(list, cfg, "SealGainFrequency")
 	sealMax := list.SumCfg(cfg, "BASE", "SealCount")
 	out["SealCooldown"], out["SealMax"], out["AverageBurstHits"], out["TimeMaxSeals"] = cooldown, sealMax, sealMax, cooldown*sealMax
-	if _, ok := data["hitTimeOverride"]; ok {
+	if _, ok := data.get("hitTimeOverride"); ok {
 		return
 	}
 	castRate := 1 / s.active.ge.CastTime * 1.1 * calcMod(list, cfg, "Speed") * actor.output["ActionSpeedMod"]
@@ -277,10 +277,10 @@ func unleashSeals(actor *ModDB, s *activeSkill, out map[string]float64) {
 			m.Name, m.Value = "Damage", v*sealMax
 			list.Add(m)
 		}
-		data["dpsMultiplier"] = 1 + sealMax*calcMod(list, cfg, "SealRepeatPenalty")
-		data["hitTimeOverride"] = math.Max(cooldown*sealMax, castRate)
+		data.dpsMultiplier = optF{1 + sealMax*calcMod(list, cfg, "SealRepeatPenalty"), true}
+		data.hitTimeOverride = optF{math.Max(cooldown*sealMax, castRate), true}
 	} else {
-		data["dpsMultiplier"] = 1 + 1/cooldown/castRate*calcMod(list, cfg, "SealRepeatPenalty")
+		data.dpsMultiplier = optF{1 + 1/cooldown/castRate*calcMod(list, cfg, "SealRepeatPenalty"), true}
 	}
 }
 

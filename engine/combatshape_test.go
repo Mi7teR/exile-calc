@@ -163,7 +163,7 @@ func TestShapePobOverlapEngineOnly(t *testing.T) {
 func TestShapeShrapnelBallista(t *testing.T) {
 	newSkill := func() *activeSkill {
 		active := &skillEffect{ge: &gamedata.Skill{Name: "Shrapnel Ballista"}}
-		return &activeSkill{active: active, effects: []*skillEffect{active}, data: map[string]any{},
+		return &activeSkill{active: active, effects: []*skillEffect{active},
 			types: map[int]bool{stProjectile: true}, mods: NewModDB(), cfg: &Cfg{}}
 	}
 	// Default: offence.go applies min(1, ProjectileCount) = 1, no overlap.
@@ -173,7 +173,7 @@ func TestShapeShrapnelBallista(t *testing.T) {
 	rain := newSkill()
 	rain.types[stRain] = true
 	cfgOverlap := newSkill()
-	cfgOverlap.data["ShrapnelBallistaProjectileOverlap"] = 3.0
+	cfgOverlap.data.set("ShrapnelBallistaProjectileOverlap", 3.0)
 	seq := newSkill()
 	seq.mods.Add(Mod{Name: "SequentialProjectiles", Type: "FLAG", Value: true})
 	for name, s := range map[string]*activeSkill{"Rain type": rain, "overlap config": cfgOverlap, "SequentialProjectiles": seq} {

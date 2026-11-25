@@ -54,10 +54,10 @@ func (c *Calculator) separateBuffs(s *activeSkill) {
 				buff.stackLimit, buff.hasStackLimit = tagNum(tag, "effectStackLimit")
 				if m.Source == "Skill:"+s.active.id {
 					buff.activeSkillBuff = true
-					buff.applyNotPlayer = buff.applyNotPlayer || truthy(s.data["buffNotPlayer"])
-					buff.applyMinions = buff.applyMinions || truthy(s.data["buffMinions"])
-					buff.applyAllies = truthy(s.data["buffAllies"])
-					buff.allowTotemBuff = truthy(s.data["allowTotemBuff"])
+					buff.applyNotPlayer = buff.applyNotPlayer || truthy(s.data.val("buffNotPlayer"))
+					buff.applyMinions = buff.applyMinions || truthy(s.data.val("buffMinions"))
+					buff.applyAllies = truthy(s.data.val("buffAllies"))
+					buff.allowTotemBuff = truthy(s.data.val("allowTotemBuff"))
 				}
 				s.buffs = append(s.buffs, buff)
 			}
@@ -158,12 +158,12 @@ func (c *Calculator) applyBuffs(db *ModDB, skills []*activeSkill, res *Result) (
 					list.SumCfg(cfg, "INC", strings.ReplaceAll(b.name, " ", "")+"Effect")
 				more := store.MoreCfg(bcfg, "BuffEffect", "BuffEffectOnSelf")
 				add(scaleMods(b.mods, (1+inc/100)*more), b.name)
-				if truthy(s.data["thisIsNotABuff"]) {
+				if truthy(s.data.val("thisIsNotABuff")) {
 					notBuff[b.name] = true
 				}
 			case "Aura":
 				extra := extraAuraMods(db, cfg)
-				if !truthy(s.data["auraCannotAffectSelf"]) {
+				if !truthy(s.data.val("auraCannotAffectSelf")) {
 					mult := (1 + list.SumCfg(cfg, "INC", auraEffectNames...)/100) * list.MoreCfg(cfg, auraEffectNames...)
 					db.conditions["AffectedByAura"] = true
 					if strings.HasPrefix(b.name, "Vaal") && len(b.name) > 5 {
@@ -200,7 +200,7 @@ func (c *Calculator) applyBuffs(db *ModDB, skills []*activeSkill, res *Result) (
 					} else if b.stackLimitVar != "" {
 						stack = math.Min(stack, list.SumCfg(cfg, "BASE", "Multiplier:"+b.stackLimitVar))
 					}
-				} else if v, ok := num(s.data["stackCount"]); ok {
+				} else if v, ok := num(s.data.val("stackCount")); ok {
 					stack = v
 				}
 				if stack <= 0 {
@@ -221,7 +221,7 @@ func (c *Calculator) applyBuffs(db *ModDB, skills []*activeSkill, res *Result) (
 					mult = (1 + list.SumCfg(cfg, "INC", "DebuffEffect")/100) * list.MoreCfg(cfg, "DebuffEffect")
 				}
 				src := append(scaleMods(b.mods, mult*stack), scaleMods(extra, mult*stack)...)
-				if s.data["stackCount"] != nil || b.stackVar != "" {
+				if s.data.val("stackCount") != nil || b.stackVar != "" {
 					src = append(src, Mod{Name: "Multiplier:" + b.name + "Stack", Type: "BASE", Value: stack, Source: b.name})
 				}
 				if _, ok := debuffs[b.name]; !ok {
@@ -410,10 +410,10 @@ func warcryBonus(db *ModDB, s *activeSkill, b *skillBuff) ([]float64, float64) {
 			bonus[i] = math.Floor(p / div)
 		}
 	}
-	duration := skillDuration(list, cfg, s.data, db.enemy)
+	duration := skillDuration(list, cfg, &s.data, db.enemy)
 	cooldown, ok := list.OverrideCfg(cfg, "CooldownRecovery")
 	if !ok {
-		cd, _ := num(s.data["cooldown"])
+		cd, _ := s.data.cooldown.get()
 		cooldown = (cd + list.SumCfg(cfg, "BASE", "CooldownRecovery")) / calcMod(list, cfg, "CooldownRecovery")
 	}
 	uptime := 1.0
@@ -457,15 +457,15 @@ func (c *Calculator) warcry(db *ModDB, s *activeSkill, b *skillBuff, mainCfg *Cf
 const buffExpirationSlowCap = 0.25 // Data.lua data.misc
 
 // skillDuration is calcSkillDuration (CalcOffence.lua).
-func skillDuration(list *ModDB, cfg *Cfg, data map[string]any, enemy *ModDB) float64 {
+func skillDuration(list *ModDB, cfg *Cfg, data *skillData, enemy *ModDB) float64 {
 	names := []string{"Duration", "PrimaryDuration"}
-	if truthy(data["mineDurationAppliesToSkill"]) {
+	if truthy(data.val("mineDurationAppliesToSkill")) {
 		names = append(names, "MineDuration")
 	}
 	mod := math.Max(calcMod(list, cfg, names...), 0)
-	base, _ := num(data["duration"])
+	base, _ := data.duration.get()
 	d := (base + list.SumCfg(cfg, "BASE", "Duration", "PrimaryDuration")) * mod
-	if truthy(data["debuff"]) && enemy != nil {
+	if truthy(data.val("debuff")) && enemy != nil {
 		d /= math.Max(buffExpirationSlowCap, calcMod(enemy, cfg, "BuffExpireFaster"))
 	}
 	return d
@@ -565,7 +565,7 @@ func (c *Calculator) minionAurasOnPlayer(db *ModDB, s *activeSkill, add func([]M
 	}
 	casting, mskills := c.bareMinionSkills(db, s, m, res)
 	for _, ms := range mskills {
-		if ms.disabled || !truthy(ms.data["enable"]) {
+		if ms.disabled || !truthy(ms.data.val("enable")) {
 			continue
 		}
 		list, cfg := ms.mods, ms.cfg

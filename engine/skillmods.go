@@ -427,7 +427,7 @@ func (c *Calculator) buildSkillMods(db *ModDB, s *activeSkill, res *Result) {
 				list.NewMod("SupportManaMultiplier", "MORE", lv.ManaMultiplier, "Skill:"+e.id)
 			}
 			if lv.ManaReservationPercent != 0 {
-				s.data["manaReservationPercent"] = lv.ManaReservationPercent
+				s.data.set("manaReservationPercent", lv.ManaReservationPercent)
 			}
 		}
 	}
@@ -468,19 +468,19 @@ func (c *Calculator) buildSkillMods(db *ModDB, s *activeSkill, res *Result) {
 	// Extra modifiers from the granted effect level.
 	if lv := ge.Levels[a.level]; lv != nil {
 		if lv.CritChance != 0 {
-			s.data["CritChance"] = lv.CritChance
+			s.data.set("CritChance", lv.CritChance)
 		}
 		if lv.DamageMultiplier != 0 {
 			list.Add(Mod{Name: "Damage", Type: "MORE", Value: lv.DamageMultiplier, Flags: mfAttack, Source: "Skill:" + a.id})
 		}
 		if lv.AttackTime != 0 {
-			s.data["attackTime"] = lv.AttackTime
+			s.data.set("attackTime", lv.AttackTime)
 		}
 		if lv.AttackSpeedMultiplier != 0 {
-			s.data["attackSpeedMultiplier"] = lv.AttackSpeedMultiplier
+			s.data.set("attackSpeedMultiplier", lv.AttackSpeedMultiplier)
 		}
 		if lv.StoredUses != 0 {
-			s.data["storedUses"] = lv.StoredUses
+			s.data.storedUses = optF{lv.StoredUses, true}
 		}
 	}
 	for _, e := range list.List(s.cfg, "ExtraSkillMod") {
@@ -496,14 +496,14 @@ func (c *Calculator) buildSkillMods(db *ModDB, s *activeSkill, res *Result) {
 		}
 	}
 	if lv := ge.Levels[a.level]; lv != nil && lv.Cooldown != 0 {
-		s.data["cooldown"] = lv.Cooldown
+		s.data.cooldown = optF{lv.Cooldown, true}
 	}
 	// Skill stages (Multiplier:<Name>MaxStages): the gem's stage count or
 	// the maximum.
 	stageName := strings.Join(strings.Fields(ge.Name), "")
 	if limit := list.SumCfg(s.cfg, "BASE", "Multiplier:"+stageName+"MaxStages"); limit > 0 {
 		flags["multiStage"] = true
-		s.data["stagesMax"] = limit
+		s.data.set("stagesMax", limit)
 		count := limit
 		if s.gem != nil && s.gem.SkillStageCount > 0 {
 			count = float64(s.gem.SkillStageCount)
@@ -531,10 +531,10 @@ func (c *Calculator) buildSkillMods(db *ModDB, s *activeSkill, res *Result) {
 		}
 	}
 	for _, e := range player.List(s.cfg, "SkillData") {
-		skillData(s.data, e.Value)
+		applySkillData(&s.data, e.Value)
 	}
 	for _, e := range list.List(s.cfg, "SkillData") {
-		skillData(s.data, e.Value)
+		applySkillData(&s.data, e.Value)
 	}
 	c.separateBuffs(s)
 	if len(s.buffs) > 0 && flags["attack"] {
@@ -544,10 +544,11 @@ func (c *Calculator) buildSkillMods(db *ModDB, s *activeSkill, res *Result) {
 	}
 }
 
-func skillData(d map[string]any, v any) {
+// applySkillData applies a SkillData mod value {key, value} to d.
+func applySkillData(d *skillData, v any) {
 	m, _ := v.(map[string]any)
 	if k, ok := m["key"].(string); ok {
-		d[k] = m["value"]
+		d.set(k, m["value"])
 	}
 }
 

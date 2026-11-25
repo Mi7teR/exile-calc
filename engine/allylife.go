@@ -66,7 +66,7 @@ func (c *Calculator) totemLife(s *activeSkill) float64 {
 		return 0
 	}
 	level := lvl.LevelRequirement
-	if v, ok := num(s.data["totemLevel"]); ok && v > 0 {
+	if v, ok := num(s.data.val("totemLevel")); ok && v > 0 {
 		level = int(v)
 	}
 	if level < 1 || level > len(mon.AllyLife) {

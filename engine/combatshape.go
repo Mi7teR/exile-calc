@@ -93,7 +93,7 @@ var shapeTable = func() map[string]shapeEntry {
 	// ShrapnelBallistaProjectileOverlap config or ProjectileCount for Rain
 	// skills, else 1. SequentialProjectiles is caught in shapeOf.
 	add(shapeEntry{kind: projectile, pobOverlap: true, overlapIf: func(s *activeSkill) bool {
-		_, set := num(s.data["ShrapnelBallistaProjectileOverlap"])
+		_, set := num(s.data.val("ShrapnelBallistaProjectileOverlap"))
 		return set || s.types[stRain]
 	}}, "Shrapnel Ballista", "Shrapnel Ballista of Steel")
 	add(shapeEntry{kind: targetArea, pobOverlap: true, overlapParts: []int{2}}, "Blast Rain")

@@ -18,7 +18,7 @@ func moltenStrikePreDamage(_ *ModDB, s *activeSkill, out map[string]float64) {
 	if s.part == 1 {
 		return
 	}
-	data := s.data
+	data := &s.data
 	proj := out["ProjectileCount"]
 	enemyRadius, ok := s.mods.OverrideCfg(s.cfg, "EnemyRadius")
 	if !ok {
@@ -32,8 +32,8 @@ func moltenStrikePreDamage(_ *ModDB, s *activeSkill, out map[string]float64) {
 		mult = overlap * proj
 		if s.part == 6 {
 			// Zenith: the weighted average of normal and 5th attack balls.
-			fifth := 1 + numOr(data["FifthStrikeDamage"], 0)/100
-			mult = 0.8*mult + 0.2*fifth*overlap*(proj+numOr(data["FifthStrikeProjectiles"], 0))
+			fifth := 1 + numOr(data.val("FifthStrikeDamage"), 0)/100
+			mult = 0.8*mult + 0.2*fifth*overlap*(proj+numOr(data.val("FifthStrikeProjectiles"), 0))
 		}
 	}
 	if mult != 1 {
@@ -48,17 +48,17 @@ func moltenStrikePreDamage(_ *ModDB, s *activeSkill, out map[string]float64) {
 // Data/Skills/act_str.lua Static Strike preDamageFunc.
 func staticStrikePreDamage(_ *ModDB, s *activeSkill, _ map[string]float64) {
 	if s.part == 2 {
-		f, _ := num(s.data["repeatFrequency"])
-		s.data["hitTimeOverride"] = f / (1 + s.mods.SumCfg(s.cfg, "INC", "StaticStrikeFrequency")/100)
+		f, _ := num(s.data.val("repeatFrequency"))
+		s.data.hitTimeOverride = optF{f / (1 + s.mods.SumCfg(s.cfg, "INC", "StaticStrikeFrequency")/100), true}
 	}
 }
 
 // Data/Skills/act_str.lua Rage Vortex preSkillTypeFunc.
 func rageVortexPreSkillType(s *activeSkill) {
-	list, cfg, data := s.mods, s.cfg, s.data
+	list, cfg, data := s.mods, s.cfg, &s.data
 	if s.part == 2 {
 		maxRage := list.SumCfg(cfg, "BASE", "MaximumRage")
-		pct := numOr(data["MaxRageVortexSacrificePercentage"], 0) / 100
+		pct := numOr(data.val("MaxRageVortexSacrificePercentage"), 0) / 100
 		override := list.SumCfg(cfg, "BASE", "Multiplier:RageSacrificedStacks")
 		maxSac := math.Floor(pct * maxRage)
 		stacks := maxSac

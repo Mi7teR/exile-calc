@@ -189,7 +189,7 @@ func chillSkills(db *ModDB, skills []*activeSkill) (guaranteed []*activeSkill, g
 		if s.mods == nil {
 			continue
 		}
-		bonechill := truthy(s.data["supportBonechill"])
+		bonechill := truthy(s.data.val("supportBonechill"))
 		if bonechill && (s.types[stChillingArea] || s.types[stNonHitChill] || !s.mods.Flag("CannotChill")) {
 			out["HasBonechill"] = 1
 		}

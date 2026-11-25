@@ -776,7 +776,7 @@ func stepOffence(c *Calculator, st *calcState) error {
 	if s := res.main; s != nil {
 		w1, w2 := playerWeapons(db, st.gearMods, st.spec.ClassID)
 		c.triggers(db, s, w1, w2)
-		if truthy(s.data["triggeredByGeneralsCry"]) && !s.disabled {
+		if truthy(s.data.val("triggeredByGeneralsCry")) && !s.disabled {
 			c.generalsCry(db, s, w1, w2)
 		}
 		c.mirages(db, s, w1, w2, res)

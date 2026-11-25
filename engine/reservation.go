@@ -9,8 +9,8 @@ func floorTo(v float64, places int) float64 {
 	return math.Floor(v*p) / p
 }
 
-func dataNum(d map[string]any, k string) (float64, bool) {
-	f, ok := num(d[k])
+func dataNum(d *skillData, k string) (float64, bool) {
+	f, ok := num(d.val(k))
 	return f, ok
 }
 
@@ -25,11 +25,12 @@ func reservations(db *ModDB, skills []*activeSkill, res *Result) {
 		if s.disabled || s.mods == nil {
 			continue
 		}
-		if truthy(s.data["requiresManaReservation"]) && out["Mana"] == 0 {
+		if truthy(s.data.val("requiresManaReservation")) && out["Mana"] == 0 {
 			s.disabled = true
 			continue
 		}
-		if !(s.types[stHasReservation] || truthy(s.data["triggeredByAutoexertion"])) || s.types[stReservationBecomesCost] {
+		if (!s.types[stHasReservation] && !truthy(s.data.val("triggeredByAutoexertion"))) ||
+			s.types[stReservationBecomesCost] {
 			continue
 		}
 		list, cfg := s.mods, s.cfg
@@ -39,7 +40,7 @@ func reservations(db *ModDB, skills []*activeSkill, res *Result) {
 		}
 		mult := floorTo(list.MoreCfg(cfg, "SupportManaMultiplier"), 4)
 		base := func(key string, fromLevel float64) float64 {
-			if v, ok := dataNum(s.data, key); ok {
+			if v, ok := dataNum(&s.data, key); ok {
 				return v
 			}
 			return fromLevel
@@ -59,11 +60,11 @@ func reservations(db *ModDB, skills []*activeSkill, res *Result) {
 		}
 		forced := map[string]any{}
 		for _, k := range []string{"ManaReservationFlatForced", "ManaReservationPercentForced", "LifeReservationFlatForced", "LifeReservationPercentForced"} {
-			if v, ok := s.data[k]; ok {
+			if v, ok := s.data.get(k); ok {
 				forced[k] = v
 			}
 		}
-		if list.FlagCfg(cfg, "BloodMagicReserved") && !truthy(s.data["requiresManaReservation"]) {
+		if list.FlagCfg(cfg, "BloodMagicReserved") && !truthy(s.data.val("requiresManaReservation")) {
 			pools["Life"].flat += pools["Mana"].flat
 			pools["Mana"].flat = 0
 			pools["Life"].percent += pools["Mana"].percent
@@ -107,11 +108,11 @@ func reservations(db *ModDB, skills []*activeSkill, res *Result) {
 			// CalcPerform.lua: the skill's own reservation, for GetStat
 			// ManaReservedPercent and LifeReservedPercent.
 			if flat != 0 {
-				s.data[name+"ReservedBase"] = flat
+				s.data.set(name+"ReservedBase", flat)
 			}
 			if pct != 0 {
-				s.data[name+"ReservedPercent"] = pct
-				s.data[name+"ReservedBase"] = flat + math.Ceil(out[name]*pct/100)
+				s.data.set(name+"ReservedPercent", pct)
+				s.data.set(name+"ReservedBase", flat+math.Ceil(out[name]*pct/100)) //nolint:mnd // PoB literal
 			}
 			reservedBase[name] += flat
 			reservedPercent[name] += pct

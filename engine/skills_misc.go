@@ -24,32 +24,34 @@ func onKillMonsterExplosionPreDamage(_ *ModDB, s *activeSkill, out map[string]fl
 //
 // The trigger source's totem life (triggerSourceUUID's TotemLife).
 func avengingFlamePreDamage(_ *ModDB, s *activeSkill, _ map[string]float64) {
-	data := s.data
-	add := numOr(data["triggerSourceTotemLife"], 0) * numOr(data["lifeDealtAsFire"], 0) / 100
-	data["FireMin"] = numOr(data["FireMin"], 0) + add
-	data["FireMax"] = numOr(data["FireMax"], 0) + add
+	data := &s.data
+	add := numOr(data.val("triggerSourceTotemLife"), 0) * numOr(data.val("lifeDealtAsFire"), 0) / 100
+	data.set("FireMin", numOr(data.val("FireMin"), 0)+add)
+	data.set("FireMax", numOr(data.val("FireMax"), 0)+add)
 }
 
 // Data/Skills/act_dex.lua Bladefall of Trarthus preDamageFunc.
 func bladefallOfTrarthusPreDamage(_ *ModDB, s *activeSkill, _ map[string]float64) {
-	s.data["hitTimeOverride"] = numOr(s.data["hitFrequency"], 0) / (1 + numOr(s.data["incVolleyFrequency"], 0)/100)
+	freq := numOr(s.data.val("hitFrequency"), 0)
+	s.data.hitTimeOverride = optF{freq / (1 + numOr(s.data.val("incVolleyFrequency"), 0)/100), true}
 }
 
 // Data/Skills/act_dex.lua Tornado of Elemental Turbulence preDamageFunc.
 func tornadoOfElementalTurbulencePreDamage(_ *ModDB, s *activeSkill, _ map[string]float64) {
-	s.data["hitTimeOverride"] = s.data["damageInterval"]
-	mulDPS(s.data, s.mods.SumCfg(s.cfg, "BASE", "Multiplier:TornadoofElementalTurbulenceStage"))
+	s.data.set("hitTimeOverride", s.data.val("damageInterval"))
+	mulDPS(&s.data, s.mods.SumCfg(s.cfg, "BASE", "Multiplier:TornadoofElementalTurbulenceStage"))
 }
 
 // Data/Skills/act_int.lua Bodyswap preDamageFunc.
 func bodyswapPreDamage(actor *ModDB, s *activeSkill, out map[string]float64) {
 	if s.part == 1 {
-		m, _ := num(s.data["selfFireExplosionLifeMultiplier"])
+		m, _ := num(s.data.val("selfFireExplosionLifeMultiplier"))
 		life := actor.output["Life"]
 		if s.flags["totem"] {
 			life = out["TotemLife"]
 		}
-		s.data["FireBonusMin"], s.data["FireBonusMax"] = life*m, life*m
+		s.data.set("FireBonusMin", life*m)
+		s.data.set("FireBonusMax", life*m)
 	}
 }
 

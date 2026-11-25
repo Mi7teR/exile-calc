@@ -67,11 +67,11 @@ func skillCosts(actor *ModDB, s *activeSkill, out map[string]float64) {
 			val.totalCost = list.SumCfg(cfg, "BASE", val.name+"Cost", "Cost")
 			if val.name == "Mana" && s.types[stReservationBecomesCost] && !list.FlagCfg(cfg, "CostESInsteadOfManaOrLife") && !list.FlagCfg(cfg, "CostLifeInsteadOfMana") {
 				lv := s.active.ge.Levels[s.active.level]
-				flat, ok := num(s.data[val.text+"ReservationFlat"])
+				flat, ok := num(s.data.val(val.text + "ReservationFlat"))
 				if !ok && lv != nil {
 					flat = lv.ManaReservationFlat
 				}
-				pct, ok := num(s.data[val.text+"ReservationPercent"])
+				pct, ok := num(s.data.val(val.text + "ReservationPercent"))
 				if !ok && lv != nil {
 					pct = lv.ManaReservationPercent
 				}

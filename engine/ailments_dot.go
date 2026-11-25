@@ -32,7 +32,7 @@ func ignite(actor *ModDB, s *activeSkill, p *hitPass, global map[string]float64,
 	global["IgniteDuration"] = durationBase * durationMod / rateMod * debuffDurationMult
 	chance := out["IgniteChanceOnHit"]/100*(1-critChance/100) + out["IgniteChanceOnCrit"]/100*critChance/100
 	stacks := out["HitChance"] / 100 * chance * dpsMult
-	if !truthy(s.data["triggeredOnDeath"]) {
+	if !truthy(s.data.val("triggeredOnDeath")) {
 		speed := global["Speed"]
 		if v, ok := global["HitSpeed"]; ok {
 			speed = v
@@ -149,7 +149,7 @@ func ignite(actor *ModDB, s *activeSkill, p *hitPass, global map[string]float64,
 // bleed is the "Calculate bleeding chance and damage" part of the ailment
 // loop for one pass.
 func bleed(actor *ModDB, s *activeSkill, p *hitPass, global map[string]float64, dpsMult float64) {
-	list, cfg, out, enemy, data := s.mods, p.cfg, p.out, actor.enemy, s.data
+	list, cfg, out, enemy, data := s.mods, p.cfg, p.out, actor.enemy, &s.data
 	if !canDeal(s, "Physical") || out["BleedChanceOnHit"]+out["BleedChanceOnCrit"] <= 0 {
 		return
 	}
@@ -167,11 +167,11 @@ func bleed(actor *ModDB, s *activeSkill, p *hitPass, global map[string]float64, 
 	durationBase := float64(bleedDurationBase)
 	if v, ok := list.OverrideCfg(dotCfg, "BleedDurationBase"); ok { //nolint:govet // legacy, kept by pure refactor; see refactor plan part 2
 		durationBase = v
-	} else if d, ok := num(data["duration"]); ok && truthy(data["bleedDurationIsSkillDuration"]) { //nolint:govet // legacy, kept by pure refactor; see refactor plan part 2
+	} else if d, ok := data.duration.get(); ok && truthy(data.val("bleedDurationIsSkillDuration")) { //nolint:govet // legacy, kept by pure refactor; see refactor plan part 2
 		durationBase = d
 	}
 	durNames := []string{"EnemyBleedDuration", "EnemyAilmentDuration", "DamagingAilmentDuration"}
-	if truthy(data["bleedIsSkillEffect"]) {
+	if truthy(data.val("bleedIsSkillEffect")) {
 		durNames = append(durNames, "Duration")
 	}
 	durationMod := math.Max(calcMod(list, dotCfg, durNames...)*calcMod(enemy, nil, "SelfBleedDuration", "SelfAilmentDuration")/calcMod(enemy, dotCfg, "BleedExpireRate"), 0)
@@ -230,7 +230,7 @@ func bleed(actor *ModDB, s *activeSkill, p *hitPass, global map[string]float64, 
 			avgHit = minHit + (maxHit-minHit)*rollAvg/100
 		}
 	}
-	basePercent := numOr(data["bleedBasePercent"], bleedPercentBase)
+	basePercent := numOr(data.val("bleedBasePercent"), bleedPercentBase)
 	ailmentCrit := 100 * (1 - math.Pow(1-critChance/100, math.Max(global["BleedStackPotential"], 1)))
 	effects := out["RuthlessBlowAilmentEffect"] * out["FistOfWarDamageEffect"] * global["AilmentWarcryEffect"]
 	ailmentDamage(out, "Bleed", ailmentCrit, minHit, 0)
@@ -252,7 +252,7 @@ func bleed(actor *ModDB, s *activeSkill, p *hitPass, global map[string]float64, 
 // poison is the "Calculate poison chance and damage" part of the ailment
 // loop for one pass.
 func poison(actor *ModDB, s *activeSkill, p *hitPass, global map[string]float64, dpsMult, quantity float64) {
-	list, cfg, out, enemy, data := s.mods, p.cfg, p.out, actor.enemy, s.data
+	list, cfg, out, enemy, data := s.mods, p.cfg, p.out, actor.enemy, &s.data
 	if !canDeal(s, "Chaos") || out["PoisonChanceOnHit"]+out["PoisonChanceOnCrit"]+out["ChaosPoisonChance"] <= 0 {
 		return
 	}
@@ -261,11 +261,11 @@ func poison(actor *ModDB, s *activeSkill, p *hitPass, global map[string]float64,
 	durationBase := float64(poisonDurationBase)
 	if v, ok := list.OverrideCfg(dotCfg, "PoisonDurationBase"); ok {
 		durationBase = v
-	} else if d, ok := num(data["duration"]); ok && truthy(data["poisonDurationIsSkillDuration"]) { //nolint:govet // legacy, kept by pure refactor; see refactor plan part 2
+	} else if d, ok := data.duration.get(); ok && truthy(data.val("poisonDurationIsSkillDuration")) { //nolint:govet // legacy, kept by pure refactor; see refactor plan part 2
 		durationBase = d
 	}
 	durNames := []string{"EnemyPoisonDuration", "EnemyAilmentDuration", "DamagingAilmentDuration"}
-	if truthy(data["poisonIsSkillEffect"]) {
+	if truthy(data.val("poisonIsSkillEffect")) {
 		durNames = append(durNames, "Duration")
 	}
 	durationMod := math.Max(calcMod(list, dotCfg, durNames...)*calcMod(enemy, nil, "SelfPoisonDuration", "SelfAilmentDuration"), 0)
@@ -284,7 +284,7 @@ func poison(actor *ModDB, s *activeSkill, p *hitPass, global map[string]float64,
 		additional = 1 + math.Min(list.SumCfg(cfg, "BASE", "AdditionalPoisonChance")/100, 1) + list.SumCfg(cfg, "BASE", "AdditionalPoisonStacks")
 	}
 	limit, hasLimit := minCfg(list, cfg, "PoisonStackLimit")
-	stacks := out["HitChance"] / 100 * chance * additional * dpsMult * numOr(data["stackMultiplier"], 1) * quantity
+	stacks := out["HitChance"] / 100 * chance * additional * dpsMult * numOr(data.val("stackMultiplier"), 1) * quantity
 	if speed := hitSpeed(global); speed > 0 {
 		stacks *= global["PoisonDuration"] * speed
 		if hasLimit && limit > 0 && stacks > limit {
@@ -371,7 +371,7 @@ func poison(actor *ModDB, s *activeSkill, p *hitPass, global map[string]float64,
 		out["CausticGroundDPS"] = math.Min(baseVal*effectMod*rateMod*effMult*ground/100, dotDpsCap)
 		global["CausticGroundFromPoison"] = 1
 	}
-	if truthy(data["showAverage"]) {
+	if truthy(data.val("showAverage")) {
 		out["TotalPoisonAverageDamage"] = out["PoisonDamage"]
 		out["TotalPoisonDPS"] = out["PoisonDPS"]
 	} else {

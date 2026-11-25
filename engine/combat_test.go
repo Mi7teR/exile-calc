@@ -76,7 +76,7 @@ func TestCombatSingleTargetInvariant(t *testing.T) {
 		if sourcesOf(res.main, res.Stats).kind != "" || cr.Boss.HitsPerCast != 1 {
 			return
 		}
-		if truthy(res.main.data["showAverage"]) {
+		if truthy(res.main.data.val("showAverage")) {
 			return // CombinedDPS is an average hit, not a rate
 		}
 		out := res.Stats

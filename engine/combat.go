@@ -276,7 +276,7 @@ func combatDPS(res *Result, m targetModel, isBoss bool, seed uint64, spread cont
 	}
 	unoverlap := 1.0
 	if !isBoss && sh.pobOverlap {
-		if dm := numOr(s.data["dpsMultiplier"], 1); dm > 0 {
+		if dm := s.data.dpsMultiplier.or(1); dm > 0 {
 			unoverlap = 1 / dm
 		}
 	}
@@ -410,7 +410,8 @@ func combatDPS(res *Result, m targetModel, isBoss bool, seed uint64, spread cont
 		// Only a debuff on the primary duration is timed by out["Duration"];
 		// secondary/tertiary-duration debuffs (no output here) are left out.
 		dur := out["Duration"]
-		if !truthy(s.data["debuff"]) || truthy(s.data["debuffSecondary"]) || truthy(s.data["debuffTertiary"]) {
+		if !truthy(s.data.val("debuff")) || truthy(s.data.val("debuffSecondary")) ||
+			truthy(s.data.val("debuffTertiary")) {
 			dur = 0
 		}
 		if dot := math.Min(out["TotalDot"], dotDpsCap); dot > 0 && dur > 0 {
@@ -460,7 +461,7 @@ func combatDPS(res *Result, m targetModel, isBoss bool, seed uint64, spread cont
 			notes = append(notes, fmt.Sprintf("устойчивый DPS: хиты и стакающиеся DoT × %.0f, сильнейший DoT один", src.sustainMul))
 		}
 	}
-	if truthy(s.data["showAverage"]) {
+	if truthy(s.data.val("showAverage")) {
 		notes = append(notes, "PoB показывает для скилла средний урон (showAverage), а не DPS: цифра PoB не сравнима")
 	}
 	notes = append(notes, fmt.Sprintf("состав как у CombinedDPS PoB: миражи как хиты, наземные DoT по числу задетых целей, culling и резервация × %.2f", mult))

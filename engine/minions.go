@@ -66,10 +66,10 @@ func (c *Calculator) minionOf(s *activeSkill, charLevel, enemyLevel int) *skillM
 		req = lv.LevelRequirement
 	}
 	switch {
-	case truthy(s.data["minionLevelIsEnemyLevel"]):
+	case truthy(s.data.val("minionLevelIsEnemyLevel")):
 		m.level = enemyLevel
-	case truthy(s.data["minionLevelIsPlayerLevel"]):
-		limit, ok := num(s.data["minionLevelIsPlayerLevel"])
+	case truthy(s.data.val("minionLevelIsPlayerLevel")):
+		limit, ok := num(s.data.val("minionLevelIsPlayerLevel"))
 		if !ok {
 			limit = math.Inf(1)
 		}
@@ -77,7 +77,7 @@ func (c *Calculator) minionOf(s *activeSkill, charLevel, enemyLevel int) *skillM
 	case supportLevel[typ] != 0:
 		m.level = supportLevel[typ]
 	default:
-		if v, ok := num(s.data["minionLevel"]); ok {
+		if v, ok := num(s.data.val("minionLevel")); ok {
 			m.level = int(v)
 		} else {
 			m.level = req

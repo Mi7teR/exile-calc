@@ -60,6 +60,6 @@ func hooksOf(s *activeSkill) *skillHooks {
 }
 
 // mulDPS scales the skill's dpsMultiplier (default 1) by m.
-func mulDPS(data map[string]any, m float64) {
-	data["dpsMultiplier"] = numOr(data["dpsMultiplier"], 1) * m
+func mulDPS(data *skillData, m float64) {
+	data.dpsMultiplier = optF{data.dpsMultiplier.or(1) * m, true}
 }

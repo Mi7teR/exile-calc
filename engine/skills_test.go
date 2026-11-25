@@ -52,7 +52,7 @@ func TestSkillStatsPurity(t *testing.T) {
 	if len(ms) != 1 || ms[0].Value != 39.0 || ms[0].Source != "Skill:PurityOfElements" {
 		t.Fatalf("mods: %+v", ms)
 	}
-	s := &activeSkill{active: e, mods: list, cfg: &Cfg{}, data: map[string]any{}}
+	s := &activeSkill{active: e, mods: list, cfg: &Cfg{}}
 	c.separateBuffs(s)
 	if len(s.buffs) != 1 || s.buffs[0].typ != "Aura" || s.buffs[0].name != "Purity of Elements" || len(list.mods["ElementalResist"]) != 0 {
 		t.Fatalf("buffs: %+v", s.buffs)

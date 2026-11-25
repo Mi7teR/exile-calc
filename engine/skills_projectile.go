@@ -29,21 +29,21 @@ func init() {
 // Data/Skills/act_dex.lua Barrage/Blast Rain/Vaal Lightning Arrow preDamageFunc.
 func barragePreDamage(_ *ModDB, s *activeSkill, out map[string]float64) {
 	if s.part == 2 {
-		s.data["dpsMultiplier"] = out["ProjectileCount"]
+		s.data.dpsMultiplier = optF{out["ProjectileCount"], true}
 	}
 }
 
 // Data/Skills/act_int.lua Blazing Salvo preDamageFunc.
 func blazingSalvoPreDamage(_ *ModDB, s *activeSkill, out map[string]float64) {
 	if s.part == 2 {
-		mulDPS(s.data, out["ProjectileCount"])
+		mulDPS(&s.data, out["ProjectileCount"])
 	}
 }
 
 // Data/Skills/act_int.lua Forbidden Rite preDamageFunc.
 func forbiddenRitePreDamage(_ *ModDB, s *activeSkill, out map[string]float64) {
 	if s.part == 2 {
-		mulDPS(s.data, out["ProjectileCount"]+1)
+		mulDPS(&s.data, out["ProjectileCount"]+1)
 	}
 }
 
@@ -67,9 +67,9 @@ func freezingPulsePreDamage(_ *ModDB, s *activeSkill, out map[string]float64) {
 func kineticFusilladePreDamage(_ *ModDB, s *activeSkill, out map[string]float64) {
 	if s.part == 1 {
 		proj := out["ProjectileCount"]
-		s.data["dpsMultiplier"] = proj
+		s.data.dpsMultiplier = optF{proj, true}
 		// Each projectile deals more damage per earlier one: the average.
-		if per := numOr(s.data["damagePerProjectile"], 0); per != 0 && proj > 1 {
+		if per := numOr(s.data.val("damagePerProjectile"), 0); per != 0 && proj > 1 {
 			avg := per * (proj - 1) / 2
 			s.mods.NewMod("Damage", "MORE", avg, "Skill:KineticFusillade")
 			out["KineticFusilladeAvgMoreMult"] = avg
@@ -85,18 +85,18 @@ func kineticFusilladePostCrit(s *activeSkill, _, global map[string]float64) {
 	if s.part == 1 {
 		n = global["ProjectileCount"]
 	}
-	delay := (numOr(s.data["duration"], 0) + numOr(s.data["delayPerProjectile"], 0)*(n-1)) * global["DurationMod"]
+	delay := (s.data.duration.or(0) + numOr(s.data.val("delayPerProjectile"), 0)*(n-1)) * global["DurationMod"]
 	maxAPS := 1 / (math.Ceil(delay/serverTickTime) * serverTickTime)
 	// PoB differs: it scales the current dpsMultiplier on every pass, so
 	// a dual wielder's off hand gets the efficiency twice. It applies
 	// once here, to the multiplier before the first pass.
 	if s.part == 1 && global["Speed"] > maxAPS {
-		base, ok := num(s.data["kineticFusilladeBaseDps"])
+		base, ok := num(s.data.val("kineticFusilladeBaseDps"))
 		if !ok {
-			base = numOr(s.data["dpsMultiplier"], global["ProjectileCount"])
-			s.data["kineticFusilladeBaseDps"] = base
+			base = s.data.dpsMultiplier.or(global["ProjectileCount"])
+			s.data.set("kineticFusilladeBaseDps", base)
 		}
-		s.data["dpsMultiplier"] = base * maxAPS / global["Speed"]
+		s.data.dpsMultiplier = optF{base * maxAPS / global["Speed"], true}
 	}
 	global["KineticFusilladeMaxEffectiveAPS"] = maxAPS
 }
@@ -104,20 +104,20 @@ func kineticFusilladePostCrit(s *activeSkill, _, global map[string]float64) {
 // Data/Skills/act_int.lua Spark preDamageFunc.
 func sparkPreDamage(_ *ModDB, s *activeSkill, out map[string]float64) {
 	if s.part == 2 {
-		mulDPS(s.data, 1+math.Floor(out["Duration"]/0.66))
+		mulDPS(&s.data, 1+math.Floor(out["Duration"]/0.66))
 	}
 }
 
 // Data/Skills/act_int.lua Ice Spear preDamageFunc.
 func iceSpearPreDamage(_ *ModDB, s *activeSkill, out map[string]float64) {
 	if s.part == 3 || s.part == 4 {
-		mulDPS(s.data, out["ProjectileCount"])
+		mulDPS(&s.data, out["ProjectileCount"])
 	}
 }
 
 // Data/Skills/act_dex.lua Toxic Rain preDamageFunc.
 func toxicRainPreDamage(_ *ModDB, s *activeSkill, out map[string]float64) {
-	s.data["dpsMultiplier"] = math.Min(numOr(s.data["podOverlapMultiplier"], 1), out["ProjectileCount"])
+	s.data.dpsMultiplier = optF{math.Min(numOr(s.data.val("podOverlapMultiplier"), 1), out["ProjectileCount"]), true}
 }
 
 // Data/Skills/act_dex.lua Shrapnel Ballista preDamageFunc.
@@ -125,24 +125,24 @@ func shrapnelBallistaPreDamage(_ *ModDB, s *activeSkill, out map[string]float64)
 	if !s.mods.Flag("SequentialProjectiles") {
 		proj := out["ProjectileCount"]
 		overlap := 1.0
-		if v, ok := num(s.data["ShrapnelBallistaProjectileOverlap"]); ok {
+		if v, ok := num(s.data.val("ShrapnelBallistaProjectileOverlap")); ok {
 			overlap = v
 		} else if s.types[stRain] {
 			overlap = proj
 		}
-		mulDPS(s.data, math.Min(overlap, proj))
+		mulDPS(&s.data, math.Min(overlap, proj))
 	}
 }
 
 // Data/Skills/act_int.lua Ball Lightning of Orbiting preDamageFunc.
 func ballLightningOfOrbitingPreDamage(_ *ModDB, s *activeSkill, _ map[string]float64) {
-	data := s.data
+	data := &s.data
 	if s.part == 2 || s.part == 3 {
-		interval, _ := num(data["strikeInterval"])
-		dur, _ := num(data["duration"])
+		interval, _ := num(data.val("strikeInterval"))
+		dur, _ := data.duration.get()
 		if interval > 0 {
 			if n := math.Floor(dur / interval); n != 1 {
-				data["dpsMultiplier"] = numOr(data["dpsMultiplier"], 1) * n
+				data.dpsMultiplier = optF{data.dpsMultiplier.or(1) * n, true}
 			}
 		}
 	}

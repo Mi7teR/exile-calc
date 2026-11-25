@@ -18,13 +18,13 @@ func init() {
 // BrandActivationFrequency) / more BrandActivationFrequency. Penance Brand
 // activates once per its max energy.
 func brandPreDamage(_ *ModDB, s *activeSkill, _ map[string]float64) {
-	data := s.data
-	f, _ := num(data["repeatFrequency"])
+	data := &s.data
+	f, _ := num(data.val("repeatFrequency"))
 	if s.active.ge.Name == "Penance Brand" {
 		f *= s.mods.SumCfg(s.cfg, "BASE", "Multiplier:PenanceBrandMaxEnergy")
 	}
 	inc := s.mods.SumCfg(s.cfg, "INC", "Speed", "BrandActivationFrequency")
-	data["hitTimeOverride"] = f / (1 + inc/100) / s.mods.MoreCfg(s.cfg, "BrandActivationFrequency")
+	data.hitTimeOverride = optF{f / (1 + inc/100) / s.mods.MoreCfg(s.cfg, "BrandActivationFrequency"), true}
 }
 
 // Data/Skills/act_int.lua Wintertide Brand preDamageFunc.
@@ -33,12 +33,12 @@ func brandPreDamage(_ *ModDB, s *activeSkill, _ map[string]float64) {
 // duration, plus the strongest maximum-stage Wintertide's End debuff for
 // its uptime.
 func wintertideBrandPreDamage(actor *ModDB, s *activeSkill, _ map[string]float64) {
-	data := s.data
-	data["countsAttachedBrandsInDamage"] = s.part == 1
-	f, _ := num(data["repeatFrequency"])
+	data := &s.data
+	data.set("countsAttachedBrandsInDamage", s.part == 1)
+	f, _ := num(data.val("repeatFrequency"))
 	inc := s.mods.SumCfg(s.cfg, "INC", "Speed", "BrandActivationFrequency")
 	hitTime := f / (1 + inc/100) / s.mods.MoreCfg(s.cfg, "BrandActivationFrequency")
-	data["hitTimeOverride"] = hitTime
+	data.hitTimeOverride = optF{hitTime, true}
 	if s.part == 1 && hitTime > 0 {
 		list, cfg := s.mods, s.cfg
 		skillMaxStages := list.SumCfg(cfg, "BASE", "Multiplier:WintertideBrandMaxStages")
@@ -51,11 +51,11 @@ func wintertideBrandPreDamage(actor *ModDB, s *activeSkill, _ map[string]float64
 		timeAtMaxStages := math.Max(duration-maxStages*hitTime, 0)
 		damagePerStage := list.SumCfg(cfg, "BASE", "Multiplier:WintertideBrandDamagePerStage")
 		averageStages := (maxStages*(maxStages-1)/2*hitTime + maxStages*timeAtMaxStages) / duration
-		endBase := numOr(data["durationTertiary"], 0) + list.SumCfg(cfg, "BASE", "Duration", "TertiaryDuration")
+		endBase := numOr(data.val("durationTertiary"), 0) + list.SumCfg(cfg, "BASE", "Duration", "TertiaryDuration")
 		endMod := math.Max(calcMod(list, cfg, "Duration", "TertiaryDuration"), 0)
 		endDuration := math.Ceil(endBase*endMod*debuffDurationMult*serverTickRate) / serverTickRate
 		endUptime := math.Min(endDuration/duration, 1)
-		attached := numOr(data["attachedBrandCount"], 0)
+		attached := numOr(data.val("attachedBrandCount"), 0)
 		mult := attached*(100+averageStages*damagePerStage) + endUptime*(100+maxStages*damagePerStage) - 100
 		list.NewMod("Damage", "MORE", mult, "Wintertide Brand Average Multiplier")
 	}

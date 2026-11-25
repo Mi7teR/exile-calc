@@ -123,7 +123,7 @@ func (c *Calculator) minionPlayerGear(db, mdb *ModDB, s *activeSkill, typ string
 		}
 		return ""
 	}
-	if truthy(s.data["minionUseBowAndQuiver"]) {
+	if truthy(s.data.val("minionUseBowAndQuiver")) {
 		if baseType("Weapon 1") == "Bow" {
 			add("Weapon 1", 1)
 		}
@@ -134,7 +134,7 @@ func (c *Calculator) minionPlayerGear(db, mdb *ModDB, s *activeSkill, typ string
 			add("Gloves", 1)
 		}
 	}
-	if truthy(s.data["minionUseMainHandWeapon"]) || (typ == "RaisedSkeleton" && wieldsIronMass(db)) {
+	if truthy(s.data.val("minionUseMainHandWeapon")) || (typ == "RaisedSkeleton" && wieldsIronMass(db)) {
 		add("Weapon 1", 1)
 	}
 }
@@ -454,7 +454,8 @@ func (c *Calculator) mainMinion(db *ModDB, skills []*activeSkill, buffs map[stri
 	// minionUseBowAndQuiver (with a bow) and minionUseMainHandWeapon: the
 	// minion's weaponData1 is the player's.
 	if pw, ptyp, ok := itemWeapon(db.items["Weapon 1"], db.gearMods["Weapon 1"]); ok &&
-		((truthy(s.data["minionUseBowAndQuiver"]) && ptyp == "Bow") || truthy(s.data["minionUseMainHandWeapon"]) ||
+		((truthy(s.data.val("minionUseBowAndQuiver")) && ptyp == "Bow") ||
+			truthy(s.data.val("minionUseMainHandWeapon")) ||
 			(m.typ == "RaisedSkeleton" && wieldsIronMass(db))) {
 		weapon, weaponType = pw, ptyp
 	}
@@ -599,8 +600,8 @@ func (c *Calculator) createMinionSkills(mdb *ModDB, s *activeSkill, m *skillMini
 		c.buildSkillMods(mdb, ms, res)
 		ms.flags["minion"], ms.flags["minionSkill"], ms.flags["haveMinion"] = true, true, true
 		ms.flags["spectre"] = s.flags["spectre"]
-		eff2, _ := num(s.data["minionDamageEffectiveness"])
-		ms.data["damageEffectiveness"] = 1 + eff2/100
+		eff2, _ := num(s.data.val("minionDamageEffectiveness"))
+		ms.data.set("damageEffectiveness", 1+eff2/100)
 		list = append(list, ms)
 	}
 	return list
@@ -626,7 +627,7 @@ func (c *Calculator) minionSkillBuffs(db, mdb *ModDB, skills []*activeSkill, mai
 			casting, list = c.bareMinionSkills(db, s, m, res)
 		}
 		for _, ms := range list {
-			if !truthy(ms.data["enable"]) {
+			if !truthy(ms.data.val("enable")) {
 				continue
 			}
 			skillList, cfg := ms.mods, ms.cfg
@@ -655,7 +656,8 @@ func (c *Calculator) minionSkillBuffs(db, mdb *ModDB, skills []*activeSkill, mai
 						casting.Flag("SelfAuraSkillsCannotAffectAllies") || skillList.FlagCfg(cfg, "SelfAurasAffectYouAndLinkedTarget") {
 						continue
 					}
-					if mdb.conditions["AffectedBy"+name] || (casting == mdb && truthy(s.data["auraCannotAffectSelf"])) {
+					if mdb.conditions["AffectedBy"+name] ||
+						(casting == mdb && truthy(s.data.val("auraCannotAffectSelf"))) {
 						continue
 					}
 					inc := skillList.SumCfg(cfg, "INC", "AuraEffect", "BuffEffect") + mdb.SumCfg(cfg, "INC", "BuffEffectOnSelf", "AuraEffectOnSelf")

@@ -5,20 +5,20 @@ import "math"
 // skillDot is "Calculate skill DOT components": the skill's own damage
 // over time (TotalDotInstance, TotalDot). preDotFunc is not ported.
 func skillDot(actor *ModDB, s *activeSkill, out map[string]float64, dpsMult, quantity float64) {
-	list, data, enemy, sc := s.mods, s.data, actor.enemy, s.cfg
+	list, data, enemy, sc := s.mods, &s.data, actor.enemy, s.cfg
 	flags := sc.Flags | mfDot
 	for _, x := range []struct {
 		flag uint64
 		key  string
 	}{{mfArea, "dotIsArea"}, {mfProjectile, "dotIsProjectile"}, {mfSpell, "dotIsSpell"}, {mfAttack, "dotIsAttack"}, {mfHit, "dotIsHit"}} {
-		if !truthy(data[x.key]) {
+		if !truthy(data.val(x.key)) {
 			flags &^= x.flag
 		}
 	}
 	base := *sc
 	base.Flags, base.KeywordFlags = flags, sc.KeywordFlags&^kfHit
 	taken := base
-	if truthy(data["dotIsSpell"]) {
+	if truthy(data.val("dotIsSpell")) {
 		taken.Flags &^= mfSpell
 	}
 	out["TotalDotInstance"] = 0
@@ -27,7 +27,7 @@ func skillDot(actor *ModDB, s *activeSkill, out map[string]float64, dpsMult, qua
 		tc.KeywordFlags |= kfDot[t]
 		baseVal := 0.0
 		if canDeal(s, t) {
-			baseVal, _ = num(data[t+"Dot"])
+			baseVal, _ = num(data.val(t + "Dot"))
 		}
 		if !(baseVal > 0 || out[t+"Dot"] > 0) {
 			continue
@@ -109,7 +109,7 @@ func skillDot(actor *ModDB, s *activeSkill, out map[string]float64, dpsMult, qua
 			s.flags["DotCanStack"] = true
 		}
 		brands := 1.0
-		if s.types[stBrand] && !truthy(data["countsAttachedBrandsInDamage"]) {
+		if s.types[stBrand] && !truthy(data.val("countsAttachedBrandsInDamage")) {
 			if v, ok := out["AttachedBrandCount"]; ok {
 				brands = v
 			}
@@ -125,7 +125,7 @@ func skillDot(actor *ModDB, s *activeSkill, out map[string]float64, dpsMult, qua
 // decay is Essence of Delirium's Decay (CalcOffence "Calculate DPS for
 // Essence of Delirium's Decay effect"): skillData.decay chaos DoT per second.
 func decay(actor *ModDB, s *activeSkill, out map[string]float64) {
-	base, ok := num(s.data["decay"])
+	base, ok := num(s.data.val("decay"))
 	if !ok || !s.flags["hit"] || !canDeal(s, "Chaos") {
 		return
 	}
@@ -169,7 +169,7 @@ func cullAndReservation(actor *ModDB, s *activeSkill, p *hitPass, global map[str
 // combinedDPS is "Calculate combined DPS estimate, including DoTs".
 func combinedDPS(s *activeSkill, out map[string]float64, passes []*hitPass, dpsMult, quantity float64) {
 	baseDPS := out["TotalDPS"]
-	showAverage := truthy(s.data["showAverage"])
+	showAverage := truthy(s.data.val("showAverage"))
 	if showAverage {
 		baseDPS = out["AverageDamage"]
 	}
@@ -211,7 +211,7 @@ func combinedDPS(s *activeSkill, out map[string]float64, passes []*hitPass, dpsM
 			}
 			return o["impaleStoredHitAvg"] * (mod - 1) * o["HitChance"] / 100 * dpsMult
 		}
-		if s.flags["attack"] && truthy(s.data["doubleHitsWhenDualWielding"]) && len(passes) == 2 {
+		if s.flags["attack"] && truthy(s.data.val("doubleHitsWhenDualWielding")) && len(passes) == 2 {
 			out["ImpaleDPS"] = impaleDPS(passes[0].out) + impaleDPS(passes[1].out)
 		} else {
 			out["ImpaleDPS"] = impaleDPS(out)

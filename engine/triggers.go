@@ -38,7 +38,8 @@ type triggerConfig struct {
 }
 
 func isTriggered(s *activeSkill) bool {
-	return truthy(s.data["triggeredByUnique"]) || truthy(s.data["triggered"]) || s.types[stInbuiltTrigger] || s.types[stTriggered]
+	return truthy(s.data.val("triggeredByUnique")) || truthy(s.data.val("triggered")) ||
+		s.types[stInbuiltTrigger] || s.types[stTriggered]
 }
 
 // triggeredBy is activeSkill.triggeredBy: the trigger support (isTrigger
@@ -63,7 +64,7 @@ func slotMatch(main, s *activeSkill) bool {
 
 var triggerConfigs = map[string]func(db *ModDB, main *activeSkill) *triggerConfig{
 	"doom blast": func(db *ModDB, main *activeSkill) *triggerConfig {
-		main.data["ignoresTickRate"] = true
+		main.data.set("ignoresTickRate", true)
 		cfg := &triggerConfig{doomBlast: true,
 			triggerSkillCond: func(main, s *activeSkill) bool { return s.types[stHex] && slotMatch(main, s) }}
 		if len(db.TabulateCfg(nil, "BASE", "Multiplier:CurseOverlaps")) > 0 {
@@ -77,19 +78,20 @@ var triggerConfigs = map[string]func(db *ModDB, main *activeSkill) *triggerConfi
 				return (s.types[stDamage] || s.types[stAttack]) && s.cfg.Flags&modFlagByName["Bow"] > 0
 			},
 			triggeredSkillCond: func(main, s *activeSkill) bool {
-				return truthy(s.data["triggeredByUnique"]) && main.group != nil && s.group != nil && main.group.Slot == s.group.Slot && s.types[stSpell]
+				return truthy(s.data.val("triggeredByUnique")) && main.group != nil && s.group != nil &&
+					main.group.Slot == s.group.Slot && s.types[stSpell]
 			}}
 	},
 	"the covetous dark": func(*ModDB, *activeSkill) *triggerConfig {
 		return &triggerConfig{
 			triggerSkillCond:   func(_, s *activeSkill) bool { return s.types[stMelee] },
-			triggeredSkillCond: func(main, s *activeSkill) bool { return truthy(s.data["triggeredByCovetousDark"]) }}
+			triggeredSkillCond: func(_, s *activeSkill) bool { return truthy(s.data.val("triggeredByCovetousDark")) }}
 	},
 	"cast when stunned": func(_ *ModDB, main *activeSkill) *triggerConfig {
-		return &triggerConfig{selfSource: true, triggerChance: numOr(main.data["chanceToTriggerOnStun"], 0)}
+		return &triggerConfig{selfSource: true, triggerChance: numOr(main.data.val("chanceToTriggerOnStun"), 0)}
 	},
 	"cast on ward break": func(_ *ModDB, main *activeSkill) *triggerConfig {
-		return &triggerConfig{selfSource: true, triggerChance: numOr(main.data["chanceToTriggerOnWardBreak"], 0)}
+		return &triggerConfig{selfSource: true, triggerChance: numOr(main.data.val("chanceToTriggerOnWardBreak"), 0)}
 	},
 	"avenging flame": func(*ModDB, *activeSkill) *triggerConfig {
 		return &triggerConfig{ignoreSourceRate: true,
@@ -100,13 +102,16 @@ var triggerConfigs = map[string]func(db *ModDB, main *activeSkill) *triggerConfi
 		// skipEffectiveRate / sourceRateIsFinal only change the breakdown.
 		return &triggerConfig{triggerOnUse: true,
 			triggerSkillCond: func(main, s *activeSkill) bool {
-				return s.types[stAttack] && s.types[stProjectile] && s.cfg.Flags&modFlagByName["Wand"] > 0 && !truthy(s.data["triggeredBySpellSlinger"])
+				return s.types[stAttack] && s.types[stProjectile] && s.cfg.Flags&modFlagByName["Wand"] > 0 &&
+					!truthy(s.data.val("triggeredBySpellSlinger"))
 			}}
 	},
 	"cast on critical strike": func(*ModDB, *activeSkill) *triggerConfig {
 		return &triggerConfig{
-			triggerSkillCond:   func(main, s *activeSkill) bool { return s.types[stAttack] && slotMatch(main, s) },
-			triggeredSkillCond: func(main, s *activeSkill) bool { return truthy(s.data["triggeredByCoc"]) && slotMatch(main, s) }}
+			triggerSkillCond: func(main, s *activeSkill) bool { return s.types[stAttack] && slotMatch(main, s) },
+			triggeredSkillCond: func(main, s *activeSkill) bool {
+				return truthy(s.data.val("triggeredByCoc")) && slotMatch(main, s)
+			}}
 	},
 }
 
@@ -114,7 +119,7 @@ var sourceItemRe = regexp.MustCompile(`^.*:.*:(.*),.*$`)
 
 // uniqueTriggerName is getUniqueItemTriggerName.
 func uniqueTriggerName(s *activeSkill) string {
-	if v, ok := s.data["triggerSource"].(string); ok {
+	if v, ok := s.data.val("triggerSource").(string); ok {
 		return v
 	}
 	for _, e := range s.supportList {
@@ -141,8 +146,9 @@ type simSkill struct {
 
 func packageSim(s *activeSkill) *simSkill {
 	o, has := s.mods.OverrideCfg(s.cfg, "CooldownRecovery")
-	return &simSkill{skill: s, cd: numOr(s.data["cooldown"], 0), cdOverride: o, hasOverride: has,
-		icdr: calcMod(s.mods, s.cfg, "CooldownRecovery"), addedCooldown: s.mods.SumCfg(s.cfg, "BASE", "CooldownRecovery")}
+	return &simSkill{skill: s, cd: s.data.cooldown.or(0), cdOverride: o, hasOverride: has,
+		icdr:          calcMod(s.mods, s.cfg, "CooldownRecovery"),
+		addedCooldown: s.mods.SumCfg(s.cfg, "BASE", "CooldownRecovery")}
 }
 
 // rotationImpact is calcMultiSpellRotationImpact: the main skill's trigger
@@ -231,7 +237,7 @@ func (c *Calculator) triggers(db *ModDB, main *activeSkill, w1 hitSource, w2 *hi
 		}
 	}
 	if cfgFn == nil {
-		delete(main.data, "triggered")
+		main.data.del("triggered")
 		return
 	}
 	c.defaultTrigger(db, main, by, cfgFn(db, main), w1, w2)
@@ -278,16 +284,16 @@ func (c *Calculator) defaultTrigger(db *ModDB, main *activeSkill, by *skillEffec
 		source, sourceOut, trigRate = cfg.source, cfg.sourceOut, cfg.trigRate
 	}
 	if source == nil {
-		delete(main.data, "triggered")
+		main.data.del("triggered")
 		return
 	}
-	main.data["triggered"] = true
+	main.data.set("triggered", true)
 	if w2 != nil && main.weapons[0] != "" && main.weapons[1] != "" &&
-		!truthy(source.data["doubleHitsWhenDualWielding"]) &&
+		!truthy(source.data.val("doubleHitsWhenDualWielding")) &&
 		(source.types[stMelee] || source.types[stAttack]) && by != nil && by.ge.FromItem {
 		trigRate /= 2
 	}
-	ignoresTick := truthy(main.data["ignoresTickRate"]) || numOr(main.data["storedUses"], 0) > 1
+	ignoresTick := truthy(main.data.val("ignoresTickRate")) || main.data.storedUses.or(0) > 1
 	icdr := calcMod(main.mods, main.cfg, "CooldownRecovery")
 	if icdr == 0 {
 		icdr = 1
@@ -304,7 +310,7 @@ func (c *Calculator) defaultTrigger(db *ModDB, main *activeSkill, by *skillEffec
 			triggerCD = lv.Cooldown
 		}
 	}
-	triggeredCD := numOr(main.data["cooldown"], 0)
+	triggeredCD := main.data.cooldown.or(0)
 	triggeredAdj := (triggeredCD + added) / icdr
 	triggerAdj := triggerCD / icdr
 	tick := func(v float64) float64 { return math.Ceil(v*serverTickRate) / serverTickRate }
@@ -324,7 +330,7 @@ func (c *Calculator) defaultTrigger(db *ModDB, main *activeSkill, by *skillEffec
 	if cfg.ignoreSourceRate {
 		out["EffectiveSourceRate"] = out["TriggerRateCap"]
 	}
-	main.data["triggerSourceTotemLife"] = sourceOut["TotemLife"]
+	main.data.set("triggerSourceTotemLife", sourceOut["TotemLife"])
 	if cfg.doomBlast {
 		c.doomBlastSourceRate(db, main, sourceOut, trigRate, icdr, w1, w2)
 	}
@@ -334,9 +340,9 @@ func (c *Calculator) defaultTrigger(db *ModDB, main *activeSkill, by *skillEffec
 		if hc := sourceOut["HitChance"]; hc != 100 {
 			chance *= hc / 100
 		}
-		if truthy(main.data["triggerOnCrit"]) {
+		if truthy(main.data.val("triggerOnCrit")) {
 			if cfg.triggerChance == 0 {
-				cfg.triggerChance = numOr(main.data["chanceToTriggerOnCrit"], 0)
+				cfg.triggerChance = numOr(main.data.val("chanceToTriggerOnCrit"), 0)
 			}
 			if cc := sourceOut["CritChance"]; cc != 100 {
 				chance *= cc / 100
@@ -374,7 +380,7 @@ func (c *Calculator) defaultTrigger(db *ModDB, main *activeSkill, by *skillEffec
 		}
 	}
 	out["SkillTriggerRate"] = skillRate
-	main.data["triggerRate"] = skillRate
+	main.data.set("triggerRate", skillRate)
 	// addTriggerIncMoreMods: TriggeredDamage applies to the triggered skill.
 	for _, typ := range []string{"INC", "MORE"} {
 		for _, m := range appliedMods(main.mods, source.cfg, typ, "TriggeredDamage") {
@@ -433,27 +439,28 @@ func (c *Calculator) cwcTrigger(db *ModDB, main *activeSkill) {
 	var triggered []*simSkill
 	for _, s := range db.activeSkills {
 		match := slotMatch(main, s)
-		if source == nil && s.data["triggerTime"] != nil && s.types[stChannel] && s != main && match && !isTriggered(s) {
+		if source == nil && s.data.val("triggerTime") != nil && s.types[stChannel] && s != main && match &&
+			!isTriggered(s) {
 			source = s
 		}
-		if truthy(s.data["triggeredWhileChannelling"]) && match {
+		if truthy(s.data.val("triggeredWhileChannelling")) && match {
 			triggered = append(triggered, packageSim(s))
 		}
 	}
 	if source == nil || len(triggered) == 0 {
-		delete(main.data, "triggered")
+		main.data.del("triggered")
 		return
 	}
 	icdr := calcMod(main.mods, main.cfg, "CooldownRecovery")
 	if icdr == 0 {
 		icdr = 1
 	}
-	interval := numOr(source.data["triggerTime"], 0)
+	interval := numOr(source.data.val("triggerTime"), 0)
 	if interval <= 0 {
 		return
 	}
 	rateOfTrigger := 1 / interval
-	total := numOr(main.data["cooldown"], 0) / icdr
+	total := main.data.cooldown.or(0) / icdr
 	if o, ok := main.mods.OverrideCfg(main.cfg, "CooldownRecovery"); ok {
 		total = o
 	}
@@ -474,8 +481,8 @@ func (c *Calculator) cwcTrigger(db *ModDB, main *activeSkill) {
 			main.mods.Add(Mod{Name: "Damage", Type: typ, Value: m.Value, Flags: m.Flags, KeywordFlags: m.KeywordFlags, Source: m.Source, Tags: m.Tags})
 		}
 	}
-	main.data["triggered"] = true
-	main.data["triggerRate"] = rate
+	main.data.set("triggered", true)
+	main.data.set("triggerRate", rate)
 	main.flags["globalTrigger"] = true
 }
 
@@ -490,7 +497,7 @@ func (c *Calculator) snipeTrigger(db *ModDB, main *activeSkill, by *skillEffect,
 	// PoB compares socketGroup.slot of skills with a group; a main skill
 	// without one (granted) has no Snipe to pair with.
 	if main.group == nil {
-		delete(main.data, "triggered")
+		main.data.del("triggered")
 		return
 	}
 	stages := math.Min(db.Sum("BASE", "Multiplier:SnipeStage"), db.Sum("BASE", "Multiplier:SnipeStagesMax"))
@@ -504,7 +511,7 @@ func (c *Calculator) snipeTrigger(db *ModDB, main *activeSkill, by *skillEffect,
 	}
 	var triggered []*activeSkill
 	for _, s := range db.activeSkills {
-		if truthy(s.data["triggeredBySnipe"]) && s.group != nil && slot(s) == slot(main) {
+		if truthy(s.data.val("triggeredBySnipe")) && s.group != nil && slot(s) == slot(main) {
 			triggered = append(triggered, s)
 		}
 	}
@@ -517,7 +524,7 @@ func (c *Calculator) snipeTrigger(db *ModDB, main *activeSkill, by *skillEffect,
 	if main.active.ge.Name == "Snipe" {
 		// max(1, stages) as other channelled ranged skills; the first stage
 		// takes half the time.
-		main.data["hitTimeMultiplier"] = math.Max(1, stages) - 0.5
+		main.data.set("hitTimeMultiplier", math.Max(1, stages)-0.5) //nolint:mnd // PoB literal
 		if len(triggered) == 0 {
 			stageMods()
 			return
@@ -536,7 +543,7 @@ func (c *Calculator) snipeTrigger(db *ModDB, main *activeSkill, by *skillEffect,
 		}
 	}
 	if idx == 0 || float64(idx) > stages {
-		delete(main.data, "triggered")
+		main.data.del("triggered")
 		return
 	}
 	stageMods()
@@ -547,7 +554,7 @@ func (c *Calculator) snipeTrigger(db *ModDB, main *activeSkill, by *skillEffect,
 		if s.active.ge.Name != "Snipe" || s.group == nil || slot(s) != slot(main) {
 			continue
 		}
-		s.data["hitTimeMultiplier"] = stages - 0.5
+		s.data.set("hitTimeMultiplier", stages-0.5) //nolint:mnd // PoB literal
 		o := c.offenceOnCopy(db, s, w1, w2)
 		speed, ok := o["HitSpeed"]
 		if !s.disabled && !s.cfg.SkillCond["usedByMirage"] && !s.types[stOtherThingUsesSkill] && ok &&
@@ -557,7 +564,7 @@ func (c *Calculator) snipeTrigger(db *ModDB, main *activeSkill, by *skillEffect,
 		}
 	}
 	if source == nil {
-		delete(main.data, "triggered")
+		main.data.del("triggered")
 		return
 	}
 	c.defaultTrigger(db, main, by, &triggerConfig{source: source, sourceOut: sourceOut, trigRate: trigRate}, w1, w2)
