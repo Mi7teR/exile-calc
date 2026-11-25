@@ -93,6 +93,9 @@ func (c *Calculator) initMinionDB(db *ModDB, s *activeSkill, m *skillMinion, res
 	for _, mm := range m.data.ModList {
 		mdb.Add(modFromMap(mm, "Minion:"+m.data.Name))
 	}
+	for _, em := range s.extraSkillMods {
+		mdb.Add(em)
+	}
 	if truthy(s.data["minionUseBowAndQuiver"]) || truthy(s.data["minionUseMainHandWeapon"]) {
 		res.Incomplete = append(res.Incomplete, "minion weapons not applied: "+m.data.Name)
 	}

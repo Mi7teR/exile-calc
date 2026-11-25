@@ -258,6 +258,9 @@ type skillBuff struct {
 }
 
 type activeSkill struct {
+	// extraSkillMods is activeSkill.extraSkillModList: the ExtraSkillMod mods
+	// added to the skill, also given to its minions.
+	extraSkillMods []Mod
 	active      *skillEffect
 	effects     []*skillEffect // the active effect, then compatible supports
 	types       map[int]bool
@@ -1439,7 +1442,9 @@ func (c *Calculator) buildSkillMods(db *ModDB, s *activeSkill, res *Result) {
 			if src == "" {
 				src = e.Mod.Source
 			}
-			list.Add(modFromMap(m, src))
+			em := modFromMap(m, src)
+			list.Add(em)
+			s.extraSkillMods = append(s.extraSkillMods, em)
 		}
 	}
 	if lv := ge.Levels[a.level]; lv != nil && lv.Cooldown != 0 {
