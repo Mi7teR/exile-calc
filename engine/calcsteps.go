@@ -2,6 +2,7 @@ package engine
 
 import (
 	"fmt"
+	"maps"
 	"math"
 	"sort"
 	"strconv"
@@ -537,7 +538,13 @@ func stepConfig(c *Calculator, st *calcState) error {
 	db.enemy.NewMod("Accuracy", "BASE", enemyAccuracy(c.data.Monster, db.enemyEnv.level), "Base")
 	// CalcSetup.lua: env.enemyDB:AddList(build.partyTab.enemyModList).
 	db.party = newPartyActor(b.Party)
+	// env.partyMembers always exists in PoB: an empty actor without a Party tab.
+	db.partyMembers = NewModDB()
 	if db.party != nil {
+		maps.Copy(db.partyMembers.output, db.party.output)
+		for _, m := range db.party.flags {
+			db.partyMembers.Add(m)
+		}
 		for _, m := range db.party.enemyMods {
 			db.enemy.Add(m)
 		}
@@ -546,6 +553,13 @@ func stepConfig(c *Calculator, st *calcState) error {
 		// is equal to yours"; none of those reads is ported.
 		for _, m := range db.party.flags {
 			res.Incomplete = append(res.Incomplete, "party member flag not applied: "+m.Name)
+		}
+		// Party link mods whose readers are not ported (CalcDefence.lua
+		// leech cap, CalcOffence.lua Destructive Link crit).
+		for _, name := range db.party.linkModNames() {
+			if name == "MaximumLifeLeechIsEqualToPartyMember" || name == "MainHandCritIsEqualToPartyMember" {
+				res.Incomplete = append(res.Incomplete, "party link mod not applied: "+name)
+			}
 		}
 	}
 	shrineBaseMods(db)

@@ -11,10 +11,20 @@ import (
 // partyBuff is one buff of a Party tab list (Classes/PartyTab.lua
 // ParseBuffs: listElement): the exporter's effect in percent and its mods.
 type partyBuff struct {
-	name   string
-	effect float64
-	isMark bool
-	mods   []Mod
+	name     string
+	effect   float64
+	noEffect bool // the effect line was not a number (Lua nil)
+	isMark   bool
+	mods     []Mod
+}
+
+// effectOr100 is (effectMult or 100) of the party Warcry and Link loops
+// (CalcPerform.lua:3126, 3146).
+func (b *partyBuff) effectOr100() float64 {
+	if b.noEffect {
+		return 100
+	}
+	return b.effect
 }
 
 // partyBuffList is list[currentModType] of ParseBuffs: the buffs by name in
@@ -37,7 +47,9 @@ func (l *partyBuffList) get(name string) *partyBuff {
 }
 
 // partyActor is env.build.partyTab.actor (env.partyMembers) and the tab's
-// enemyModList, read from the build's Party tab. The Party tab's buffs
+// enemyModList, read from the build's Party tab. ParseBuffs' rewrite of
+// unknown "Skill:" sources to a known skill id (PartyTab.lua:872-881) is not
+// ported: it only changes mod sources. The Party tab's buffs
 // apply whether or not the build exports its own (enableExportBuffs only
 // fills buffExports, CalcPerform.lua partyTabEnableExportBuffs).
 type partyActor struct {
@@ -101,10 +113,10 @@ func newPartyActor(p *pobcode.Party) *partyActor {
 
 // partyStat is actor.partyMembers.output[name] (only the player has a party).
 func (db *ModDB) partyStat(name string) (float64, bool) {
-	if db == nil || db.party == nil {
+	if db == nil || db.partyMembers == nil {
 		return 0, false
 	}
-	v, ok := db.party.output[name]
+	v, ok := db.partyMembers.output[name]
 	return v, ok
 }
 
@@ -157,6 +169,12 @@ func (a *partyActor) parseMemberStats(text string) {
 	}
 }
 
+// luaNumber is tonumber(s); ok is false for Lua's nil.
+func luaNumber(s string) (float64, bool) {
+	v, err := strconv.ParseFloat(strings.TrimSpace(s), 64)
+	return v, err == nil
+}
+
 // luaToNumber is tonumber(s), nil read as 0.
 func luaToNumber(s string) float64 {
 	v, _ := strconv.ParseFloat(strings.TrimSpace(s), 64)
@@ -187,6 +205,7 @@ type partyParser struct {
 	buffType, mode string
 	name, modType  string
 	effect         float64
+	noEffect       bool
 	isMark         bool
 	limit          *float64
 }
@@ -200,7 +219,7 @@ func (p *partyParser) line(line string) {
 		p.mode = "Name"
 	case p.mode == "Name" && line != "":
 		p.name = strings.ReplaceAll(line, "_Debuff", "")
-		p.effect = 0
+		p.effect, p.noEffect = 0, false
 		if line == "extraAura" || line == "otherEffects" {
 			p.modType = line
 			p.mode = "Stats"
@@ -209,7 +228,8 @@ func (p *partyParser) line(line string) {
 			p.modType = "Unknown"
 		}
 	case p.mode == "Effect":
-		p.effect = luaToNumber(line)
+		v, ok := luaNumber(line)
+		p.effect, p.noEffect = v, !ok
 		if p.buffType == "Curse" {
 			p.mode = "isMark"
 		} else {
@@ -237,6 +257,7 @@ func (p *partyParser) mod(line string) {
 			return
 		}
 		p.name, p.effect, line = m[1], luaToNumber(m[2]), m[3]
+		p.noEffect = false
 	}
 	mod, ok := parseFormattedSourceMod(line)
 	if !ok {
@@ -289,14 +310,14 @@ func (p *partyParser) element() *partyBuff {
 		case b.effect == p.effect:
 			return b
 		case b.effect < p.effect:
-			(*elems)[i] = &partyBuff{name: p.name, effect: p.effect}
+			(*elems)[i] = &partyBuff{name: p.name, effect: p.effect, noEffect: p.noEffect}
 			return (*elems)[i]
 		default:
 			p.name = "SKIP"
 			return nil
 		}
 	}
-	b := &partyBuff{name: p.name, effect: p.effect, isMark: p.isMark}
+	b := &partyBuff{name: p.name, effect: p.effect, noEffect: p.noEffect, isMark: p.isMark}
 	*elems = append(*elems, b)
 	return b
 }
@@ -344,6 +365,8 @@ func parseFormattedSourceMod(line string) (Mod, bool) {
 		}
 		m.Value = v
 	}
+	// PoB quirk, copied: ModFlag[name] reads one flag name, so a mod
+	// exported with several flags ("Attack,Hit") loses them all.
 	if len(parts) > 4 {
 		m.Flags = modFlagNames[parts[4]]
 	}
@@ -411,6 +434,8 @@ func (a *partyActor) partyBuffsOnPlayer(db *ModDB, add func([]Mod, string), addD
 	}
 	cond := func(name string) string { return "AffectedBy" + strings.ReplaceAll(name, " ", "") }
 	if l := a.aura["otherEffects"]; l != nil {
+		// PoB quirk, copied: (effectMult + inc) / 100 * more adds the
+		// effect on self as percentage points to the exporter's effect.
 		inc := db.Sum("INC", "BuffEffectOnSelf", "AuraEffectOnSelf")
 		more := db.More("BuffEffectOnSelf", "AuraEffectOnSelf")
 		for _, b := range append(append([]*partyBuff(nil), l.buffs...), l.vaal...) {
@@ -458,7 +483,7 @@ func (a *partyActor) partyBuffsOnPlayer(db *ModDB, add func([]Mod, string), addD
 			if !db.conditions[cond(b.name)] {
 				db.conditions["AffectedByLink"] = true
 				db.conditions[cond(b.name)] = true
-				add(scaleMods(b.mods, b.effect/100), b.name)
+				add(scaleMods(b.mods, b.effectOr100()/100), b.name)
 			}
 		}
 	}
@@ -475,7 +500,7 @@ func partyWarcryMods(b *partyBuff) []Mod {
 				bonus = v
 			}
 		}
-		out = append(out, scaleMod(m, b.effect/100*bonus))
+		out = append(out, scaleMod(m, b.effectOr100()/100*bonus))
 	}
 	return out
 }
@@ -551,4 +576,17 @@ func (a *partyActor) partyCurses(enemy *ModDB) ([]*enemyCurse, int) {
 		out = append(out, &enemyCurse{name: b.name, isMark: b.isMark, mods: scaleMods(b.mods, mult)})
 	}
 	return out, int(a.curseLimit)
+}
+
+// linkModNames are the mod names of the party's Link buffs.
+func (a *partyActor) linkModNames() []string {
+	var out []string
+	if l := a.link["Link"]; l != nil {
+		for _, b := range l.buffs {
+			for _, m := range b.mods {
+				out = append(out, m.Name)
+			}
+		}
+	}
+	return out
 }

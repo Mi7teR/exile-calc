@@ -53,8 +53,10 @@ type ModDB struct {
 	// minionSkillCache holds the skills of non-main minions, by summoning
 	// skill, built once per calculation.
 	minionSkillCache map[*activeSkill][]*activeSkill
-	gameIDs          func(gemName string) string // calcLib.getGameIdFromGemName(name, true)
-	party            *partyActor                 // the player's: env.partyMembers (Party tab)
+	gameIDs          func(gemName string) string                // calcLib.getGameIdFromGemName(name, true)
+	party            *partyActor                                // the player's: env.partyMembers (Party tab)
+	partyMembers     *ModDB                                     // the player's: env.partyMembers.modDB (its output from PartyMemberStats)
+	minionFlasks     struct{ any, nonUnique, quicksilver bool } // the player's active flasks that could reach a minion
 
 	// UnsupportedTags counts tag types EvalMod does not port yet; mods
 	// carrying them are left out of every sum.
@@ -396,6 +398,10 @@ func (db *ModDB) target(t map[string]any) (*ModDB, bool) {
 		return db.enemy, db.enemy != nil
 	case "parent":
 		return db.owner, db.owner != nil
+	case "partyMembers":
+		// actor.partyMembers: only the player has one (CalcPerform.lua:1313).
+		r := db.root()
+		return r.partyMembers, r.partyMembers != nil
 	case "player":
 		// getActor: actor.player, else the parent's or the enemy's.
 		r := db.root()

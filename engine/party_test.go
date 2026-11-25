@@ -1,6 +1,8 @@
 package engine
 
 import (
+	"slices"
+	"strings"
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
@@ -8,13 +10,13 @@ import (
 	"github.com/Mi7teR/poe-lib/pobcode"
 )
 
-// TestPartyIgnoredWithoutExport: the Import tab's "Export Support"
+// TestPartyExportFlagInert: the Import tab's "Export Support"
 // (partyTabEnableExportBuffs, CalcPerform.lua:1314) only fills buffExports,
 // so it never changes the build's own numbers, and a Party that only
 // exports is the same as none. The party's imported buffs apply with the
 // flag off, as in PoB (the oracle gives identical output for the party-*
 // corpus builds with exportParty on and off).
-func TestPartyIgnoredWithoutExport(t *testing.T) {
+func TestPartyExportFlagInert(t *testing.T) {
 	c := newCalc(t)
 	stats := func(b *pobcode.Build) map[string]float64 {
 		t.Helper()
@@ -130,6 +132,20 @@ func TestPartyCurseWarcryLink(t *testing.T) {
 	if !found(db, "PhysicalDamageGainAsFire", "Skill:FlameLink") || !db.conditions["AffectedByLink"] {
 		t.Error("party Flame Link not on the player")
 	}
+	// The real Flame Link export: FireMin 3 per 1% of the linking party
+	// member's Life (PercentStat actor=partyMembers, Life=6000 from
+	// PartyMemberStats), at 200% effect: 3 * 6000 * 1/100 * 2 = 360, as PoB.
+	for _, name := range []string{"FireMin", "FireMax"} {
+		got := 0.0
+		for _, r := range db.TabulateCfg(nil, "BASE", name) {
+			if v, ok := num(r.Value); ok && r.Source == "Skill:FlameLink" {
+				got += v
+			}
+		}
+		if got != 360 {
+			t.Errorf("Flame Link %s = %v, want 360", name, got)
+		}
+	}
 }
 
 // checkPartyAuras checks the Aura tab of TestPartyBuffsParse.
@@ -157,32 +173,72 @@ func checkPartyAuras(t *testing.T, a *partyActor) {
 }
 
 // TestLinkToMinion: with "Linked To Minion?" on, Flame Link reaches the
-// Animated Guardian; the link's non-unique flasks would too, which is not
-// ported and is reported.
+// Animated Guardian. The link also carries the player's non-unique flasks
+// to it, which is not ported: the calculation reports it only when such a
+// flask is active (none is in the saved build).
 func TestLinkToMinion(t *testing.T) {
 	c := newCalc(t)
-	var dps []float64
-	for _, tc := range []struct {
-		id     string
-		linked bool
-	}{{"b7vXBYdtxO95", false}, {"link-b7vXBYdtxO95", true}} {
-		res, err := c.Calc(withMainSkill(corpusBuild(t, tc.id), 2, 2))
+	calc := func(b *pobcode.Build) *Result {
+		t.Helper()
+		res, err := c.Calc(withMainSkill(b, 2, 2))
 		if err != nil {
 			t.Fatal(err)
 		}
 		if res.Minion == nil || res.Minion.Minion != "Animated Guardian" {
-			t.Fatalf("%s: main minion = %+v", tc.id, res.Minion)
+			t.Fatalf("main minion = %+v", res.Minion)
 		}
-		note := false
-		for _, s := range res.Incomplete {
-			note = note || s == "flask effects on the minion are not applied"
-		}
-		if note != tc.linked {
-			t.Errorf("%s: flask note = %v, want %v (%v)", tc.id, note, tc.linked, res.Incomplete)
-		}
-		dps = append(dps, res.Minion.Stats["TotalDPS"])
+		return res
 	}
-	if dps[1] <= dps[0] {
-		t.Errorf("Flame Link must raise the guardian's DPS: %v", dps)
+	note := func(res *Result) bool {
+		return slices.Contains(res.Incomplete, "flask effects on the minion are not applied")
+	}
+	plain, linked := calc(corpusBuild(t, "b7vXBYdtxO95")), calc(corpusBuild(t, "link-b7vXBYdtxO95"))
+	if linked.Minion.Stats["TotalDPS"] <= plain.Minion.Stats["TotalDPS"] {
+		t.Errorf("Flame Link must raise the guardian's DPS: %v -> %v",
+			plain.Minion.Stats["TotalDPS"], linked.Minion.Stats["TotalDPS"])
+	}
+	if note(plain) || note(linked) {
+		t.Errorf("flask note without an active flask: %v / %v", plain.Incomplete, linked.Incomplete)
+	}
+
+	b := corpusBuild(t, "link-b7vXBYdtxO95")
+	set := b.ActiveItems()
+	for i := range set.Slots {
+		if strings.HasPrefix(set.Slots[i].Name, "Flask") {
+			set.Slots[i].Active = true
+		}
+	}
+	if res := calc(b); !note(res) {
+		t.Errorf("active non-unique flasks on a link: no flask note (%v)", res.Incomplete)
+	}
+}
+
+// TestPartyProtectiveLink: a party Protective Link sets block to the
+// linking member's (CalcDefence.lua ...IsEqualToPartyMember), and a link
+// whose effect line is not a number counts at 100% ((effectMult or 100)).
+func TestPartyProtectiveLink(t *testing.T) {
+	b := corpusBuild(t, "NCgd_ieVLUw7")
+	b.Party = &pobcode.Party{Buffs: []pobcode.PartyBuffs{
+		{Name: "PartyMemberStats", Text: "BlockChance=40\nBlockChanceMax=60"},
+		{Name: "Link Skills", Text: "Protective Link\nnot a number\n" +
+			"1|Skill:ProtectiveLink|MaximumBlockAttackChanceIsEqualToParent|FLAG|-|-|type=GlobalEffect/effectType=Link\n" +
+			"1|Skill:ProtectiveLink|BlockAttackChanceIsEqualToParent|FLAG|-|-|type=GlobalEffect/effectType=Link\n" +
+			"10|Skill:ProtectiveLink|Armour|INC|-|-|type=GlobalEffect/effectType=Link\n---"},
+	}}
+	res, err := newCalc(t).Calc(b)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Stats["BlockChanceMax"] != 60 || res.Stats["BlockChance"] != 40 {
+		t.Errorf("block = %v/%v, want the party member's 40/60", res.Stats["BlockChance"], res.Stats["BlockChanceMax"])
+	}
+	got := 0.0
+	for _, r := range res.DB.TabulateCfg(nil, "INC", "Armour") {
+		if v, ok := num(r.Value); ok && r.Source == "Skill:ProtectiveLink" {
+			got += v
+		}
+	}
+	if got != 10 {
+		t.Errorf("Protective Link Armour INC = %v, want 10 (100%% effect)", got)
 	}
 }

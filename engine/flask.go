@@ -141,6 +141,14 @@ func (c *Calculator) applyFlasks(db *ModDB, res *Result, slots []flaskSlot) *fla
 			st.recovery = append(st.recovery, recoveryFlask(it, item, mods, scale))
 		}
 		source := itemSource(item, it)
+		// mergeFlasks' flaskBuffsNonPlayer inputs, for the minion: a flask
+		// with buff or mod lines, a non-unique one, an active Quicksilver
+		// (flaskBuffsPerBaseNonPlayer gets a key per active base).
+		hasMods := len(base.Buff) > 0 || len(mods) > 0
+		db.minionFlasks.any = db.minionFlasks.any || hasMods
+		unique := it.Rarity == "UNIQUE" || it.Rarity == "RELIC" //nolint:goconst // item rarity, as below
+		db.minionFlasks.nonUnique = db.minionFlasks.nonUnique || (hasMods && !unique)
+		db.minionFlasks.quicksilver = db.minionFlasks.quicksilver || it.BaseName == "Quicksilver Flask"
 
 		for _, line := range base.Buff {
 			r := c.parser.Parse(line)

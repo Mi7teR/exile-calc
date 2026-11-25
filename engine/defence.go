@@ -52,6 +52,10 @@ func (c *Calculator) defence(db *ModDB, gearMods map[string][]modparser.Mod, key
 
 	// Block.
 	out["BlockChanceMax"] = math.Min(db.Sum("BASE", "BlockChanceMax"), blockChanceCap)
+	if db.Flag("MaximumBlockAttackChanceIsEqualToPartyMember") {
+		// CalcDefence.lua: a Protective Link from the party.
+		out["BlockChanceMax"], _ = db.partyStat("BlockChanceMax")
+	}
 	baseBlock := armour["Weapon 2"].BlockChance + armour["Weapon 3"].BlockChance
 	out["ShieldBlockChance"] = baseBlock
 	if !keystones["Necromantic Aegis"] {
@@ -60,9 +64,13 @@ func (c *Calculator) defence(db *ModDB, gearMods map[string][]modparser.Mod, key
 		}
 	}
 	blockInc, blockMore := db.Sum("INC", "BlockChance"), db.More("BlockChance")
-	if db.Flag("MaxBlockIfNotBlockedRecently") {
+	switch {
+	case db.Flag("BlockAttackChanceIsEqualToPartyMember"):
+		v, _ := db.partyStat("BlockChance")
+		out["BlockChance"] = math.Min(v, out["BlockChanceMax"])
+	case db.Flag("MaxBlockIfNotBlockedRecently"):
 		out["BlockChance"] = out["BlockChanceMax"]
-	} else {
+	default:
 		total := round((baseBlock+db.Sum("BASE", "BlockChance"))*(1+blockInc/100)*blockMore, 0)
 		out["BlockChance"] = math.Min(total, out["BlockChanceMax"])
 		out["BlockChanceOverCap"] = math.Max(0, total-out["BlockChanceMax"])

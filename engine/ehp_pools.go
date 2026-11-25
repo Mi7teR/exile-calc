@@ -192,6 +192,10 @@ func pools(db *ModDB) {
 	out["SoulLinkMitigation"] = db.Sum("BASE", "TakenFromParentESBeforeYou")
 	if out["SoulLinkMitigation"] == 0 {
 		out["SoulLinkMitigation"] = db.Sum("BASE", "TakenFromPartyMemberESBeforeYou")
+		if out["SoulLinkMitigation"] != 0 {
+			// CalcDefence.lua: a Soul Link from the party.
+			out["AlliedEnergyShield"], _ = db.partyStat("EnergyShieldRecoveryCap")
+		}
 	}
 
 	// Vaal Arctic Armour.
