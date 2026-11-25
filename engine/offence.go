@@ -1085,6 +1085,13 @@ func preDamageFunc(actor *ModDB, s *activeSkill, out map[string]float64) {
 			Tags: []map[string]any{{"type": "DistanceRamp", "ramp": []any{[]any{0.0, 0.0}, []any{r, 1.0}}}}})
 		s.mods.Add(Mod{Name: "EnemyFreezeChance", Type: "BASE", Value: 25.0, Source: "Skill:FreezingPulse",
 			Tags: []map[string]any{{"type": "DistanceRamp", "ramp": []any{[]any{0.0, 1.0}, []any{15 * out["ProjectileSpeedMod"], 0.0}}}}})
+	case "Avenging Flame":
+		// The trigger source's totem life (triggerSourceUUID's TotemLife).
+		add := numOr(data["triggerSourceTotemLife"], 0) * numOr(data["lifeDealtAsFire"], 0) / 100
+		data["FireMin"] = numOr(data["FireMin"], 0) + add
+		data["FireMax"] = numOr(data["FireMax"], 0) + add
+	case "Bladefall of Trarthus":
+		data["hitTimeOverride"] = numOr(data["hitFrequency"], 0) / (1 + numOr(data["incVolleyFrequency"], 0)/100)
 	case "Tornado of Elemental Turbulence":
 		data["hitTimeOverride"] = data["damageInterval"]
 		mulDPS(s.mods.SumCfg(s.cfg, "BASE", "Multiplier:TornadoofElementalTurbulenceStage"))

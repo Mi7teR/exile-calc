@@ -24,6 +24,11 @@ type triggerConfig struct {
 	triggeredSkillCond func(main, s *activeSkill) bool
 	overlaps           float64 // 0: not set
 	doomBlast          bool
+	// sourceValue is the config's comparer: the source with the largest
+	// value wins (default: the highest rate).
+	sourceValue func(o map[string]float64) float64
+	// ignoreSourceRate: the source rate is the trigger rate cap.
+	ignoreSourceRate bool
 }
 
 func isTriggered(s *activeSkill) bool {
@@ -74,6 +79,11 @@ var triggerConfigs = map[string]func(db *ModDB, main *activeSkill) *triggerConfi
 		return &triggerConfig{
 			triggerSkillCond:   func(main, s *activeSkill) bool { return s.types[20] }, // Melee
 			triggeredSkillCond: func(main, s *activeSkill) bool { return truthy(s.data["triggeredByCovetousDark"]) }}
+	},
+	"avenging flame": func(*ModDB, *activeSkill) *triggerConfig {
+		return &triggerConfig{ignoreSourceRate: true,
+			triggerSkillCond: func(main, s *activeSkill) bool { return s.flags["totem"] && slotMatch(main, s) },
+			sourceValue:      func(o map[string]float64) float64 { return o["TotemLife"] }}
 	},
 	"spellslinger": func(*ModDB, *activeSkill) *triggerConfig {
 		// skipEffectiveRate / sourceRateIsFinal only change the breakdown.
@@ -227,11 +237,15 @@ func (c *Calculator) defaultTrigger(db *ModDB, main *activeSkill, by *skillEffec
 	for _, s := range db.activeSkills {
 		if cfg.triggerSkillCond != nil && cfg.triggerSkillCond(main, s) && !isTriggered(s) && s != main && !s.disabled {
 			o := c.offenceOnCopy(db, s, w1, w2)
-			if r := rate(o); source == nil || r > trigRate {
+			value := rate
+			if cfg.sourceValue != nil {
+				value = cfg.sourceValue
+			}
+			if source == nil || value(o) > value(sourceOut) {
 				if s.cfg.SkillCond["usedByMirage"] || s.types[95] {
 					continue
 				}
-				source, sourceOut, trigRate = s, o, r
+				source, sourceOut, trigRate = s, o, rate(o)
 			}
 		}
 		if cfg.triggeredSkillCond != nil && cfg.triggeredSkillCond(main, s) {
@@ -284,6 +298,10 @@ func (c *Calculator) defaultTrigger(db *ModDB, main *activeSkill, by *skillEffec
 		out["TriggerRateCap"] = 1 / actionRounded
 	}
 	out["EffectiveSourceRate"] = trigRate
+	if cfg.ignoreSourceRate {
+		out["EffectiveSourceRate"] = out["TriggerRateCap"]
+	}
+	main.data["triggerSourceTotemLife"] = sourceOut["TotemLife"]
 	if cfg.doomBlast {
 		c.doomBlastSourceRate(db, main, sourceOut, trigRate, icdr, w1, w2)
 	}

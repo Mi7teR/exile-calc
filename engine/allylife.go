@@ -55,12 +55,21 @@ func (c *Calculator) allyLifeMods(db *ModDB, skills []*activeSkill, buffs map[st
 }
 
 // totemLife is calcs.calcTotemLife (CalcOffence.lua), with the totem level
-// and skillTotemId of CalcActiveSkill.lua; 0 when the skill has no level.
+// and skillTotemId of CalcActiveSkill.lua: the active effect's level
+// requirement, unless a totem support's totem_support_gem_level set
+// skillData.totemLevel; 0 when the skill has no level.
 func (c *Calculator) totemLife(s *activeSkill) float64 {
 	ge := s.active.ge
 	lvl := ge.Levels[s.active.level]
 	mon := c.data.Monster
-	if lvl == nil || lvl.LevelRequirement < 1 || lvl.LevelRequirement > len(mon.AllyLife) {
+	if lvl == nil {
+		return 0
+	}
+	level := lvl.LevelRequirement
+	if v, ok := num(s.data["totemLevel"]); ok && v > 0 {
+		level = int(v)
+	}
+	if level < 1 || level > len(mon.AllyLife) {
 		return 0
 	}
 	id := ge.SkillTotemID
@@ -73,5 +82,5 @@ func (c *Calculator) totemLife(s *activeSkill) float64 {
 		}
 	}
 	lifeMod := (1 + s.mods.SumCfg(s.cfg, "INC", "TotemLife")/100) * s.mods.MoreCfg(s.cfg, "TotemLife")
-	return round(math.Floor(mon.AllyLife[lvl.LevelRequirement-1]*mon.TotemLifeMult[id])*lifeMod, 0)
+	return round(math.Floor(mon.AllyLife[level-1]*mon.TotemLifeMult[id])*lifeMod, 0)
 }
