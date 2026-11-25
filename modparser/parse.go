@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 )
 
 // Mod is one ModDB modifier (Modules/ModTools.lua: modLib.createMod).
@@ -39,8 +40,20 @@ type Parser struct {
 	// cache maps a line to its Result. Parsing is a pure function of the
 	// line, and the same tree and item texts are parsed on every Calc.
 	// Entries are never handed out: Parse returns a deep copy.
-	cache sync.Map // string -> Result
+	cache    sync.Map // string -> Result
+	cached   atomic.Int64
+	cacheCap int64 // no new entries once cached reaches it
 }
+
+// parseCacheCap bounds the process-wide cache. All 89 corpus builds
+// (tree nodes, items and the speculative "line + next line" pairs that
+// item parsing adds, about two keys per item line) fill 7,079 entries at
+// roughly 450 bytes each, so 50,000 entries (~22 MB) hold several times the
+// corpus while keeping a long-running consumer that parses arbitrary trade
+// items (a distinct key per roll) from growing without limit.
+const parseCacheCap = 50_000
+
+func newParser(t *tables) *Parser { return &Parser{t: t, cacheCap: parseCacheCap} }
 
 var (
 	defaultOnce sync.Once
@@ -52,22 +65,38 @@ var (
 func PoE1() (*Parser, error) {
 	defaultOnce.Do(func() {
 		t, err := loadTables(poe1Data)
-		defaultP, defaultErr = &Parser{t: t}, err
+		defaultP, defaultErr = newParser(t), err
 	})
 	return defaultP, defaultErr
 }
 
 // Parse parses one mod line (modLib.parseMod). Results are cached per
-// line; the returned Result is the caller's own copy and may be modified.
+// line, up to a fixed number of distinct lines; past that, new lines are
+// parsed every time. The returned Result is the caller's own copy and may
+// be modified.
 func (p *Parser) Parse(line string) Result {
 	if v, ok := p.cache.Load(line); ok {
-		r, _ := v.(Result)
-		return r.clone()
+		return v.(Result).clone() //nolint:errcheck // the cache only holds Result
 	}
 	mods, extra := p.parseRaw(line)
 	r := Result{Mods: decodeMods(mods), Extra: extra}
-	p.cache.Store(line, r)
+	p.store(line, r)
 	return r.clone()
+}
+
+// store caches r unless the cache is full. A slot is reserved before the
+// insert, so concurrent misses never take the count past cacheCap.
+func (p *Parser) store(line string, r Result) {
+	if p.cached.Load() >= p.cacheCap {
+		return
+	}
+	if p.cached.Add(1) > p.cacheCap {
+		p.cached.Add(-1)
+		return
+	}
+	if _, loaded := p.cache.LoadOrStore(line, r); loaded {
+		p.cached.Add(-1) // another goroutine stored this line first
+	}
 }
 
 // clone deep-copies the mods: the slice, each Tags slice and map, and

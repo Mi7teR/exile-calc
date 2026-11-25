@@ -16,7 +16,7 @@ import (
 // extra]), exported by cmd/gamedatagen. It is the reference: for every line
 // PoB parsed completely, we must produce the same mods or report the line
 // as unsupported. A different result is a bug.
-func loadModCache(t *testing.T) map[string][]any {
+func loadModCache(t testing.TB) map[string][]any {
 	t.Helper()
 	f, err := os.Open("testdata/modcache.json.gz")
 	if err != nil {

@@ -1,0 +1,1 @@
+`baseline.txt` is `make bench` output (`./engine`, count=10). BenchmarkCalc/BenchmarkCombat run with a warm parse cache (the process-wide modparser cache fills on the first iteration); cold parse speed is `go test ./modparser -run "^$" -bench ParseCorpusCold`.
