@@ -79,6 +79,9 @@ func reservations(db *ModDB, skills []*activeSkill, res *Result) {
 			inc := list.SumCfg(cfg, "INC", name+"Reserved", "Reserved")
 			eff := math.Max(list.SumCfg(cfg, "INC", name+"ReservationEfficiency", "ReservationEfficiency"), -100)
 			effMore := list.MoreCfg(cfg, name+"ReservationEfficiency", "ReservationEfficiency")
+			if name == "Mana" {
+				db.manaEfficiency = eff // env.player[name.."Efficiency"]
+			}
 			stage := func(v float64) float64 {
 				v += modfInt(v * inc / 100)
 				v += modfInt(v * (resourceMore - 1))

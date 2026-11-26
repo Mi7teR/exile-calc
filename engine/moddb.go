@@ -50,6 +50,9 @@ type ModDB struct {
 	player      *ModDB                     // actor.player: env.player for the player and its enemy
 	// activeSkills is actor.activeSkillList.
 	activeSkills []*activeSkill
+	// manaEfficiency is env.player.ManaEfficiency: the mana reservation
+	// efficiency of the last skill the reservation loop saw.
+	manaEfficiency float64
 	// minionSkillCache holds the skills of non-main minions, by summoning
 	// skill, built once per calculation.
 	minionSkillCache map[*activeSkill][]*activeSkill
@@ -375,6 +378,18 @@ func (db *ModDB) getStat(stat string, cfg *Cfg) float64 {
 			}
 		}
 		return math.Min(pct, 100)
+	}
+	// ManaUnreserved: NaN (efficiency -100) is the whole mana; below 0 it
+	// is the mana unreserved before efficiency (for Arcane Cloak and "per
+	// unreserved mana" mods).
+	if v, ok := db.output[stat]; ok && stat == "ManaUnreserved" {
+		switch {
+		case math.IsNaN(v):
+			return db.output["Mana"]
+		case v < 0:
+			before := (math.Abs(db.output["ManaUnreservedPercent"]) + 100) * ((100 + db.root().manaEfficiency) / 100)
+			return db.output["Mana"] * (math.Ceil(before) / 100)
+		}
 	}
 	// (self.actor.output and self.actor.output[stat]) or (cfg and cfg.skillStats and cfg.skillStats[stat]) or 0
 	if v, ok := db.output[stat]; ok {

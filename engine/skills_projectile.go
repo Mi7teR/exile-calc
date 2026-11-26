@@ -40,10 +40,35 @@ func blazingSalvoPreDamage(_ *ModDB, s *activeSkill, out map[string]float64) {
 	}
 }
 
-// Data/Skills/act_int.lua Forbidden Rite preDamageFunc.
-func forbiddenRitePreDamage(_ *ModDB, s *activeSkill, out map[string]float64) {
+// Data/Skills/act_int.lua Forbidden Rite and Forbidden Rite of Soul
+// Sacrifice preDamageFunc: chaos damage from life (base gem only) and
+// energy shield, the self damage per cast (FRDamageTaken) and, for all
+// primary projectiles, one hit per projectile.
+func forbiddenRitePreDamage(actor *ModDB, s *activeSkill, out map[string]float64) {
+	list, data := s.mods, s.data
+	names := []string{"DamageTaken", "ChaosDamageTaken", "DamageTakenWhenHit", "ChaosDamageTakenWhenHit"}
+	takenFlat := list.Sum("BASE", names...)
+	taken := math.Max((1+list.Sum("INC", names...)/100)*list.More(names...), 0)
+	chaosFlat := math.Floor(round(takenFlat*taken, 0))
+	life, es, chaosRes := actor.output["Life"], actor.output["EnergyShield"], actor.output["ChaosResist"]
+	if s.flags["totem"] {
+		life, es = out["TotemLife"], list.SumCfg(s.cfg, "BASE", "TotemEnergyShield")
+		chaosRes = actor.output["TotemChaosResist"]
+	}
+	lifeAs, esAs := numOr(data.val("lifeDealtAsChaos"), 0), numOr(data.val("energyShieldDealtAsChaos"), 0)
+	add := life*lifeAs + es*esAs
+	selfTaken := func(pool float64, key string) float64 {
+		return math.Floor(round(pool*numOr(data.val(key), 0), 0) * (100 - chaosRes) / 100 * taken)
+	}
+	data.set("ChaosMin", numOr(data.val("ChaosMin"), 0)+add)
+	data.set("ChaosMax", numOr(data.val("ChaosMax"), 0)+add)
 	if s.part == 2 {
-		mulDPS(s.data, out["ProjectileCount"]+1)
+		mulDPS(data, out["ProjectileCount"]+1)
+	}
+	if s.active.ge.Name == "Forbidden Rite" {
+		out["FRDamageTaken"] = selfTaken(life, "SelfDamageTakenLife") + selfTaken(es, "SelfDamageTakenES") + chaosFlat
+	} else {
+		out["FRDamageTaken"] = selfTaken(es, "SelfDamageTakenES") + chaosFlat
 	}
 }
 

@@ -121,6 +121,19 @@ func luaPortCases() []luaPortCase {
 			output: map[string]float64{"Mana": 8667, "LifeUnreserved": 20},
 		},
 		{
+			skill: "Forbidden Rite of Soul Sacrifice", hook: "preDamageFunc", part: 2,
+			stats: []luaPortMod{{"ChaosDamageTaken", "INC", 10, "Tree"}, {"DamageTaken", "BASE", -50, "Tree"}},
+			data: map[string]any{"ChaosMin": 697.0, "ChaosMax": 1046.0, "energyShieldDealtAsChaos": 0.2,
+				"SelfDamageTakenES": 0.5, "dpsMultiplier": 1.0},
+			output: map[string]float64{"EnergyShield": 8147, "ChaosResist": 75, "ProjectileCount": 5, "Life": 1},
+		},
+		{
+			skill: "Forbidden Rite", hook: "preDamageFunc", part: 1,
+			data: map[string]any{"ChaosMin": 500.0, "ChaosMax": 800.0, "lifeDealtAsChaos": 0.1,
+				"energyShieldDealtAsChaos": 0.1, "SelfDamageTakenLife": 0.25, "SelfDamageTakenES": 0.25},
+			output: map[string]float64{"EnergyShield": 1200, "ChaosResist": 20, "ProjectileCount": 3, "Life": 4300},
+		},
+		{
 			skill: "Vaal Righteous Fire", hook: "preDamageFunc",
 			data:   map[string]any{"percentSacrificed": 0.6, "RFMultiplier": 1.58},
 			output: map[string]float64{"Life": 6525, "EnergyShield": 120},
