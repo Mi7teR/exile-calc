@@ -105,6 +105,7 @@ func (c *Calculator) applyCurses(db *ModDB, skills []*activeSkill, curses []*ene
 		limit = int(db.Sum("BASE", "PowerChargesMax"))
 		res.Incomplete = append(res.Incomplete, "curse limit from maximum power charges uses the base maximum")
 	}
+	db.output["EnemyCurseLimit"] = float64(limit) // CalcPerform.lua:3250
 	allyCurses, allyLimit := db.party.partyCurses(db.enemy)
 	sources := []struct {
 		curses []*enemyCurse

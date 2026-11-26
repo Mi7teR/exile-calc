@@ -37,7 +37,7 @@ var switchCases = map[string][]string{
 		"Righteous Fire", "Righteous Fire of Arcane Devotion", "Vaal Righteous Fire",
 		"Divine Ire", "Divine Ire of Holy Lightning", "Divine Ire of Disintegration",
 	},
-	"preSkillType": {"Rage Vortex"},
+	"preSkillType": {"Rage Vortex", "Bane", "Bane of Condemnation"},
 	"postCrit":     {"Kinetic Fusillade", "Lightning Tendrils of Eccentricity"},
 	"initial":      {"Blood Sacrament", "Cyclone", "Vaal Cyclone", "Cyclone of Tumult"},
 	"warcryShare":  {"Rallying Cry", "Seismic Cry"},
@@ -76,7 +76,7 @@ func TestSkillHookRegistryDuplicatePanics(t *testing.T) {
 	saved := skillHookRegistry
 	t.Cleanup(func() { skillHookRegistry = saved })
 	skillHookRegistry = map[string]*skillHooks{}
-	noop := func(*activeSkill) {}
+	noop := func(*ModDB, *activeSkill) {}
 	registerSkill([]string{"X"}, skillHooks{preSkillType: noop})
 	registerSkill([]string{"X"}, skillHooks{postCrit: func(*activeSkill, map[string]float64, map[string]float64) {}})
 	if h := skillHookRegistry["X"]; h.preSkillType == nil || h.postCrit == nil {

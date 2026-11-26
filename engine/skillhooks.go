@@ -8,7 +8,7 @@ package engine
 // skillHooks holds one skill's hooks; a nil field means the skill has none.
 type skillHooks struct {
 	initial      func(actor *ModDB, s *activeSkill, w1 hitSource, w2 *hitSource)
-	preSkillType func(s *activeSkill)
+	preSkillType func(actor *ModDB, s *activeSkill)
 	preDamage    func(actor *ModDB, s *activeSkill, out map[string]float64)
 	postCrit     func(s *activeSkill, out, global map[string]float64)
 	warcryShare  func(db *ModDB, s, main *activeSkill)

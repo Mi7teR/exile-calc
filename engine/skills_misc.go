@@ -12,6 +12,7 @@ func init() {
 	)
 	registerSkill([]string{"Bodyswap", "Bodyswap of Sacrifice"}, skillHooks{preDamage: bodyswapPreDamage})
 	registerSkill([]string{"Blade Blast", "Blade Blast of Unloading"}, skillHooks{preDamage: bladeBlastPreDamage})
+	registerSkill([]string{"Bane", "Bane of Condemnation"}, skillHooks{preSkillType: banePreSkillType})
 	registerSkill([]string{"Righteous Fire"}, skillHooks{preDamage: righteousFirePreDamage})
 	registerSkill(
 		[]string{"Righteous Fire of Arcane Devotion"},
@@ -127,4 +128,21 @@ func bladeBlastPreDamage(_ *ModDB, s *activeSkill, _ map[string]float64) {
 	if s.part == 2 {
 		s.data.hitTimeOverride = optF{1, true}
 	}
+}
+
+// Data/Skills/act_int.lua:1470-1481 Bane (and Bane of Condemnation,
+// :1647-1658) preSkillTypeFunc: the curses of its group it applies
+// (Condition:AppliedByBane), up to the enemy curse limit.
+func banePreSkillType(actor *ModDB, s *activeSkill) {
+	count := 0.0
+	limit, hasLimit := actor.output["EnemyCurseLimit"]
+	for _, x := range actor.activeSkills {
+		if x.group == s.group && x.mods.GetCondition("AppliedByBane") {
+			count++
+			if hasLimit && count == limit {
+				break
+			}
+		}
+	}
+	s.mods.NewMod("Multiplier:CurseApplied", "BASE", count, "Base")
 }

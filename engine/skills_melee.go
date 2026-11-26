@@ -54,7 +54,7 @@ func staticStrikePreDamage(_ *ModDB, s *activeSkill, _ map[string]float64) {
 }
 
 // Data/Skills/act_str.lua Rage Vortex preSkillTypeFunc.
-func rageVortexPreSkillType(s *activeSkill) {
+func rageVortexPreSkillType(_ *ModDB, s *activeSkill) {
 	list, cfg, data := s.mods, s.cfg, s.data
 	if s.part == 2 {
 		maxRage := list.SumCfg(cfg, "BASE", "MaximumRage")

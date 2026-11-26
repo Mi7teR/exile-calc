@@ -121,7 +121,7 @@ func (c *Calculator) offence(actor *ModDB, s *activeSkill, w1 hitSource, w2 *hit
 	out["ActiveTrapLimit"] = list.SumCfg(cfg, "BASE", "ActiveTrapLimit")
 	out["ActiveMineLimit"] = list.SumCfg(cfg, "BASE", "ActiveMineLimit")
 	c.offenceStatConversions(actor, s, w1, w2, out)
-	preSkillTypeFunc(s)
+	preSkillTypeFunc(actor, s)
 	chainStats(actor, s, out)
 	projectileStats(s, out)
 	pierceForkStats(actor, s, out)
@@ -507,9 +507,9 @@ func pacts(actor *ModDB, s *activeSkill, out map[string]float64) {
 }
 
 // preSkillTypeFunc ports the skills' preSkillTypeFunc (Data/Skills/*.lua).
-func preSkillTypeFunc(s *activeSkill) {
+func preSkillTypeFunc(actor *ModDB, s *activeSkill) {
 	if h := hooksOf(s); h != nil && h.preSkillType != nil {
-		h.preSkillType(s)
+		h.preSkillType(actor, s)
 	}
 }
 
