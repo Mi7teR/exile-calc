@@ -554,7 +554,8 @@ func stepCustomMods(c *Calculator, st *calcState) error {
 // then the radius jewels' finalisers.
 func stepGrantedPassives(c *Calculator, st *calcState) error {
 	db, allocated, radiusFuncs, addTreeNode := st.db, st.allocated, st.radiusFuncs, st.addTreeNode
-	granted := grantedNodes(db, c.data.Tree, st.class.Name, allocated)
+	notable, ascendancy := c.notableMaps()
+	granted := grantedNodes(db, notable, ascendancy, st.class.Name, allocated)
 	for _, id := range granted {
 		addTreeNode(id, true)
 	}

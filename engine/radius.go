@@ -285,7 +285,7 @@ func (c *Calculator) radiusFuncs(spec *pobcode.Spec, b *pobcode.Build, alloc map
 			continue
 		}
 		if pos == nil {
-			pos = nodePositions(c.data.Tree)
+			pos = c.nodePositions()
 		}
 		for _, id := range nodesInRadius(c.data.Tree, pos, s.NodeID, r) {
 			if len(funcs) > 0 {

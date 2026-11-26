@@ -92,6 +92,21 @@ func (c *Calculator) clusterGraph(spec *pobcode.Spec, b *pobcode.Build, res *Res
 	return c.clusterGraphLegacy(spec, b, res, nil)
 }
 
+// clusterNotablesByName returns PassiveTree.lua's cluster notables:
+// notables and keystones without a group, by name. It is built once per
+// Calculator; callers must not modify it.
+func (c *Calculator) clusterNotablesByName() map[string]*gamedata.Node {
+	c.clusterNotablesOnce.Do(func() {
+		c.clusterNotables = map[string]*gamedata.Node{}
+		for _, n := range c.data.Tree.Nodes {
+			if n.Group == 0 && (n.IsNotable || n.IsKeystone) {
+				c.clusterNotables[n.Name] = n
+			}
+		}
+	})
+	return c.clusterNotables
+}
+
 // clusterGraphLegacy is clusterGraph that also fills legacy, when not nil,
 // with PassiveSpec's legacyClusterNodeMap: the ids a format-1 spec saved
 // for the subgraphs' sockets and nodes -> the current ids
@@ -144,14 +159,7 @@ func (c *Calculator) clusterGraphLegacy(
 		}
 		return nil
 	}
-	// PassiveTree.lua: notables and keystones without a group are the
-	// cluster notables, by name.
-	notableByName := map[string]*gamedata.Node{}
-	for _, n := range tree.Nodes {
-		if n.Group == 0 && (n.IsNotable || n.IsKeystone) {
-			notableByName[n.Name] = n
-		}
-	}
+	notableByName := c.clusterNotablesByName()
 
 	var build func(jewel *pobcode.Item, exp *gamedata.ExpansionJewel, id, parent int)
 	build = func(jewel *pobcode.Item, exp *gamedata.ExpansionJewel, id, parent int) {

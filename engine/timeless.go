@@ -198,7 +198,7 @@ func (c *Calculator) conquests(spec *pobcode.Spec, b *pobcode.Build, alloc map[i
 				continue
 			}
 			if pos == nil {
-				pos = nodePositions(c.data.Tree)
+				pos = c.nodePositions()
 			}
 			for _, id := range nodesInRadius(c.data.Tree, pos, s.NodeID, r) {
 				out[id] = cq

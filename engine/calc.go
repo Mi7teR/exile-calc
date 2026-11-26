@@ -25,6 +25,16 @@ type Calculator struct {
 	keystoneOnce sync.Once
 	keystones    map[string]keystone // PassiveTree.lua keystoneMap
 
+	nodePosOnce sync.Once
+	nodePos     map[int]point // nodePositions of the tree
+
+	notableMapsOnce sync.Once
+	notable         map[string]*gamedata.Node // PassiveTree.lua notableMap (notableMaps)
+	ascendancy      map[string]*gamedata.Node // PassiveTree.lua ascendancyMap
+
+	clusterNotablesOnce sync.Once
+	clusterNotables     map[string]*gamedata.Node // clusterNotableMap (clusterNotablesByName)
+
 	grants grantCache // item.grantedSkills by item (grantedskills.go)
 }
 

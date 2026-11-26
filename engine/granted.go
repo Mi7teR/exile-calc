@@ -59,12 +59,26 @@ func notableMaps(tree *gamedata.Tree) (notable, ascendancy map[string]*gamedata.
 	return notable, ascendancy
 }
 
+// notableMaps returns notableMaps(c.data.Tree), built once per Calculator;
+// callers must not modify the maps.
+func (c *Calculator) notableMaps() (map[string]*gamedata.Node, map[string]*gamedata.Node) {
+	c.notableMapsOnce.Do(func() { c.notable, c.ascendancy = notableMaps(c.data.Tree) })
+	return c.notable, c.ascendancy
+}
+
 // grantedNodes ports CalcSetup.lua's "Add granted passives" (anoints and
 // other "Allocates X" lines) and "Add granted ascendancy node" (Forbidden
 // Flame and Flesh naming the same node, both restricted to the character's
 // class). It returns the granted nodes that are not allocated already.
-func grantedNodes(db *ModDB, tree *gamedata.Tree, className string, allocated map[int]bool) []int {
-	notable, ascendancy := notableMaps(tree)
+// notable and ascendancy are notableMaps' maps.
+//
+//nolint:gocognit // the existing body; only the parameters changed
+func grantedNodes(
+	db *ModDB,
+	notable, ascendancy map[string]*gamedata.Node,
+	className string,
+	allocated map[int]bool,
+) []int {
 	seen := map[int]bool{}
 	var out []int
 	grant := func(n *gamedata.Node) {

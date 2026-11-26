@@ -129,7 +129,7 @@ func (c *Calculator) leapLikeNodes(spec *pobcode.Spec, b *pobcode.Build, alloc m
 			continue
 		}
 		if pos == nil {
-			pos = nodePositions(tree)
+			pos = c.nodePositions()
 		}
 		if leap {
 			for _, id := range nodesInRadius(tree, pos, s.NodeID, r) {

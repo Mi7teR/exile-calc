@@ -48,6 +48,13 @@ func nodePositions(t *gamedata.Tree) map[int]point {
 	return out
 }
 
+// nodePositions returns nodePositions(c.data.Tree), computed once per
+// Calculator; callers must not modify it.
+func (c *Calculator) nodePositions() map[int]point {
+	c.nodePosOnce.Do(func() { c.nodePos = nodePositions(c.data.Tree) })
+	return c.nodePos
+}
+
 // jewelRadius is data.jewelRadii["3_16"] (Modules/Data.lua).
 type radius struct {
 	label        string
