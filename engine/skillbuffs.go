@@ -864,11 +864,10 @@ func (c *Calculator) playerAuraOthers(db *ModDB, s, pm *activeSkill, b *skillBuf
 			list.MoreCfg(cfg, "AuraEffect", "BuffEffect", "AuraBuffEffect"), 0)
 		add(totemAuraMods(scale, extra, b.mods), "Totem "+b.name)
 	}
-	// CalcPerform.lua:2582-2618, with one difference (user decision): PoB
-	// computes the aura and debuff effect multiplier (2607-2609) and
-	// merges the extra debuff mods unscaled (2615); in the game aura effect
-	// scales them, so here they are scaled by that multiplier (0 when a
-	// stronger party aura debuff applies, 2611-2613).
+	// CalcPerform.lua:2582-2618: the multiplier (2607-2609) goes to the
+	// Party tab export only; the extra debuff mods are merged unscaled
+	// (2615). Their one source, the banners' ExtraAuraDebuffEffect
+	// (ModParser.lua:5525), is unscalable, so this is also the game's.
 	if !modeEffective(db) || len(db.List(cfg, "ExtraAuraDebuffEffect")) == 0 || db.Flag("SelfAurasOnlyAffectYou") ||
 		list.FlagCfg(cfg, "SelfAurasAffectYouAndLinkedTarget") {
 		return
@@ -884,10 +883,7 @@ func (c *Calculator) playerAuraOthers(db *ModDB, s, pm *activeSkill, b *skillBuf
 	if e := db.partyExports; e != nil {
 		e.setAuraDebuff(b.name, &partyExport{effectMult: mult, mods: mods})
 	}
-	if db.party.auraBeats("AuraDebuff", b.name, mult) {
-		mult = 0
-	}
-	addDebuff(scaleMods(mods, mult), b.name)
+	addDebuff(mods, b.name)
 }
 
 // totemResistName is the mod.name:match("Resist?M?a?x?$") of the totem
