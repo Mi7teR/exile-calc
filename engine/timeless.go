@@ -3,7 +3,10 @@ package engine
 import (
 	"bytes"
 	"compress/zlib"
+	"encoding/binary"
 	"fmt"
+	"hash/crc32"
+	"hash/fnv"
 	"io"
 	"os"
 	"path/filepath"
@@ -41,12 +44,56 @@ type conquest struct {
 	abyss     []abyssComponent // types 7-11: the modification of this node
 }
 
+// timelessLUTs holds the timeless jewel tables, each read on first use.
+// Each table has its own entry, so the first use of one table does not
+// wait for another one to load.
 type timelessLUTs struct {
-	dir       string
-	mu        sync.Mutex
-	data      map[int][]byte
-	abyssData map[int]*abyssLUT
-	gv        *gvLUT
+	dir string
+	// cacheDir holds the decoded tables (timelessCacheFile); "" turns the
+	// cache off.
+	cacheDir string
+	mu       sync.Mutex
+	entries  map[int]*lutEntry // by jewel type
+}
+
+// lutEntry is one table: v is set once it has loaded. A load that fails
+// leaves v nil, and the next use tries again.
+type lutEntry struct {
+	mu sync.Mutex
+	v  any
+}
+
+func newTimelessLUTs() *timelessLUTs {
+	l := &timelessLUTs{dir: defaultTimelessDir()}
+	if cache, err := os.UserCacheDir(); err == nil && l.dir != "" {
+		l.cacheDir = filepath.Join(cache, "poe-lib", "timeless-decoded")
+	}
+	return l
+}
+
+// load returns the table of jewelType, loading it with f on first use.
+func (l *timelessLUTs) load(jewelType int, f func() (any, error)) (any, error) {
+	l.mu.Lock()
+	if l.entries == nil {
+		l.entries = map[int]*lutEntry{}
+	}
+	e := l.entries[jewelType]
+	if e == nil {
+		e = &lutEntry{}
+		l.entries[jewelType] = e
+	}
+	l.mu.Unlock()
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	if e.v != nil {
+		return e.v, nil
+	}
+	v, err := f()
+	if err != nil {
+		return nil, err
+	}
+	e.v = v
+	return v, nil
 }
 
 func defaultTimelessDir() string {
@@ -66,20 +113,69 @@ func defaultTimelessDir() string {
 
 // table loads one jewel type's table (DataJewelFileLoader.lua: zlib data).
 func (l *timelessLUTs) table(jewelType int) ([]byte, error) {
-	l.mu.Lock()
-	defer l.mu.Unlock()
-	if b, ok := l.data[jewelType]; ok {
-		return b, nil
-	}
-	name, ok := timelessFiles[jewelType]
-	if !ok || l.dir == "" {
-		return nil, fmt.Errorf("timeless jewel type %d: no lookup table", jewelType)
-	}
-	raw, err := os.ReadFile(filepath.Join(l.dir, name+".zip"))
+	v, err := l.load(jewelType, func() (any, error) {
+		name, ok := timelessFiles[jewelType]
+		if !ok || l.dir == "" {
+			return nil, fmt.Errorf("timeless jewel type %d: no lookup table", jewelType)
+		}
+		return l.inflate(name, []string{name + ".zip"})
+	})
 	if err != nil {
 		return nil, err
 	}
-	zr, err := zlib.NewReader(bytes.NewReader(raw))
+	b, _ := v.([]byte)
+	return b, nil
+}
+
+// partFiles lists name.zip.part0, part1, ... as they exist in l.dir
+// (DataJewelFileLoader.lua reads the parts in order until one is missing).
+func (l *timelessLUTs) partFiles(name string) []string {
+	var out []string
+	for part := 0; ; part++ {
+		f := name + ".zip.part" + strconv.Itoa(part)
+		if _, err := os.Stat(filepath.Join(l.dir, f)); err != nil {
+			return out
+		}
+		out = append(out, f)
+	}
+}
+
+// timelessCacheFormat versions the layout of the decoded table files.
+const timelessCacheFormat = 1
+
+// timelessCacheMagic starts a decoded table file; a CRC-32C of the table
+// and its length follow, then the table.
+const timelessCacheMagic = "PLTD"
+
+// inflate is files of l.dir, concatenated and zlib decompressed. The
+// decoded table is kept in l.cacheDir, so later processes read it
+// instead of decompressing again (a 100 MB table decompresses in about
+// 0.3 s and reads in about 10 ms). A cache file is named after the
+// table, timelessCacheFormat and each source file's name, size and
+// modification time, so a changed source gets a new file; one that does
+// not hold the table it claims (length, CRC-32C) is decoded again.
+func (l *timelessLUTs) inflate(name string, files []string) ([]byte, error) {
+	if len(files) == 0 {
+		return nil, fmt.Errorf("%s: no lookup table", name)
+	}
+	cacheFile := ""
+	if l.cacheDir != "" {
+		cacheFile = timelessCacheFile(l.cacheDir, l.dir, name, files)
+	}
+	if cacheFile != "" {
+		if b, ok := readTimelessCache(cacheFile); ok {
+			return b, nil
+		}
+	}
+	var compressed bytes.Buffer
+	for _, f := range files {
+		raw, err := os.ReadFile(filepath.Join(l.dir, f))
+		if err != nil {
+			return nil, err
+		}
+		compressed.Write(raw)
+	}
+	zr, err := zlib.NewReader(&compressed)
 	if err != nil {
 		return nil, err
 	}
@@ -87,11 +183,71 @@ func (l *timelessLUTs) table(jewelType int) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	if l.data == nil {
-		l.data = map[int][]byte{}
+	if cacheFile != "" {
+		writeTimelessCache(cacheFile, b)
 	}
-	l.data[jewelType] = b
 	return b, nil
+}
+
+// timelessCacheFile is the decoded table file of name from files; "" when
+// a source file cannot be read.
+func timelessCacheFile(cacheDir, dir, name string, files []string) string {
+	h := fnv.New64a()
+	fmt.Fprintf(h, "%d\x00%s\x00", timelessCacheFormat, name)
+	for _, f := range files {
+		st, err := os.Stat(filepath.Join(dir, f))
+		if err != nil {
+			return ""
+		}
+		fmt.Fprintf(h, "%s\x00%d\x00%d\x00", f, st.Size(), st.ModTime().UnixNano())
+	}
+	return filepath.Join(cacheDir, fmt.Sprintf("%s-%016x.bin", name, h.Sum64()))
+}
+
+// readTimelessCache reads a decoded table file written by
+// writeTimelessCache; false when it is missing or does not check out.
+func readTimelessCache(path string) ([]byte, bool) {
+	raw, err := os.ReadFile(path)
+	if err != nil || len(raw) < 16 || string(raw[:4]) != timelessCacheMagic {
+		return nil, false
+	}
+	sum := binary.LittleEndian.Uint32(raw[4:8])
+	n := binary.LittleEndian.Uint64(raw[8:16])
+	b := raw[16:]
+	if uint64(len(b)) != n || crc32.Checksum(b, crc32.MakeTable(crc32.Castagnoli)) != sum {
+		return nil, false
+	}
+	return b, true
+}
+
+// writeTimelessCache writes b to path through a temporary file and a
+// rename, so a reader in another process sees either no file or the whole
+// one. A failure leaves no cache; the table was decoded anyway.
+func writeTimelessCache(path string, b []byte) {
+	if err := os.MkdirAll(filepath.Dir(path), 0o750); err != nil {
+		return
+	}
+	tmp, err := os.CreateTemp(filepath.Dir(path), filepath.Base(path)+".tmp*")
+	if err != nil {
+		return
+	}
+	var hdr [16]byte
+	copy(hdr[:4], timelessCacheMagic)
+	binary.LittleEndian.PutUint32(hdr[4:8], crc32.Checksum(b, crc32.MakeTable(crc32.Castagnoli)))
+	binary.LittleEndian.PutUint64(hdr[8:16], uint64(len(b)))
+	_, err = tmp.Write(hdr[:])
+	if err == nil {
+		_, err = tmp.Write(b)
+	}
+	if cerr := tmp.Close(); err == nil {
+		err = cerr
+	}
+	if err == nil {
+		err = os.Rename(tmp.Name(), path)
+	}
+	if err != nil {
+		_ = os.Remove(tmp.Name())
+	}
 }
 
 // readLUT ports DataLegionLookUpTableHelper.lua readLUT for jewel types

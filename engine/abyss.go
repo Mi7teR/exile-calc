@@ -1,15 +1,11 @@
 package engine
 
 import (
-	"bytes"
-	"compress/zlib"
 	"encoding/binary"
 	"fmt"
-	"io"
-	"os"
-	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 
 	"github.com/Mi7teR/poe-lib/gamedata"
 )
@@ -36,8 +32,11 @@ type abyssLUT struct {
 	seedCount                 int
 	blocks                    map[int]int    // socket or node id -> offset of its first record
 	ascendancies              map[string]int // ABYN: ascendancy name -> offset
-	seedOffsets               map[string][]int
-	localToGlobal             map[int]int
+	// seedOffsets memoises recordOffsets per block; mu guards it, as
+	// concurrent Calcs read one table.
+	mu            sync.Mutex
+	seedOffsets   map[string][]int
+	localToGlobal map[int]int
 }
 
 func u16(b []byte, off int) int { return int(binary.LittleEndian.Uint16(b[off:])) }
@@ -159,6 +158,8 @@ func (l *abyssLUT) seedIndex(seed int) (int, bool) {
 
 // recordOffsets is getRecordOffsets: where each seed's record of a block starts.
 func (l *abyssLUT) recordOffsets(key string, start int, skip func([]byte, int) int) []int {
+	l.mu.Lock()
+	defer l.mu.Unlock()
 	if offs, ok := l.seedOffsets[key]; ok {
 		return offs
 	}
@@ -175,42 +176,21 @@ func (l *abyssLUT) recordOffsets(key string, start int, skip func([]byte, int) i
 // abyss loads one abyssal jewel table (DataJewelFileLoader.lua: the
 // concatenated .zip.partN files, zlib compressed).
 func (l *timelessLUTs) abyss(jewelType int, localToGlobal map[int]int) (*abyssLUT, error) {
-	l.mu.Lock()
-	defer l.mu.Unlock()
-	if t, ok := l.abyssData[jewelType]; ok {
-		return t, nil
-	}
-	name, ok := abyssFiles[jewelType]
-	if !ok || l.dir == "" {
-		return nil, fmt.Errorf("abyss jewel type %d: no lookup table", jewelType)
-	}
-	var compressed bytes.Buffer
-	for part := 0; ; part++ {
-		raw, err := os.ReadFile(filepath.Join(l.dir, name+".zip.part"+strconv.Itoa(part)))
-		if err != nil {
-			if part == 0 {
-				return nil, err
-			}
-			break
+	v, err := l.load(jewelType, func() (any, error) {
+		name, ok := abyssFiles[jewelType]
+		if !ok || l.dir == "" {
+			return nil, fmt.Errorf("abyss jewel type %d: no lookup table", jewelType)
 		}
-		compressed.Write(raw)
-	}
-	zr, err := zlib.NewReader(&compressed)
+		b, err := l.inflate(name, l.partFiles(name))
+		if err != nil {
+			return nil, err
+		}
+		return parseAbyss(jewelType, b, localToGlobal)
+	})
 	if err != nil {
 		return nil, err
 	}
-	b, err := io.ReadAll(zr)
-	if err != nil {
-		return nil, err
-	}
-	t, err := parseAbyss(jewelType, b, localToGlobal)
-	if err != nil {
-		return nil, err
-	}
-	if l.abyssData == nil {
-		l.abyssData = map[int]*abyssLUT{}
-	}
-	l.abyssData[jewelType] = t
+	t, _ := v.(*abyssLUT)
 	return t, nil
 }
 

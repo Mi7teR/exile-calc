@@ -1,14 +1,8 @@
 package engine
 
 import (
-	"bytes"
-	"compress/zlib"
 	"fmt"
-	"io"
-	"os"
-	"path/filepath"
 	"sort"
-	"strconv"
 
 	"github.com/Mi7teR/poe-lib/gamedata"
 )
@@ -29,33 +23,25 @@ const (
 )
 
 func (l *timelessLUTs) gloriousVanity(t *gamedata.Timeless) (*gvLUT, error) {
-	l.mu.Lock()
-	defer l.mu.Unlock()
-	if l.gv != nil {
-		return l.gv, nil
-	}
-	if l.dir == "" {
-		return nil, fmt.Errorf("glorious vanity: no lookup table")
-	}
-	var compressed bytes.Buffer
-	for part := 0; ; part++ {
-		raw, err := os.ReadFile(filepath.Join(l.dir, "GloriousVanity.zip.part"+strconv.Itoa(part)))
-		if err != nil {
-			if part == 0 {
-				return nil, err
-			}
-			break
+	v, err := l.load(1, func() (any, error) {
+		if l.dir == "" {
+			return nil, fmt.Errorf("glorious vanity: no lookup table")
 		}
-		compressed.Write(raw)
-	}
-	zr, err := zlib.NewReader(&compressed)
+		b, err := l.inflate("GloriousVanity", l.partFiles("GloriousVanity"))
+		if err != nil {
+			return nil, err
+		}
+		return newGVLUT(t, b)
+	})
 	if err != nil {
 		return nil, err
 	}
-	b, err := io.ReadAll(zr)
-	if err != nil {
-		return nil, err
-	}
+	g, _ := v.(*gvLUT)
+	return g, nil
+}
+
+// newGVLUT indexes the decoded Glorious Vanity table b.
+func newGVLUT(t *gamedata.Timeless, b []byte) (*gvLUT, error) {
 	seedLen := gvSeedMax - gvSeedMin + 1
 	sizeOffset := t.Size * seedLen
 	if sizeOffset+1 > len(b) {
@@ -75,8 +61,7 @@ func (l *timelessLUTs) gloriousVanity(t *gamedata.Timeless) (*gvLUT, error) {
 		starts[i] = off
 		off += t.NodeSize[byIndex[i]]
 	}
-	l.gv = &gvLUT{sizes: b[:sizeOffset+1], starts: starts, data: b, seedLen: seedLen}
-	return l.gv, nil
+	return &gvLUT{sizes: b[:sizeOffset+1], starts: starts, data: b, seedLen: seedLen}, nil
 }
 
 // read is readLUT for jewel type 1: the record of one node and seed, with

@@ -1,7 +1,13 @@
 package engine
 
 import (
+	"bytes"
+	"compress/zlib"
+	"os"
+	"path/filepath"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/Mi7teR/poe-lib/gamedata"
 )
@@ -56,5 +62,101 @@ func TestRadiusJewelSkipsConqueredNodes(t *testing.T) {
 	}
 	if got := sum("Int", "Tree:18033"); got != 0 {
 		t.Errorf("Int from nulled Tree:18033 = %v, want 0", got)
+	}
+}
+
+// writeZlib writes data zlib compressed to path.
+func writeZlib(t *testing.T, path string, data []byte) {
+	t.Helper()
+	var buf bytes.Buffer
+	zw := zlib.NewWriter(&buf)
+	if _, err := zw.Write(data); err != nil {
+		t.Fatal(err)
+	}
+	if err := zw.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, buf.Bytes(), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// TestTimelessTableCache: a table read through the decoded table cache is
+// the table decompressed; the cache file is written on first use, read
+// afterwards, ignored when it does not check out, and replaced by a new
+// file when the source changes.
+func TestTimelessTableCache(t *testing.T) {
+	dir, cache := t.TempDir(), t.TempDir()
+	want := bytes.Repeat([]byte("lethal pride "), 1000)
+	src := filepath.Join(dir, "LethalPride.zip")
+	writeZlib(t, src, want)
+	load := func() []byte {
+		t.Helper()
+		l := &timelessLUTs{dir: dir, cacheDir: cache}
+		b, err := l.table(2)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return b
+	}
+	if got := load(); !bytes.Equal(got, want) {
+		t.Fatalf("first load: %d bytes, want %d", len(got), len(want))
+	}
+	file := timelessCacheFile(cache, dir, "LethalPride", []string{"LethalPride.zip"})
+	cached, ok := readTimelessCache(file)
+	if !ok || !bytes.Equal(cached, want) {
+		t.Fatalf("cache file %s: ok %v, %d bytes", file, ok, len(cached))
+	}
+	// A corrupt cache file is not used.
+	raw, err := os.ReadFile(file)
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw[len(raw)-1] ^= 0xff
+	if err = os.WriteFile(file, raw, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok = readTimelessCache(file); ok {
+		t.Fatal("corrupt cache file accepted")
+	}
+	if got := load(); !bytes.Equal(got, want) {
+		t.Fatal("load with a corrupt cache file")
+	}
+	// A changed source is a new cache file.
+	want2 := bytes.Repeat([]byte("changed "), 500)
+	writeZlib(t, src, want2)
+	future := time.Now().Add(time.Hour)
+	if err = os.Chtimes(src, future, future); err != nil {
+		t.Fatal(err)
+	}
+	if got := load(); !bytes.Equal(got, want2) {
+		t.Fatal("load after the source changed")
+	}
+	if timelessCacheFile(cache, dir, "LethalPride", []string{"LethalPride.zip"}) == file {
+		t.Fatal("cache file name unchanged after the source changed")
+	}
+}
+
+// TestTimelessTablesConcurrent loads tables from many goroutines: each
+// table loads once and every caller gets it (run with -race).
+func TestTimelessTablesConcurrent(t *testing.T) {
+	dir := t.TempDir()
+	for typ, name := range timelessFiles {
+		writeZlib(t, filepath.Join(dir, name+".zip"), bytes.Repeat([]byte{byte(typ)}, 100))
+	}
+	l := &timelessLUTs{dir: dir, cacheDir: t.TempDir()}
+	var wg sync.WaitGroup
+	for i := range 40 {
+		typ := 2 + i%5
+		wg.Go(func() {
+			b, err := l.table(typ)
+			if err != nil || len(b) != 100 || b[0] != byte(typ) {
+				t.Errorf("type %d: %d bytes, err %v", typ, len(b), err)
+			}
+		})
+	}
+	wg.Wait()
+	if _, err := l.table(9); err == nil {
+		t.Error("type 9 has no table, want an error")
 	}
 }

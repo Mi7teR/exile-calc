@@ -55,7 +55,7 @@ func New() (*Calculator, error) {
 	if pErr != nil {
 		return nil, pErr
 	}
-	return &Calculator{data: d, parser: p, items: itemtext.New(d), luts: &timelessLUTs{dir: defaultTimelessDir()}, gemIdx: newGemIndex(d)}, nil
+	return &Calculator{data: d, parser: p, items: itemtext.New(d), luts: newTimelessLUTs(), gemIdx: newGemIndex(d)}, nil
 }
 
 // Result is the computed output. Unparsed lists mod lines the parser did
