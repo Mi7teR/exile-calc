@@ -133,6 +133,27 @@ func TestHooks(t *testing.T) {
 			{"@list":[{"skillName":"Enfeeble","type":"SkillName"}],"name":"CurseEffect","type":"INC","flags":0,"keywordFlags":0,"value":25}]`,
 		// "your (%w+) damage cannot (%w+)"
 		"Your Lightning Damage cannot Shock": `[{"flags":0,"keywordFlags":0,"name":"LightningCannotShock","type":"FLAG","value":true}]`,
+
+		// hooks_flasks.go
+		// "flasks gain (%d+) charges? every (%d+) seconds" and its utility/life/mana forms: num / div
+		"Flasks gain 2 Charges every 3 seconds": `[{"flags":0,"keywordFlags":0,"name":"FlaskChargesGenerated","type":"BASE","value":0.66666666666667}]`,
+		"While on Low Life, Life Flasks gain 6 Charges every 3 seconds": `[{"@list":[{"type":"Condition","var":"LowLife"}],
+			"flags":0,"keywordFlags":0,"name":"LifeFlaskChargesGenerated","type":"BASE","value":2}]`,
+		// "(%d+)%% less flask charges gained from kills": source "from Kills"
+		"80% less Flask Charges gained from Kills": `[{"flags":0,"keywordFlags":0,"name":"FlaskChargesGained","source":"from Kills","type":"MORE","value":-80}]`,
+		// "tinctures have (%d+)%% increased effect while at or above (%d+) stacks of mana burn": varList
+		"Tinctures have 40% increased effect while at or above 10 stacks of Mana Burn": `[{"@list":[{"threshold":10,"type":"MultiplierThreshold",
+			"varList":["ManaBurnStacks","WeepingWoundsStacks"]}],"flags":0,"keywordFlags":0,"name":"TinctureEffect","type":"INC","value":40}]`,
+		// "tinctures applied to you have (%d+)%% less mana burn rate": player ActorCondition
+		"Tinctures applied to you have 50% less Mana Burn rate": `[{"@list":[{"actor":"player","type":"ActorCondition"}],
+			"flags":0,"keywordFlags":0,"name":"TinctureManaBurnRate","type":"MORE","value":-50}]`,
+		// "on non%-channelling attack, set a life flask ...": percent = 100 - chargesConsumedPercent
+		"On non-channelling Attack, set a Life Flask with greater than 50% of maximum Charges remaining to 50% For each Charge removed this way, that Attack gains +2% to Damage over time Multiplier": `[
+			{"@list":[{"floor":true,"percent":50,"stat":"LifeFlaskCharges","type":"PercentStat"},{"neg":true,"skillType":48,"type":"SkillType"},
+			{"skillType":1,"type":"SkillType"}],"flags":0,"keywordFlags":0,"name":"DotMultiplier","type":"BASE","value":2}]`,
+		// "grants level (%d+) (.+) curse aura during f?l?a?s?k? ?effect"
+		"Grants Level 21 Despair Curse Aura during Effect": `[{"@list":[{"type":"Condition","var":"UsingFlask"}],"flags":0,"keywordFlags":0,
+			"name":"ExtraCurse","type":"LIST","value":{"level":21,"skillId":"Despair"}}]`,
 	}
 	p, err := PoE1()
 	if err != nil {
