@@ -6,6 +6,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"sync/atomic"
 
 	"github.com/Mi7teR/poe-lib/gamedata"
 	"github.com/Mi7teR/poe-lib/itemtext"
@@ -36,6 +37,10 @@ type Calculator struct {
 	clusterNotables     map[string]*gamedata.Node // clusterNotableMap (clusterNotablesByName)
 
 	grants grantCache // item.grantedSkills by item (grantedskills.go)
+	// reqs caches the attribute requirements of jewels by grantKey
+	// (requirements.go); reqCount bounds it.
+	reqs     sync.Map
+	reqCount atomic.Int64
 }
 
 func New() (*Calculator, error) {

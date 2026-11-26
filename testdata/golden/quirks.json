@@ -90,9 +90,21 @@
       "reason": "Format-1 spec (no clusterHashFormatVersion): PoB maps the Watcher's Eye socket 16218 to 29712 (ApplyLegacyClusterNodeRemap), but the item slots have already written jewels[29712] = 0 and pairs order lets the 0 win, so PoB unequips the jewel. Value: the oracle on the same build with the jewel in 29712 and clusterHashFormatVersion 2.",
       "value": 1445
     },
+    "ManaCostPayablePool": {
+      "reason": "Format-1 spec (no clusterHashFormatVersion): PoB maps the Watcher's Eye socket 16218 to 29712 (ApplyLegacyClusterNodeRemap), but the item slots have already written jewels[29712] = 0 and pairs order lets the 0 win, so PoB unequips the jewel. Value: the oracle on the same build with the jewel in 29712 and clusterHashFormatVersion 2.",
+      "value": 246
+    },
     "ManaRegenRecovery": {
       "reason": "Format-1 spec (no clusterHashFormatVersion): PoB maps the Watcher's Eye socket 16218 to 29712 (ApplyLegacyClusterNodeRemap), but the item slots have already written jewels[29712] = 0 and pairs order lets the 0 win, so PoB unequips the jewel. Value: the oracle on the same build with the jewel in 29712 and clusterHashFormatVersion 2.",
       "value": 326.1
+    },
+    "ManaReserved": {
+      "reason": "Format-1 spec (no clusterHashFormatVersion): PoB maps the Watcher's Eye socket 16218 to 29712 (ApplyLegacyClusterNodeRemap), but the item slots have already written jewels[29712] = 0 and pairs order lets the 0 win, so PoB unequips the jewel. Value: the oracle on the same build with the jewel in 29712 and clusterHashFormatVersion 2.",
+      "value": 1199
+    },
+    "ManaUnreserved": {
+      "reason": "Format-1 spec (no clusterHashFormatVersion): PoB maps the Watcher's Eye socket 16218 to 29712 (ApplyLegacyClusterNodeRemap), but the item slots have already written jewels[29712] = 0 and pairs order lets the 0 win, so PoB unequips the jewel. Value: the oracle on the same build with the jewel in 29712 and clusterHashFormatVersion 2.",
+      "value": 246
     },
     "NumberOfDamagingHits": {
       "reason": "Format-1 spec (no clusterHashFormatVersion): PoB maps the Watcher's Eye socket 16218 to 29712 (ApplyLegacyClusterNodeRemap), but the item slots have already written jewels[29712] = 0 and pairs order lets the 0 win, so PoB unequips the jewel. Value: the oracle on the same build with the jewel in 29712 and clusterHashFormatVersion 2.",

@@ -42,6 +42,7 @@ func oracleStats(t *testing.T, always bool, keys ...string) {
 		t.Skip("corpus")
 	}
 	c := newCalc(t)
+	quirks := loadQuirks(t)
 	files, err := filepath.Glob("../testdata/golden/expected/*.json")
 	if err != nil || len(files) == 0 {
 		t.Fatal("no expected results", err)
@@ -64,6 +65,9 @@ func oracleStats(t *testing.T, always bool, keys ...string) {
 			want, ok := exp[k].(float64)
 			if bv, isBool := exp[k].(bool); isBool {
 				want, ok = b2f(bv), true
+			}
+			if q, quirk := quirks[id][k]; quirk {
+				want, ok = q.Value, true
 			}
 			got, has := res.Stats[k]
 			if !always && !ok && !has {
@@ -175,7 +179,7 @@ func TestAttributeRequirementParts(t *testing.T) {
 	db.items = map[string]*itemtext.Item{"Body Armour": {Base: base, Req: itemtext.Requirements{Int: 194}}}
 	db.Add(Mod{Name: "OmniscienceRequirements", Type: "FLAG", Value: true, Source: "Test"})
 	db.NewMod("OmniAttributeRequirements", "INC", 100, "Test")
-	c.attributeRequirements(db, &pobcode.Build{})
+	c.attributeRequirements(db, &pobcode.Build{}, 0)
 	if got := db.output["ReqOmni"]; got != 194 {
 		t.Errorf("ReqOmni %v, want 194", got)
 	}

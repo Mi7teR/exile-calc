@@ -808,7 +808,7 @@ func stepReservations(_ *Calculator, st *calcState) error {
 func stepTinctures(c *Calculator, st *calcState) error {
 	c.applyTinctures(st.db, st.res, st.flasks, st.tinctures)
 	// CalcPerform.lua:2131-2196, after the reservations and tinctures.
-	c.attributeRequirements(st.db, st.b)
+	c.attributeRequirements(st.db, st.b, st.compared)
 	return nil
 }
 

@@ -146,18 +146,34 @@ func itemListItem(b *pobcode.Build, slot string) *pobcode.Item {
 // OmniscienceRequirements), as ReqStr, ReqDex, ReqInt (or ReqOmni). A
 // requirement of 0 sets nothing. The ReqXString and ReqXItem outputs are
 // display data and are not ported.
-func (c *Calculator) attributeRequirements(db *ModDB, b *pobcode.Build) {
+func (c *Calculator) attributeRequirements(db *ModDB, b *pobcode.Build, compared int) {
 	var table []requirements
 	// env.requirementsTableItems: every item of env.player.itemList
 	// (CalcSetup.lua:1101-1112); the order does not change the maximum.
 	for slot, it := range db.items {
-		mods, ok := db.gearMods[slot]
-		if !ok {
-			if item := itemListItem(b, slot); item != nil {
-				_, mods = c.itemMods(item, &Result{}) // its unparsed lines are reported by the item step
-			}
+		if mods, ok := db.gearMods[slot]; ok {
+			table = append(table, itemRequirements(it, mods))
+			continue
 		}
-		table = append(table, itemRequirements(it, mods))
+		// Jewels and abyss jewels: the item step keeps no parse of them, so
+		// their requirements are cached per item like item.grantedSkills.
+		item := itemListItem(b, slot)
+		if item == nil {
+			table = append(table, itemRequirements(it, nil))
+			continue
+		}
+		key := grantKey(item)
+		if v, ok := c.reqs.Load(key); ok {
+			r, _ := v.(requirements)
+			table = append(table, r)
+			continue
+		}
+		_, mods := c.itemMods(item, &Result{}) // its unparsed lines are reported by the item step
+		r := itemRequirements(it, mods)
+		if compared == 0 || item.ID != compared {
+			c.storeReq(key, r)
+		}
+		table = append(table, r)
 	}
 	for _, g := range db.requirementGems {
 		table = append(table, c.gemRequirements(g))
@@ -189,5 +205,20 @@ func (c *Calculator) attributeRequirements(db *ModDB, b *pobcode.Build) {
 		if best > db.output["Req"+target] {
 			db.output["Req"+target] = best
 		}
+	}
+}
+
+// storeReq caches a jewel's requirements unless the cache is full (the
+// grantCacheCap bound of the item grant cache).
+func (c *Calculator) storeReq(key string, r requirements) {
+	if c.reqCount.Load() >= grantCacheCap {
+		return
+	}
+	if c.reqCount.Add(1) > grantCacheCap {
+		c.reqCount.Add(-1)
+		return
+	}
+	if _, loaded := c.reqs.LoadOrStore(key, r); loaded {
+		c.reqCount.Add(-1)
 	}
 }
