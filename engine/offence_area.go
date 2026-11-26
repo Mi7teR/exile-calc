@@ -35,7 +35,8 @@ func projectileStats(s *activeSkill, out map[string]float64) {
 }
 
 // pierceForkStats is the fork and pierce part of calcs.offence's projectile
-// skill type stats: ForkCountMax and PierceCount (100 means all targets).
+// skill type stats: ForkCountMax, PierceCount (100 means all targets) and
+// PiercedCount.
 // Skills that cannot fork or pierce leave the output at 0.
 func pierceForkStats(actor *ModDB, s *activeSkill, out map[string]float64) {
 	if !s.flags["projectile"] {
@@ -53,11 +54,18 @@ func pierceForkStats(actor *ModDB, s *activeSkill, out map[string]float64) {
 		out["PierceCount"] = 0
 		return
 	}
+	pierce := list.SumCfg(cfg, "BASE", "PierceCount")
 	if list.FlagCfg(cfg, "PierceAllTargets") || actor.enemy.Flag("AlwaysPierceSelf") {
-		out["PierceCount"] = 100
-		return
+		pierce = 100
 	}
-	out["PierceCount"] = list.SumCfg(cfg, "BASE", "PierceCount")
+	out["PierceCount"] = pierce
+	if pierce > 0 {
+		s.flags["piercing"] = true
+	}
+	// CalcOffence.lua:1150: the times the skill has pierced (config
+	// skillPierceCount), for StatThreshold tags on PiercedCount.
+	pierced := math.Min(pierce, list.SumCfg(cfg, "BASE", "PiercedCount"))
+	out["PiercedCount"], actor.output["PiercedCount"] = pierced, pierced
 }
 
 // chainStats is the chaining part of calcs.offence's skill type stats:
