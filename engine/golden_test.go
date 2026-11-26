@@ -39,17 +39,17 @@ var reportStats = []string{}
 
 // Ratchet: builds where every stat above is within tolerance. Raise it as
 // the engine improves; never lower it.
-const minBuildsWithinTolerance = 144
+const minBuildsWithinTolerance = 145
 
 // minBuildsWithoutTimeless applies when the timeless jewel tables are absent.
 const minBuildsWithoutTimeless = 2
 
 // Minion ratchet: oracle minions (each minion skill as the main skill,
 // output.Minion) whose minionResultStats are all within tolerance.
-const minMinionsWithinTolerance = 240
+const minMinionsWithinTolerance = 241
 
 // Minion offence ratchet: oracle minions whose TotalDPS is within tolerance.
-const minMinionDPSWithinTolerance = 234
+const minMinionDPSWithinTolerance = 241
 
 // Player offence ratchet: builds whose main skill playerRatchetStats are
 // each within tolerance.

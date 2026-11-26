@@ -23,10 +23,9 @@ go get github.com/Mi7teR/poe-lib
 The engine is checked against headless PoB on a [golden corpus](testdata/golden)
 of 145 real 3.30 builds (140 public, five of them Raise Spectre builds;
 5 synthetic: two Party-tab, one linked-minion and two Oak-bandit variants
-of public builds). Every compared defence stat matches within 0.5% on 144
-of 145; the main skill's DPS stats and Full DPS on all 145, minion
-defence stats on 240 of 241 oracle minions and minion DPS on 234. The
-remaining gaps are listed in the corpus README. Where PoB is wrong
+of public builds). Every compared defence stat matches within 0.5% on all
+145; the main skill's DPS stats and Full DPS on all 145, and minion
+defence stats and minion DPS on all 241 oracle minions. Where PoB is wrong
 and the engine follows the game instead, the difference is recorded in
 [quirks.json](testdata/golden/quirks.json).
 

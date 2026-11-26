@@ -26,11 +26,7 @@ a larger DoT than PoB's.
 
 Five Raise Spectre builds (wYVdkskvi67I, JtugGaLoWqgT, LP9p86nzbP2H,
 a2nRZLW9ZVuu, Wpo4TuYfRXFT) keep their spectre list (`<Spectre>`); two
-raise a Perfect Blasphemer, whose curses go on the enemy. JtugGaLoWqgT's
-Dex is 14 short (Tree:11688 and Tree:45456, in its Brutal Restraints'
-radius, give PoB +4 Dex each) and so is its minions' damage from Null's
-Inclination; a2nRZLW9ZVuu's Animated Guardian
-block and Holy Relic speed differ. Neither is a spectre gap.
+raise a Perfect Blasphemer, whose curses go on the enemy. All five match.
 
 `party-<base id>` builds are synthetic: a corpus build with a Party tab
 (imported auras, curses, warcries, links, party member stats and enemy
