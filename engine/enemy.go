@@ -15,6 +15,13 @@ const (
 	uberBossDPSMult     = 10 / 4.25
 	uberBossPen         = 40.0 / 5
 	monsterBaseCritMult = 130 // monsterConstants base_critical_strike_multiplier
+	// Data.lua:988 data.bossStats: 100 + the mean armourMult/evasionMult of
+	// Data/Bosses.lua (all bosses for Pinnacle, isUber ones for Uber).
+	monsterDefenceShare = 100.0 // None and Boss: the plain monster tables
+	pinnacleArmourMean  = 150.0
+	pinnacleEvasionMean = 100 + 274.0/11 // 124.909...
+	uberArmourMean      = 125.0
+	uberEvasionMean     = 100 + 116.0/7 // 116.571...
 )
 
 // enemyEnv is what the config tab gives the calculation about the enemy:
@@ -96,13 +103,23 @@ func newEnemyEnv(set *pobcode.ConfigSet, opts []gamedata.ConfigOption, charLevel
 		return mon.Damage[level-1]
 	}
 	updateLevel()
+	// enemyIsBoss also sets the enemy armour and evasion placeholders from
+	// the monster tables (ConfigOptions.lua 2134-2135, 2166-2167, 2200-2201,
+	// 2234-2235), the bosses' at Data.lua:988 bossStats' mean share.
+	defences := func(level int, armourMean, evasionMean float64) {
+		level = max(1, min(level, len(mon.Armour), len(mon.Evasion)))
+		h["enemyArmour"] = round(mon.Armour[level-1]*armourMean/100, 0)    //nolint:mnd // percent
+		h["enemyEvasion"] = round(mon.Evasion[level-1]*evasionMean/100, 0) //nolint:mnd // percent
+	}
 	elements := []string{"Lightning", "Cold", "Fire"}
 	switch boss {
 	case "None":
 		updateLevel()
 		h["enemyPhysicalDamage"] = round(dmg(e.level)*1.5, 0)
+		defences(e.level, monsterDefenceShare, monsterDefenceShare)
 	case "Boss":
 		updateLevel()
+		defences(e.level, monsterDefenceShare, monsterDefenceShare)
 		d := round(dmg(e.level)*1.5*stdBossDPSMult, 0)
 		h["enemyPhysicalDamage"] = d
 		for _, t := range elements {
@@ -130,6 +147,11 @@ func newEnemyEnv(set *pobcode.ConfigSet, opts []gamedata.ConfigOption, charLevel
 		}
 		h["enemyChaosDamage"] = round(d/chaosDiv, 0)
 		h["enemyChaosResist"] = 30
+		if boss == "Uber" {
+			defences(lvl, uberArmourMean, uberEvasionMean)
+		} else {
+			defences(lvl, pinnacleArmourMean, pinnacleEvasionMean)
+		}
 	}
 	if l := max(1, min(e.level, len(mon.PhysConversionMulti))); l > 0 {
 		e.physConversion = mon.PhysConversionMulti[l-1]

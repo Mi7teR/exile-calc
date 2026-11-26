@@ -63,7 +63,8 @@ func configPlaceholder(o gamedata.ConfigOption, set *pobcode.ConfigSet, e *enemy
 // saved one: nil when it clears it. ok is false for other options.
 func bossPlaceholder(name string, e *enemyEnv) (any, bool) {
 	switch name {
-	case "enemyLightningResist", "enemyColdResist", "enemyFireResist", "enemyChaosResist":
+	case "enemyLightningResist", "enemyColdResist", "enemyFireResist", "enemyChaosResist",
+		"enemyArmour", "enemyEvasion":
 	default:
 		return nil, false
 	}
