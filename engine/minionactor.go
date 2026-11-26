@@ -766,8 +766,11 @@ func (c *Calculator) minionSkillBuffs(db, mdb *ModDB, skills []*activeSkill, mai
 // skills were created on (CalcPerform.lua:1298-1302). PoB never fills the
 // other minions' ModDB, so their own CurseEffect, AuraEffect and
 // DebuffEffect mods do nothing there; in the game they apply, so the
-// engine builds the other minions the same way (user decision, recorded
-// in testdata/golden/quirks.json). The game also applies the player's
+// engine builds the other minions the same way (user decision; pinned by
+// TestOtherMinionCurseEffect). Their skills therefore also see their own
+// items, attributes and MinionModifier mods, which can enable skills PoB
+// disables (a Guardian's Smite beside a shield) and change their buffs
+// on the player. The game also applies the player's
 // "minions have ..." mods and the summoning gem's supports to every
 // minion, which is what the skill's MinionModifier list holds.
 //
