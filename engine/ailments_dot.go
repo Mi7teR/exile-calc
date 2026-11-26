@@ -160,6 +160,11 @@ func bleed(actor *ModDB, s *activeSkill, p *hitPass, global map[string]float64, 
 	if !ok {
 		maxStacks = list.SumCfg(cfg, "BASE", "BleedStacksMax")
 	}
+	// CalcOffence.lua:4479 and the stacks / maxStacks below divide by
+	// maxStacks unguarded. A custom "You can inflict Bleeding on an Enemy up
+	// to 0 times" (BleedStacksMax OVERRIDE 0) reaches it: Go's float division
+	// gives LuaJIT's +Inf (NaN for 0/0), and BleedDPS comes out 0 in both
+	// (TestBleedStacksMaxZero).
 	override, hasOverride := list.OverrideCfg(nil, "BleedStackPotentialOverride")
 	if hasOverride {
 		override /= maxStacks

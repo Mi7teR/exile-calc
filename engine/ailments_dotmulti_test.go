@@ -3,6 +3,8 @@ package engine
 import (
 	"math"
 	"testing"
+
+	"github.com/Mi7teR/poe-lib/pobcode"
 )
 
 // TestPoisonDotMultiWeightedInMainMode: with a breakdown (MAIN mode),
@@ -31,5 +33,30 @@ func TestPoisonDotMultiWeightedInMainMode(t *testing.T) {
 		if got := res.Stats["CritPoisonDotMulti"]; math.Abs(got-3.08) > 1e-9 {
 			t.Errorf("calculator %v: CritPoisonDotMulti %v, want 3.08", x.calculator, got)
 		}
+	}
+}
+
+// TestBleedStacksMaxZero: a custom "up to 0 times" sets BleedStacksMax to 0
+// and CalcOffence.lua divides by it (4479, BleedStackPotential). PoB's
+// output then has a non-finite BleedStackPotential and BleedDPS 0 (oracle,
+// yvENgQrpk-61 with that custom mod); the engine gives the same.
+func TestBleedStacksMaxZero(t *testing.T) {
+	c := newCalc(t)
+	b := corpusBuild(t, "yvENgQrpk-61")
+	cfg := b.ActiveConfig()
+	cfg.CustomMods = append(cfg.CustomMods,
+		pobcode.CustomModBlock{Enabled: true, Text: "You can inflict Bleeding on an Enemy up to 0 times"})
+	res, err := c.Calc(b)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := res.Stats["BleedStacksMax"]; got != 0 {
+		t.Fatalf("BleedStacksMax %v, want 0", got)
+	}
+	if got := res.Stats["BleedStackPotential"]; !math.IsInf(got, 1) {
+		t.Errorf("BleedStackPotential %v, want +Inf", got)
+	}
+	if got := res.Stats["BleedDPS"]; got != 0 {
+		t.Errorf("BleedDPS %v, want 0", got)
 	}
 }
