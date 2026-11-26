@@ -13,6 +13,7 @@ func init() {
 	registerSkill([]string{"Bodyswap", "Bodyswap of Sacrifice"}, skillHooks{preDamage: bodyswapPreDamage})
 	registerSkill([]string{"Blade Blast", "Blade Blast of Unloading"}, skillHooks{preDamage: bladeBlastPreDamage})
 	registerSkill([]string{"Bane", "Bane of Condemnation"}, skillHooks{preSkillType: banePreSkillType})
+	registerSkill([]string{"Tornado"}, skillHooks{preDamage: tornadoPreDamage})
 	registerSkill([]string{"Righteous Fire"}, skillHooks{preDamage: righteousFirePreDamage})
 	registerSkill(
 		[]string{"Righteous Fire of Arcane Devotion"},
@@ -48,6 +49,12 @@ func bladefallOfTrarthusPreDamage(_ *ModDB, s *activeSkill, _ map[string]float64
 func tornadoOfElementalTurbulencePreDamage(_ *ModDB, s *activeSkill, _ map[string]float64) {
 	s.data.set("hitTimeOverride", s.data.val("damageInterval"))
 	mulDPS(s.data, s.mods.SumCfg(s.cfg, "BASE", "Multiplier:TornadoofElementalTurbulenceStage"))
+}
+
+// Data/Skills/act_dex.lua:18037-18039 Tornado preDamageFunc: one hit per
+// damage interval.
+func tornadoPreDamage(_ *ModDB, s *activeSkill, _ map[string]float64) {
+	s.data.set("hitTimeOverride", s.data.val("damageInterval"))
 }
 
 // Data/Skills/act_int.lua Bodyswap preDamageFunc.

@@ -20,7 +20,7 @@ var switchCases = map[string][]string{
 		"Molten Strike", "Molten Strike of the Zenith",
 		"Avenging Flame",
 		"Bladefall of Trarthus",
-		"Tornado of Elemental Turbulence",
+		"Tornado of Elemental Turbulence", "Tornado",
 		"Storm Burst",
 		"Spark", "Spark of the Nova",
 		"Ice Spear", "Ice Spear of Splitting",

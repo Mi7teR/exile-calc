@@ -199,6 +199,10 @@ func luaPortCases() []luaPortCase {
 			data: map[string]any{"dpsBaseMultiplier": 4.0}, output: map[string]float64{},
 		},
 		{
+			skill: "Tornado", hook: "preDamageFunc",
+			data: map[string]any{"damageInterval": 0.25}, output: map[string]float64{},
+		},
+		{
 			skill: "Blood Sacrament", hook: "initialFunc",
 			data:   map[string]any{"LifeReservedPercent": 4.5, "LifeReservedBase": 312.0},
 			output: map[string]float64{"LifeReservedPercent": 40},
