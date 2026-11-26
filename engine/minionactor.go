@@ -589,9 +589,9 @@ func (c *Calculator) CalcMinions(b *pobcode.Build) ([]MinionResult, error) {
 		if !s.HasMinion || s.Disabled {
 			continue
 		}
-		r, err := c.Calc(withMainSkill(b, s.Group, s.GroupSkill))
-		if err != nil {
-			return nil, err
+		r, calcErr := c.Calc(withMainSkill(res.build, s.Group, s.GroupSkill))
+		if calcErr != nil {
+			return nil, calcErr
 		}
 		if r.Minion != nil {
 			out = append(out, *r.Minion)

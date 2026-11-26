@@ -17,8 +17,9 @@ s6VBtCrbXmk1 is compared through quirks.json: PoB counts its summoned
 totems before it computes attributes (Replica Iron Commander's "per 200
 Strength" totems are 0 there); the engine counts them, as the game does.
 
-Known player offence miss: M0Gidxpivlwx (Summon Spectral Tiger from the
-Farrul bloodline: tree-granted skill groups are not created).
+M0Gidxpivlwx's Summon Spectral Tiger (Farrul bloodline) has no saved
+group: the build was moved to the 3.30 tree, and the engine creates the
+groups of tree-granted skills as CalcSetup.lua does.
 gzVTJCkWXFan's Full DPS is compared through quirks.json: its Toxic Rain
 mirage keeps its +gem levels from items (the MirageDPS quirk) and so adds
 a larger DoT than PoB's.

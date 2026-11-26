@@ -244,7 +244,7 @@ func (c *Calculator) setupSkills(db *ModDB, b *pobcode.Build, useSwap bool, res 
 		// socket groups that no longer have a matching item"): a saved
 		// Tree:<id> group whose node no longer grants the skill (a build
 		// moved to a newer tree) is gone.
-		if strings.HasPrefix(g.Source, "Tree:") && !treeGrants(db, g) {
+		if strings.HasPrefix(g.Source, "Tree:") && !treeGrants(db, g, skills) {
 			enabled[i] = false
 		}
 		cfg := &Cfg{SlotName: slotOf(g), GemCounts: map[string]int{}}
@@ -610,18 +610,18 @@ func grantedTrigger(db *ModDB, g *pobcode.SocketGroup, id string) (bool, float64
 	return false, 0, false
 }
 
-// treeGrants reports whether a tree-sourced group's skill is granted by an
-// ExtraSkill mod of that node (source "Tree:<id>").
-func treeGrants(db *ModDB, g *pobcode.SocketGroup) bool {
-	if len(g.Gems) == 0 {
-		return false
-	}
+// treeGrants reports whether a tree-sourced group matches a skill granted
+// by an ExtraSkill mod of that node (source "Tree:<id>"), as
+// CalcSetup.lua:1526-1534 matches groups (treeGroupMatches).
+func treeGrants(db *ModDB, g *pobcode.SocketGroup, skills map[string]*gamedata.Skill) bool {
 	for _, e := range db.List(nil, "ExtraSkill") {
 		if e.Mod.Source != g.Source {
 			continue
 		}
 		v, _ := e.Value.(map[string]any)
-		if id, _ := v["skillId"].(string); id == g.Gems[0].SkillID {
+		id, _ := v["skillId"].(string)
+		lvl, _ := num(v["level"])
+		if treeGroupMatches(g, g.Source, id, int(lvl), skills) {
 			return true
 		}
 	}

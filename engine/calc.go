@@ -50,6 +50,9 @@ type Result struct {
 	Minion          *MinionResult // the main skill's minion (env.minion)
 	// main is env.player.mainSkill, nil when there is none.
 	main *activeSkill
+	// build is the calculated build: the input with its tree-granted skill
+	// groups (Skills' Group indexes refer to it).
+	build *pobcode.Build
 }
 
 // SkillInfo describes one active skill: its effective gem level and

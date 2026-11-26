@@ -632,6 +632,10 @@ func stepConfig(c *Calculator, st *calcState) error {
 // calcs.buildActiveSkillModList for every active skill.
 func stepSkills(c *Calculator, st *calcState) error {
 	db, res := st.db, st.res
+	// CalcSetup.lua:1523-1564 creates the groups of tree-granted skills
+	// before the active skills are built; later steps see them too.
+	st.b = withTreeGrantedSkills(db, st.b, c.data.Skills.Effects)
+	db.build, res.build = st.b, st.b
 	skills := c.setupSkills(db, st.b, st.useSwap, res)
 	db.activeSkills = skills
 	for _, s := range skills {
