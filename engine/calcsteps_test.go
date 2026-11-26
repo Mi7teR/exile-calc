@@ -44,7 +44,6 @@ func TestCalcStepOrder(t *testing.T) {
 		"skillInfo",
 		"allyLife",
 		"defence",
-		"minion",
 		"offence",
 		"minionOffence",
 		"unsupportedTags",

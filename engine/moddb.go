@@ -63,7 +63,6 @@ type ModDB struct {
 	minionFlasks     struct{ any, nonUnique, quicksilver bool } // the player's active flasks that could reach a minion
 	silverFlasks     []silverFlask                              // the player's active Silver Flasks (env.flasks), for doActorMisc's Onslaught
 	aegis            *aegisShield                               // the player's: env.aegisItem and env.aegisModList (Necromantic Aegis)
-	minionDebuffs    []string                                   // the player's: debuffs of env.minion's own skills, for its AffectedBy conditions
 	partyExports     *partyExports                              // the player's: buffExports, while the Party tab exports
 	// explodeSources is the player's env.explodeSources as mod sources
 	// (grantedskills.go), in the order of the Explode group's gems.

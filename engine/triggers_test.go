@@ -246,3 +246,49 @@ func TestMinionSnipeTrigger(t *testing.T) {
 		t.Errorf("minion trigger rate without a source: %v", mdb.output)
 	}
 }
+
+// TestAddedCastTime: processAddedCastTime (CalcTriggers.lua:45-62) adds the
+// cast time at the rounded cast speed to the trigger cooldown, for
+// env.player.mainSkill in the default handler (634-637).
+func TestAddedCastTime(t *testing.T) {
+	s := triggerTestSkill("Arc")
+	s.active.ge.CastTime = 0.75
+	if _, ok := processAddedCastTime(s); ok {
+		t.Fatal("added cast time without the flag")
+	}
+	s.mods.Add(Mod{Name: "SpellCastTimeAddedToCooldownIfTriggered", Type: "FLAG", Value: true})
+	s.mods.NewMod("Speed", "INC", 50, "Tree")
+	if got, ok := processAddedCastTime(s); !ok || got != 0.5 || !s.flags["addsCastTime"] {
+		t.Fatalf("added cast time %v %v", got, ok)
+	}
+	c := &Calculator{}
+	s.main = true
+	s.data.cooldown = optF{0.25, true}
+	db := NewModDB()
+	db.activeSkills = []*activeSkill{s}
+	c.defaultTrigger(db, s, nil, &triggerConfig{selfSource: true}, hitSource{}, nil)
+	want := 1 / (math.Ceil(0.5*serverTickRate) / serverTickRate)
+	if got := db.output["TriggerRateCap"]; math.Abs(got-want) > 1e-9 || db.output["addsCastTime"] != 0.5 {
+		t.Errorf("TriggerRateCap %v addsCastTime %v, want %v 0.5", got, db.output["addsCastTime"], want)
+	}
+}
+
+// TestSkipEffectiveRate: the Spellslinger skill itself skips the effective
+// rate (CalcTriggers.lua:1221-1224, 747): its trigger rate is 0.
+func TestSkipEffectiveRate(t *testing.T) {
+	c := &Calculator{}
+	for _, name := range []string{"Spellslinger", "Arc"} {
+		s := triggerTestSkill(name)
+		s.main = true
+		db := NewModDB()
+		db.activeSkills = []*activeSkill{s}
+		cfg := triggerConfigs["spellslinger"](db, s)
+		src := triggerTestSkill("Power Siphon")
+		cfg.source, cfg.sourceOut, cfg.trigRate = src, map[string]float64{}, 2
+		c.defaultTrigger(db, s, nil, cfg, hitSource{}, nil)
+		got := db.output["SkillTriggerRate"]
+		if skip := name == "Spellslinger"; skip != (got == 0) || s.flags["skipEffectiveRate"] != skip {
+			t.Errorf("%s: SkillTriggerRate %v skipEffectiveRate %v", name, got, s.flags["skipEffectiveRate"])
+		}
+	}
+}

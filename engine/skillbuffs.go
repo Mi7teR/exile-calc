@@ -131,6 +131,13 @@ func (c *Calculator) applyBuffs(db *ModDB, skills []*activeSkill, res *Result) (
 		}
 		mergeBuff(src, buffs, name)
 	}
+	addDebuff := func(src []Mod, name string) {
+		if _, ok := debuffs[name]; !ok {
+			debuffOrder = append(debuffOrder, name)
+		}
+		mergeBuff(src, debuffs, name)
+	}
+	pm := mainSkill(skills)
 	// CalcPerform.lua:2242: the active spectres' modLists, before the
 	// skills' buffs; their mods are inserted, not merged.
 	sp := c.spectreEffectsOf(db, skills)
@@ -187,9 +194,7 @@ func (c *Calculator) applyBuffs(db *ModDB, skills []*activeSkill, res *Result) (
 					db.conditions["AffectedBy"+strings.ReplaceAll(b.name, " ", "")] = true
 					add(append(scaleMods(b.mods, mult), scaleMods(extra, mult)...), b.name)
 				}
-				if db.Flag("AurasAffectEnemies") {
-					res.Incomplete = append(res.Incomplete, "auras affecting enemies: "+b.name)
-				}
+				c.playerAuraOthers(db, s, pm, b, extra, add, addDebuff)
 			case "Guard":
 				if s.flags["totem"] && !b.allowTotemBuff || b.applyNotPlayer {
 					continue
@@ -282,12 +287,7 @@ func (c *Calculator) applyBuffs(db *ModDB, skills []*activeSkill, res *Result) (
 				break
 			}
 		}
-		curses = append(curses, c.minionAurasOnPlayer(db, s, mainSkill(skills), add, func(src []Mod, name string) {
-			if _, ok := debuffs[name]; !ok {
-				debuffOrder = append(debuffOrder, name)
-			}
-			mergeBuff(src, debuffs, name)
-		}, notBuff, res)...)
+		curses = append(curses, c.minionAurasOnPlayer(db, s, pm, add, addDebuff, notBuff, res)...)
 	}
 	db.party.partyBuffsOnPlayer(db, add, func(src []Mod, name string) {
 		if _, ok := debuffs[name]; !ok {
@@ -586,34 +586,6 @@ func (c *Calculator) actorExtraCurses(actor *ModDB, pass extraCursePass, res *Re
 	return curses
 }
 
-// minionExtraCurses is the env.minion iteration of "Check for extra
-// curses" for the enemy: the main minion's ExtraCurse mods without
-// applyToPlayer join minionCurses (fromPlayer false). The engine builds
-// env.minion after the curse slots, so this reads the minion's ModDB as
-// the minion skill loop sees it (castingMinionSkills: initMinionModDB and
-// the summoning skill's MinionModifier mods), with Blood Shrine of Bats'
-// Enfeeble (CalcPerform.lua:395-398) when the minion has that shrine.
-// The applyToPlayer part runs on env.minion itself (mainMinion).
-func (c *Calculator) minionExtraCurses(db *ModDB, skills []*activeSkill, res *Result) []*enemyCurse {
-	s := mainSkill(skills)
-	if s == nil || s.disabled || db.enemyEnv == nil {
-		return nil
-	}
-	m := c.minionOf(s, int(db.multipliers["Level"]), db.enemyEnv.level)
-	if m == nil || m.data.Hostile {
-		return nil
-	}
-	casting, _ := c.castingMinionSkills(db, s, m, res)
-	curses := c.actorExtraCurses(casting, extraCursePass{enemy: true, minion: true}, res)
-	if casting.Flag("BloodShrineOfBats") && (!db.enemy.Flag("Hexproof") || casting.Flag("CursesIgnoreHexproof")) {
-		bats := NewModDB()
-		bats.enemy = casting.enemy
-		bats.Add(Mod{Name: "ExtraCurse", Type: "LIST", Value: map[string]any{"skillId": "Enfeeble", "level": 1.0}, Source: "Blood Shrine of Bats"})
-		curses = append(curses, c.actorExtraCurses(bats, extraCursePass{enemy: true, minion: true}, res)...)
-	}
-	return curses
-}
-
 // extraAuras ports the ExtraAura loop of calcs.perform: aura mods granted
 // by other mods ("you and nearby allies have ...") apply to the player
 // scaled by buff and aura effect on self, and, while the main skill is a
@@ -689,11 +661,9 @@ func (c *Calculator) minionAurasOnPlayer(
 			name := strings.ReplaceAll(b.name, " ", "")
 			if b.typ == "Debuff" || b.typ == "AuraDebuff" {
 				// Debuffs need no "enable" (CalcPerform.lua:2979).
-				if minionDebuff(db, ms, b, debuff) && s.main {
-					// CalcPerform.lua:3012-3014: env.minion is this skill's
-					// minion; mainMinion sets the condition on it.
-					db.minionDebuffs = append(db.minionDebuffs, name)
-				}
+				// env.minion's AffectedBy condition (CalcPerform.lua:3012-3014)
+				// is set by minionSkillBuffsOf.
+				minionDebuff(db, ms, b, debuff)
 				continue
 			}
 			if !enabled {
@@ -781,6 +751,58 @@ func (c *Calculator) minionAurasOnPlayer(
 	return curses
 }
 
+// playerAuraOthers is the rest of calcs.perform's Aura branch for the
+// player's aura b of skill s (CalcPerform.lua:2512-2618), after its effect
+// on the player; env.minion's part is minionBuffs. The aura's Party tab
+// export, its debuff on the enemy with AurasAffectEnemies, its totem copy
+// while env.player.mainSkill pm is a totem, and the ExtraAuraDebuffEffect
+// debuff of an aura without an AuraDebuff.
+func (c *Calculator) playerAuraOthers(db *ModDB, s, pm *activeSkill, b *skillBuff, extra []Mod, add, addDebuff func([]Mod, string)) {
+	list, cfg := s.mods, s.cfg
+	name := strings.ReplaceAll(b.name, " ", "")
+	both := func() []Mod { return append(append([]Mod(nil), b.mods...), extra...) }
+	if !db.Flag("SelfAurasCannotAffectAllies") && !db.Flag("SelfAurasOnlyAffectYou") && !db.Flag("SelfAuraSkillsCannotAffectAllies") {
+		mult := (1 + list.SumCfg(cfg, "INC", "AuraEffect", "BuffEffect")/100) * list.MoreCfg(cfg, "AuraEffect", "BuffEffect")
+		if e := db.partyExports; e != nil {
+			e.setAura(b.name, &partyExport{effectMult: mult, mods: both()}) // CalcPerform.lua:2527-2536
+		}
+		// CalcPerform.lua:2537-2550.
+		if db.Flag("AurasAffectEnemies") && !list.FlagCfg(cfg, "SelfAurasAffectYouAndLinkedTarget") {
+			if e := db.partyExports; e != nil {
+				e.setAuraDebuff(b.name, &partyExport{effectMult: mult, mods: both()})
+			}
+			addDebuff(append(scaleMods(b.mods, mult), scaleMods(extra, mult)...), b.name)
+		}
+	}
+	// CalcPerform.lua:2552-2580.
+	if pm != nil && pm.flags["totem"] && pm.mods != nil &&
+		!db.Flag("SelfAurasCannotAffectAllies") && !db.Flag("SelfAuraSkillsCannotAffectAllies") {
+		pm.mods.conditions["AffectedBy"+name] = true
+		pm.mods.conditions["AffectedByAura"] = true
+		scale := math.Max((1+list.SumCfg(cfg, "INC", "AuraEffect", "BuffEffect", "AuraBuffEffect")/100)*
+			list.MoreCfg(cfg, "AuraEffect", "BuffEffect", "AuraBuffEffect"), 0)
+		add(totemAuraMods(scale, extra, b.mods), "Totem "+b.name)
+	}
+	// CalcPerform.lua:2582-2618: PoB merges the extra debuff mods without
+	// the multiplier it computes.
+	if len(db.List(cfg, "ExtraAuraDebuffEffect")) == 0 || db.Flag("SelfAurasOnlyAffectYou") ||
+		list.FlagCfg(cfg, "SelfAurasAffectYouAndLinkedTarget") {
+		return
+	}
+	for _, x := range s.buffs {
+		if x.typ == "AuraDebuff" {
+			return
+		}
+	}
+	mods := extraAuraDebuffMods(db, cfg)
+	if e := db.partyExports; e != nil {
+		mult := (1 + list.SumCfg(cfg, "INC", "AuraEffect", "BuffEffect", "DebuffEffect")/100) *
+			list.MoreCfg(cfg, "AuraEffect", "BuffEffect", "DebuffEffect")
+		e.setAuraDebuff(b.name, &partyExport{effectMult: mult, mods: mods})
+	}
+	addDebuff(mods, b.name)
+}
+
 // totemResistName is the mod.name:match("Resist?M?a?x?$") of the totem
 // aura branches.
 var totemResistName = regexp.MustCompile(`Resist?M?a?x?$`)
@@ -843,12 +865,10 @@ func setSpectreSource(mods []Mod, s *activeSkill, casting *ModDB, buffName strin
 	}
 }
 
-// minionDebuff is the Debuff and AuraDebuff branch of calcs.perform's
-// minion skill buffs (CalcPerform.lua:2979): the debuff on the enemy,
-// scaled by the minion skill's debuff (and aura) effect and its stacks.
-// The party's buff exports are not kept. It reports whether the debuff
-// applied (a positive stack count).
-func minionDebuff(db *ModDB, ms *activeSkill, b *skillBuff, debuff func([]Mod, string)) bool {
+// debuffStack is the stackCount of calcs.perform's Debuff and AuraDebuff
+// branches (CalcPerform.lua:2980-2990): the stack variable within its
+// limit, else skillData.stackCount, else 1.
+func debuffStack(ms *activeSkill, b *skillBuff) float64 {
 	list, cfg := ms.mods, ms.cfg
 	stack := 1.0
 	if b.stackVar != "" {
@@ -861,6 +881,17 @@ func minionDebuff(db *ModDB, ms *activeSkill, b *skillBuff, debuff func([]Mod, s
 	} else if v, ok := num(ms.data.val("stackCount")); ok {
 		stack = v
 	}
+	return stack
+}
+
+// minionDebuff is the Debuff and AuraDebuff branch of calcs.perform's
+// minion skill buffs (CalcPerform.lua:2979): the debuff on the enemy,
+// scaled by the minion skill's debuff (and aura) effect and its stacks.
+// The party's buff exports are not kept. It reports whether the debuff
+// applied (a positive stack count).
+func minionDebuff(db *ModDB, ms *activeSkill, b *skillBuff, debuff func([]Mod, string)) bool {
+	list, cfg := ms.mods, ms.cfg
+	stack := debuffStack(ms, b)
 	if stack <= 0 {
 		return false
 	}

@@ -39,26 +39,6 @@ func TestMinionExtraCurses(t *testing.T) {
 	if !mdb.conditions["Cursed"] || !mdb.conditions["AffectedByVulnerability"] || mdb.multipliers["CurseOnSelf"] != 1 {
 		t.Errorf("self pass: conditions %v multipliers %v", mdb.conditions, mdb.multipliers)
 	}
-
-	// The main minion's ExtraCurse reaches the enemy through the curse
-	// slots: wYVdkskvi67I with an ExtraCurse on the casting minion.
-	b := corpusBuild(t, "wYVdkskvi67I")
-	res, err := c.Calc(b)
-	if err != nil {
-		t.Fatal(err)
-	}
-	db := res.DB
-	main := mainSkill(db.activeSkills)
-	m := c.minionOf(main, b.Level, db.enemyEnv.level)
-	if m == nil {
-		t.Fatal("the main skill has no minion")
-	}
-	casting, _ := c.castingMinionSkills(db, main, m, &Result{})
-	casting.Add(extra("Punishment", false))
-	got := c.minionExtraCurses(db, db.activeSkills, &Result{})
-	if len(got) != 1 || got[0].name != "Punishment" || !got[0].minion {
-		t.Errorf("minionExtraCurses: %+v", got)
-	}
 }
 
 // TestMinionAuraTotem: while the player's main skill is a totem, a
@@ -237,4 +217,106 @@ func TestMinionPartyExports(t *testing.T) {
 
 func sameStrings(a, b []string) bool {
 	return slices.Equal(slices.Sorted(slices.Values(a)), slices.Sorted(slices.Values(b)))
+}
+
+// TestPlayerAuraOthers: the rest of the player's Aura branch
+// (CalcPerform.lua:2512-2618): the totem copy while the main skill is a
+// totem, the debuff with AurasAffectEnemies, and the unscaled
+// ExtraAuraDebuffEffect debuff of an aura without an AuraDebuff.
+func TestPlayerAuraOthers(t *testing.T) {
+	c := &Calculator{}
+	db := NewModDB()
+	aura := triggerTestSkill("Determination")
+	aura.mods.NewMod("AuraEffect", "INC", 50, "Gem")
+	b := &skillBuff{typ: "Aura", name: "Determination", mods: []Mod{{Name: "Armour", Type: "MORE", Value: 20.0}}}
+	aura.buffs = []*skillBuff{b}
+	totem := triggerTestSkill("Shockwave Totem")
+	totem.flags["totem"] = true
+	db.Add(Mod{Name: "AurasAffectEnemies", Type: "FLAG", Value: true})
+	db.Add(Mod{Name: "ExtraAuraDebuffEffect", Type: "LIST", Source: "Tree",
+		Value: map[string]any{"mod": map[string]any{"name": "PhysicalDamageTaken", "type": "INC", "value": 5.0}}})
+	buffs, debuffs := map[string][]Mod{}, map[string][]Mod{}
+	add := func(l []Mod, name string) { buffs[name] = append(buffs[name], l...) }
+	addDebuff := func(l []Mod, name string) { debuffs[name] = append(debuffs[name], l...) }
+	c.playerAuraOthers(db, aura, totem, b, nil, add, addDebuff)
+	if l := buffs["Totem Determination"]; len(l) != 1 || l[0].Name != "TotemArmour" || l[0].Value != 30.0 {
+		t.Errorf("totem buff %+v", l)
+	}
+	if !totem.mods.conditions["AffectedByDetermination"] || !totem.mods.conditions["AffectedByAura"] {
+		t.Errorf("totem conditions %v", totem.mods.conditions)
+	}
+	// The AurasAffectEnemies debuff (scaled 1.5), then the extra debuff mod
+	// unscaled, as PoB merges it.
+	want := []Mod{
+		{Name: "Armour", Type: "MORE", Value: 30.0},
+		{Name: "PhysicalDamageTaken", Type: "INC", Value: 5.0, Source: "Tree"},
+	}
+	got := debuffs["Determination"]
+	if len(got) != 2 || got[0].Value != want[0].Value || got[1].Name != want[1].Name || got[1].Value != want[1].Value {
+		t.Errorf("debuffs %+v", got)
+	}
+}
+
+// TestMinionSkillBuffOrder: env.minion's own debuff sets its AffectedBy
+// condition where the minion skill loop reaches it (CalcPerform.lua
+// 3012-3014), so an aura of that name listed after it no longer reaches
+// env.minion (2908), and one listed before it still does.
+func TestMinionSkillBuffOrder(t *testing.T) {
+	c := &Calculator{}
+	for _, debuffFirst := range []bool{true, false} {
+		db, mdb := NewModDB(), NewModDB()
+		summon := triggerTestSkill("Raise Spectre")
+		ms := triggerTestSkill("Minion Wrath")
+		ms.summon = summon
+		ms.data.set("enable", true)
+		aura := &skillBuff{typ: "Aura", name: "Wrath",
+			mods: []Mod{{Name: "LightningMin", Type: "BASE", Value: 10.0}}}
+		debuff := &skillBuff{typ: "AuraDebuff", name: "Wrath",
+			mods: []Mod{{Name: "LightningResist", Type: "BASE", Value: -5.0}}}
+		ms.buffs = []*skillBuff{aura, debuff}
+		if debuffFirst {
+			ms.buffs = []*skillBuff{debuff, aura}
+		}
+		out := map[string][]Mod{}
+		c.minionSkillBuffsOf(db, mdb, summon, summon, []*activeSkill{ms}, 1, out, &Result{})
+		if !mdb.conditions["AffectedByWrath"] {
+			t.Errorf("debuff first %v: no AffectedByWrath", debuffFirst)
+		}
+		if _, got := out["Wrath"]; got == debuffFirst {
+			t.Errorf("debuff first %v: aura on env.minion %v", debuffFirst, got)
+		}
+	}
+}
+
+// TestMinionPipelineOrder: env.minion's ModDB exists from the buff loop
+// on, so its extra curses read it (CalcPerform.lua:3177-3178) and its
+// second enemy modifier pass reaches the enemy before the player's
+// calcs.defence (3528 before 3826).
+func TestMinionPipelineOrder(t *testing.T) {
+	c := newCalc(t)
+	st := &calcState{b: corpusBuild(t, "a2nRZLW9ZVuu")}
+	for _, step := range calcSteps {
+		if step.name == "curses" {
+			if st.minion == nil {
+				t.Fatal("no env.minion after the buff loop")
+			}
+			mdb := st.minion.mdb
+			// Tagged with a condition only env.minion's own conditions set.
+			mdb.Add(Mod{Name: "ExtraCurse", Type: "LIST", Source: "Test",
+				Value: map[string]any{"skillId": "Punishment", "level": 1.0},
+				Tags:  []map[string]any{{"type": "Condition", "var": "UsedMinionSkillRecently"}}})
+			mdb.Add(Mod{Name: "EnemyModifier", Type: "LIST", Source: "Test",
+				Value: map[string]any{"mod": map[string]any{"name": "TestEnemyMarker", "type": "BASE", "value": 1.0}}})
+		}
+		if step.name == "defence" && st.db.enemy.Sum("BASE", "TestEnemyMarker") != 1 {
+			t.Error("the minion's enemy modifiers are not on the enemy before the player's defence")
+		}
+		if err := step.run(c, st); err != nil {
+			t.Fatal(err)
+		}
+		if step.name == "curses" &&
+			!slices.ContainsFunc(st.curses, func(cu *enemyCurse) bool { return cu.name == "Punishment" && cu.minion }) {
+			t.Error("the minion's ExtraCurse did not join minionCurses")
+		}
+	}
 }

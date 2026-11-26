@@ -238,15 +238,17 @@ func buffMinionModifiers(buffs map[string][]Mod, cfg *Cfg) [][]ListEntry {
 	return out
 }
 
-// minionBuffs ports the minion side of the player's Buff and Aura branches
-// in calcs.perform's buff loop: the buffs that reach env.minion.
-func minionBuffs(db *ModDB, skills []*activeSkill, mdb *ModDB, mainCfg *Cfg, res *Result) map[string][]Mod {
-	out := map[string][]Mod{}
+// minionBuffsOf ports the minion side of the player's Buff and Aura
+// branches in calcs.perform's buff loop for the player's skill s: its buffs
+// that reach env.minion, into out. linkToMinion is linksApplyToMinions
+// while no Link has linked yet (#linkSkills < 1).
+//
+//nolint:gocognit,funlen // one case per buff type, as the Lua branches
+func minionBuffsOf(db *ModDB, s *activeSkill, mdb *ModDB, mainCfg *Cfg, out map[string][]Mod, linkToMinion *bool) {
 	selfAurasStay := db.Flag("SelfAurasCannotAffectAllies") || db.Flag("SelfAurasOnlyAffectYou") || db.Flag("SelfAuraSkillsCannotAffectAllies")
-	linkToMinion := linksApplyToMinion(db, mdb, mainSkill(skills))
-	for _, s := range skills {
+	{
 		if s.disabled {
-			continue
+			return
 		}
 		list, cfg := s.mods, s.cfg
 		for _, b := range s.buffs {
@@ -304,15 +306,14 @@ func minionBuffs(db *ModDB, skills []*activeSkill, mdb *ModDB, mainCfg *Cfg, res
 				mdb.conditions["AffectedByAura"] = true
 				mergeBuff(append(scaleMods(b.mods, mult), scaleMods(extraAuraMods(db, cfg), mult)...), out, b.name)
 			case "Link": //nolint:goconst // PoB buff type, as the other cases
-				if linkToMinion {
+				if *linkToMinion {
 					// Only the first Link skill links (#linkSkills < 1).
-					linkToMinion = false
+					*linkToMinion = false
 					mergeBuff(linkToMinionMods(db, mdb, s, b), out, b.name)
 				}
 			}
 		}
 	}
-	return out
 }
 
 // linksApplyToMinion is calcs.perform's linksApplyToMinions: Link skills
@@ -490,22 +491,29 @@ func (c *Calculator) earlyMinionEnemyMods(db *ModDB, skills []*activeSkill, char
 	}
 }
 
+// minionInit is env.minion as calcs.perform builds it up to the curse
+// slots: initMinionModDB (CalcPerform.lua:1318-1322), its MinionModifier
+// mods, keystones and doActorAttribsConditions (1990-1998), and its side
+// of the buff loop (2232-3100). Its buffs are added after the curse slots
+// (minionApplyBuffs, 3383-3410), its charges and misc buffs in
+// stepActorMisc (3527-3528), and its defence, triggers and offence after
+// the player's offence (minionOffence, 3836-3845).
 //
-//nolint:gocognit,gocyclo,cyclop,funlen // calcs.perform's env.minion steps in their order
-func (c *Calculator) mainMinion(
-	db *ModDB, skills []*activeSkill, buffs map[string][]Mod, charLevel int, res *Result,
-) (*MinionResult, *minionCalc) {
+//nolint:funlen // calcs.perform's env.minion steps in their order
+func (c *Calculator) minionInit(
+	db *ModDB, skills []*activeSkill, curses []*enemyCurse, charLevel int, res *Result,
+) *minionCalc {
 	s := mainSkill(skills)
 	if s == nil || s.disabled {
-		return nil, nil
+		return nil
 	}
 	m := c.minionOf(s, charLevel, db.enemyEnv.level)
 	if m == nil || m.data.Hostile {
-		return nil, nil
+		return nil
 	}
 	mdb, gear := c.initMinionDB(db, s, m, res)
 	if mdb == nil {
-		return nil, nil
+		return nil
 	}
 	// applyEnemyModifiers(env.minion, true) (CalcPerform.lua:1354) took the
 	// EnemyModifier mods initMinionModDB gave (earlyMinionEnemyMods): the
@@ -539,25 +547,47 @@ func (c *Calculator) mainMinion(
 	c.attributes(mdb)
 	shrineBuffs(mdb)
 	c.lifeMana(mdb)
-	mb := minionBuffs(db, skills, mdb, s.cfg, res)
+	// The buff loop: the spectres' modList buff (CalcPerform.lua:2282)
+	// before it, then per player skill its buffs that reach env.minion and
+	// its minions' skill buffs (2342-3030), then the party's (3031-3089).
+	mb := map[string][]Mod{}
 	if sp := c.spectreEffectsOf(db, skills); len(sp.minion) > 0 {
-		mb["Spectre"] = append(mb["Spectre"], sp.minion...) // CalcPerform.lua:2282
+		mb["Spectre"] = append(mb["Spectre"], sp.minion...)
 	}
-	for k, l := range c.minionSkillBuffs(db, mdb, skills, s, mskills, charLevel, res) {
-		mergeBuff(l, mb, k)
+	link := linksApplyToMinion(db, mdb, s)
+	for _, x := range skills {
+		minionBuffsOf(db, x, mdb, s.cfg, mb, &link)
+		c.minionSkillBuffsOf(db, mdb, x, s, mskills, charLevel, mb, res)
 	}
 	db.party.partyBuffsOnMinion(mdb, mb)
-	for _, name := range db.minionDebuffs {
-		mdb.conditions["AffectedBy"+name] = true // CalcPerform.lua:3012-3014
+	// CalcPerform.lua:2733-2738: a curse that grants a buff also grants it
+	// to env.minion, scaled by the minion's buff effect on self.
+	for _, cu := range curses {
+		if cu.curseBuffMods != nil {
+			scale := (1 + mdb.Sum("INC", "BuffEffectOnSelf")/100) * mdb.More("BuffEffectOnSelf")
+			cu.minionBuffMods = scaleMods(cu.curseBuffMods, scale)
+		}
 	}
-	// CalcPerform.lua:3178-3224 for env.minion: Consecrated Ground and the
-	// curses on the minion itself (its enemy part is minionExtraCurses).
-	c.actorExtraCurses(mdb, extraCursePass{self: true}, res)
+	r := &MinionResult{Skill: s.active.ge.Name, Minion: m.data.Name, Stats: map[string]float64{}}
+	return &minionCalc{summon: s, ms: ms, m: m, mdb: mdb, gear: gear, weapon: weapon, weapon2: weapon2,
+		buffs: mb, enemyMods: minionEnemyMods, res: r}
+}
+
+// minionApplyBuffs is "Apply buff/debuff modifiers" for env.minion
+// (CalcPerform.lua:3383-3410): the MinionModifier mods of the player's
+// buffs, the minion buffs, then the minion buff of each slotted curse.
+func (mc *minionCalc) applyBuffs(db *ModDB, buffs map[string][]Mod, slots []*enemyCurse, res *Result) {
+	mdb, s := mc.mdb, mc.summon
 	for _, l := range buffMinionModifiers(buffs, s.cfg) {
-		addMinionModifiers(mdb, l, m.typ)
+		addMinionModifiers(mdb, l, mc.m.typ)
 	}
-	for _, l := range mb {
+	for _, l := range mc.buffs {
 		for _, x := range l {
+			mdb.Add(x)
+		}
+	}
+	for _, cu := range slots {
+		for _, x := range cu.minionBuffMods {
 			mdb.Add(x)
 		}
 	}
@@ -570,17 +600,24 @@ func (c *Calculator) mainMinion(
 		(fl.quicksilver && db.FlagCfg(s.cfg, "QuickSilverAppliesToAllies")) {
 		res.Incomplete = append(res.Incomplete, "flask effects on the minion are not applied")
 	}
-	extraAurasToMinion(db, mdb)
-	db.party.partyExtraAuras(mdb)
-	defenceForConditionals(mdb, gear)
+}
+
+// misc is doActorCharges and doActorMisc for env.minion (CalcPerform.lua
+// 3526-3529): its charges, misc buffs, rage (skillCfg there is an
+// undefined global, so nil) and second "Process enemy modifiers" pass.
+func (mc *minionCalc) misc(db *ModDB) {
+	mdb := mc.mdb
 	charges(mdb)
-	// CalcPerform.lua:3527-3528: doActorCharges and doActorMisc for
-	// env.minion, then its rage (skillCfg there is an undefined global,
-	// so nil) and its second "Process enemy modifiers" pass.
 	silver, silverInc := silverOnslaught(mdb, db.silverFlasks)
-	actorMisc(mdb, ms, s, silver, silverInc)
+	actorMisc(mdb, mc.ms, mc.summon, silver, silverInc)
 	rage(mdb, nil)
-	minionEnemyMods.apply(mdb)
+	mc.enemyMods.apply(mdb)
+}
+
+// defence is calcs.defence(env, env.minion) (CalcPerform.lua:3836-3840),
+// after the player's offence.
+func (c *Calculator) minionDefence(db *ModDB, mc *minionCalc) {
+	mdb := mc.mdb
 	// CalcDefence.lua: the player's ResistanceAddedToMinions (Bonemeld)
 	// gives the minion that share of the player's final resistances.
 	if db.Sum("BASE", "ResistanceAddedToMinions") > 0 {
@@ -593,24 +630,22 @@ func (c *Calculator) mainMinion(
 		}
 	}
 	c.resistances(mdb)
-	c.defence(mdb, gear, map[string]bool{})
-	stats := map[string]float64{}
+	c.defence(mdb, mc.gear, map[string]bool{})
 	for _, k := range minionResultStats {
-		stats[k] = mdb.output[k]
+		mc.res.Stats[k] = mdb.output[k]
 	}
-	r := &MinionResult{Skill: s.active.ge.Name, Minion: m.data.Name, Stats: stats}
-	return r, &minionCalc{summon: s, mdb: mdb, ms: ms, weapon: weapon, weapon2: weapon2, res: r}
 }
 
-// minionCalc is env.minion between its calcs.defence and its triggers and
-// offence: PoB runs those after the player's calcs.triggers and
-// calcs.offence (CalcPerform.lua:3831-3846), so the minion's skills see
-// the summoning skill's offence results (skillData.summonSpeed).
+// minionCalc is env.minion through the steps of calcs.perform.
 type minionCalc struct {
 	summon, ms *activeSkill
+	m          *skillMinion
 	mdb        *ModDB
+	gear       map[string][]modparser.Mod
 	weapon     hitSource
 	weapon2    *hitSource
+	buffs      map[string][]Mod // minionBuffs
+	enemyMods  enemyModifiers
 	res        *MinionResult
 }
 
@@ -622,6 +657,7 @@ func (c *Calculator) minionOffence(db *ModDB, mc *minionCalc, res *Result) {
 	if mc == nil {
 		return
 	}
+	c.minionDefence(db, mc)
 	mdb, ms := mc.mdb, mc.ms
 	clawCritToMinion(mc.summon, mdb)
 	if ms == nil {
@@ -750,32 +786,44 @@ func minionSkillIndex(s *activeSkill, n int) int {
 	return max(min(i, n), 1) - 1
 }
 
-// minionSkillBuffs is the env.minion side of calcs.perform's loop over the
-// minions' skills: their enabled Buff and Aura buffs that reach the main
-// minion. Other minions' skills read their own minion's mods
-// (castingMinionSkills).
-func (c *Calculator) minionSkillBuffs(db, mdb *ModDB, skills []*activeSkill, main *activeSkill, mainSkills []*activeSkill, charLevel int, res *Result) map[string][]Mod {
-	out := map[string][]Mod{}
-	for _, s := range skills {
+// minionSkillBuffsOf is the env.minion side of calcs.perform's loop over
+// the minions' skills of the player's skill s (CalcPerform.lua:2811-3029):
+// their enabled Buff and Aura buffs that reach the main minion, into out,
+// and the AffectedBy condition the main minion's own debuffs set on it
+// (3012-3014), in the loop's order. Other minions' skills read their own
+// minion's mods (castingMinionSkills).
+//
+//nolint:gocognit // one case per buff type, as the Lua branches
+func (c *Calculator) minionSkillBuffsOf(
+	db, mdb *ModDB, s, main *activeSkill, mainSkills []*activeSkill, charLevel int, out map[string][]Mod, res *Result,
+) {
+	{
 		if s.disabled {
-			continue
+			return
 		}
 		casting := mdb
 		list := mainSkills
 		if s != main {
 			m := c.minionOf(s, charLevel, db.enemyEnv.level)
 			if m == nil {
-				continue
+				return
 			}
 			casting, list = c.castingMinionSkills(db, s, m, res)
 		}
 		for _, ms := range list {
-			if !truthy(ms.data.val("enable")) {
-				continue
-			}
+			enabled := truthy(ms.data.val("enable"))
 			skillList, cfg := ms.mods, ms.cfg
 			for _, b := range ms.buffs {
 				name := strings.ReplaceAll(b.name, " ", "")
+				if b.typ == "Debuff" || b.typ == "AuraDebuff" { //nolint:goconst // PoB buff types
+					if casting == mdb && debuffStack(ms, b) > 0 {
+						mdb.conditions["AffectedBy"+name] = true // CalcPerform.lua:3012-3014
+					}
+					continue
+				}
+				if !enabled {
+					continue
+				}
 				switch b.typ {
 				case "Buff":
 					isCasting := casting == mdb
@@ -818,7 +866,6 @@ func (c *Calculator) minionSkillBuffs(db, mdb *ModDB, skills []*activeSkill, mai
 			}
 		}
 	}
-	return out
 }
 
 // castingMinionSkills is a minion's skills as calcs.perform's minion

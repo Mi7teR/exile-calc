@@ -116,7 +116,6 @@ var calcSteps = []calcStep{
 	{"skillInfo", stepSkillInfo},
 	{"allyLife", stepAllyLife},
 	{"defence", stepDefence},
-	{"minion", stepMinion},
 	{"offence", stepOffence},
 	{"minionOffence", stepMinionOffence},
 	{"unsupportedTags", stepUnsupportedTags},
@@ -832,6 +831,10 @@ func stepBuffs(c *Calculator, st *calcState) error {
 		st.db.partyExports = newPartyExports()
 	}
 	st.curses, st.buffs = c.applyBuffs(st.db, st.skills, st.res)
+	st.minion = c.minionInit(st.db, st.skills, st.curses, st.b.Level, st.res)
+	if st.minion != nil {
+		st.res.Minion = st.minion.res
+	}
 	return nil
 }
 
@@ -839,8 +842,15 @@ func stepBuffs(c *Calculator, st *calcState) error {
 // slots.
 func stepCurses(c *Calculator, st *calcState) error {
 	st.curses = c.extraCurses(st.db, st.curses, st.res)
-	st.curses = append(st.curses, c.minionExtraCurses(st.db, st.skills, st.res)...)
-	c.applyCurses(st.db, st.skills, st.curses, st.res)
+	if mc := st.minion; mc != nil {
+		// CalcPerform.lua:3178-3224 for env.minion's modDB.
+		pass := extraCursePass{self: true, enemy: true, minion: true}
+		st.curses = append(st.curses, c.actorExtraCurses(mc.mdb, pass, st.res)...)
+	}
+	slots := c.applyCurses(st.db, st.skills, st.curses, st.res)
+	if mc := st.minion; mc != nil {
+		mc.applyBuffs(st.db, st.buffs, slots, st.res)
+	}
 	return nil
 }
 
@@ -851,7 +861,13 @@ func stepExtraAuras(c *Calculator, st *calcState) error {
 	impaleStacks(db)
 	hallowingFlame(db, mainSkill(st.skills))
 	extraAuras(db, mainSkill(st.skills))
+	if mc := st.minion; mc != nil {
+		extraAurasToMinion(db, mc.mdb) // CalcPerform.lua:3462-3468
+	}
 	db.party.partyExtraAuras(db)
+	if mc := st.minion; mc != nil {
+		db.party.partyExtraAuras(mc.mdb) // CalcPerform.lua:3486-3490
+	}
 	c.mergeKeystones(db, st.keystones, st.res)
 	return nil
 }
@@ -902,6 +918,9 @@ func stepDisableWeapons(_ *Calculator, st *calcState) error {
 // stepDefenceForConditionals: CalcPerform.lua calcs.defenceForConditionals.
 func stepDefenceForConditionals(_ *Calculator, st *calcState) error {
 	defenceForConditionals(st.db, st.gearMods)
+	if mc := st.minion; mc != nil {
+		defenceForConditionals(mc.mdb, mc.gear) // CalcPerform.lua:3519-3521
+	}
 	return nil
 }
 
@@ -926,6 +945,9 @@ func stepActorMisc(_ *Calculator, st *calcState) error {
 	actorMisc(db, main, main, st.flaskSt.silver, st.flaskSt.silverInc)
 	rage(db, mainCfg(skills))
 	st.playerEnemyMods.apply(db)
+	if mc := st.minion; mc != nil {
+		mc.misc(db) // CalcPerform.lua:3526-3529
+	}
 	enemyAilments(db, skills, st.guaranteedBonechill)
 	actorMisc(db.enemy, nil, main, false, -100)
 	exposures(db)
@@ -958,12 +980,6 @@ func stepDefence(c *Calculator, st *calcState) error {
 	avoidanceAndRecovery(db)
 	recoup(db)
 	buildDefenceEstimations(db)
-	return nil
-}
-
-// stepMinion: the main skill's minion (CalcPerform.lua env.minion).
-func stepMinion(c *Calculator, st *calcState) error {
-	st.res.Minion, st.minion = c.mainMinion(st.db, st.skills, st.buffs, st.b.Level, st.res)
 	return nil
 }
 

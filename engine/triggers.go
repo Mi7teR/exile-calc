@@ -138,8 +138,12 @@ var triggerConfigs = map[string]func(db *ModDB, main *activeSkill) *triggerConfi
 			triggerSkillCond: func(main, s *activeSkill) bool { return s.flags["totem"] && slotMatch(main, s) },
 			sourceValue:      func(o map[string]float64) float64 { return o["TotemLife"] }}
 	},
-	"spellslinger": func(*ModDB, *activeSkill) *triggerConfig {
-		// skipEffectiveRate / sourceRateIsFinal only change the breakdown.
+	"spellslinger": func(_ *ModDB, main *activeSkill) *triggerConfig {
+		// CalcTriggers.lua:1221-1224: the Spellslinger skill itself has no
+		// effective rate; sourceRateIsFinal only changes the breakdown.
+		if main.active.ge.Name == "Spellslinger" { //nolint:goconst // PoB skill name
+			main.flags["skipEffectiveRate"] = true
+		}
 		return &triggerConfig{triggerOnUse: true,
 			triggerSkillCond: func(main, s *activeSkill) bool {
 				return s.types[stAttack] && s.types[stProjectile] && s.cfg.Flags&modFlagByName["Wand"] > 0 &&
@@ -229,9 +233,30 @@ type simSkill struct {
 
 func packageSim(s *activeSkill) *simSkill {
 	o, has := s.mods.OverrideCfg(s.cfg, "CooldownRecovery")
+	adds, _ := processAddedCastTime(s)
 	return &simSkill{skill: s, cd: s.data.cooldown.or(0), cdOverride: o, hasOverride: has,
 		icdr:          calcMod(s.mods, s.cfg, "CooldownRecovery"),
-		addedCooldown: s.mods.SumCfg(s.cfg, "BASE", "CooldownRecovery")}
+		addedCooldown: s.mods.SumCfg(s.cfg, "BASE", "CooldownRecovery"), addsCast: adds}
+}
+
+// processAddedCastTime is CalcTriggers.lua:45-62: with
+// SpellCastTimeAddedToCooldownIfTriggered the skill's cast time, at its
+// cast speed rounded to two places, adds to its trigger cooldown; ok is
+// false (Lua's nil) without it.
+func processAddedCastTime(s *activeSkill) (float64, bool) {
+	if s == nil || s.mods == nil || !s.mods.FlagCfg(s.cfg, "SpellCastTimeAddedToCooldownIfTriggered") {
+		return 0, false
+	}
+	base := 1.0
+	if v, ok := num(s.data.val("castTimeOverride")); ok {
+		base = v
+	} else if !s.active.ge.NoCastTime {
+		base = s.active.ge.CastTime
+	}
+	speed := (1 + s.mods.SumCfg(s.cfg, "INC", "Speed")/100) * s.mods.MoreCfg(s.cfg, "Speed")
+	csi := round(speed, 2) //nolint:mnd // two places
+	s.flags["addsCastTime"] = true
+	return base / csi, true
 }
 
 // rotationImpact is calcMultiSpellRotationImpact: the main skill's trigger
@@ -424,7 +449,16 @@ func (c *Calculator) defaultTrigger(db *ModDB, main *activeSkill, by *skillEffec
 	}
 	triggeredCD := main.data.cooldown.or(0)
 	triggeredAdj := (triggeredCD + added) / icdr
-	triggerAdj := triggerCD / icdr
+	// CalcTriggers.lua:634: output.addsCastTime is env.player.mainSkill's.
+	pm := mainSkill(db.activeSkills)
+	if pm == nil {
+		pm = main
+	}
+	addsCast, hasAdds := processAddedCastTime(pm)
+	if hasAdds {
+		out["addsCastTime"] = addsCast
+	}
+	triggerAdj := (triggerCD + addsCast) / icdr
 	tick := func(v float64) float64 { return math.Ceil(v*serverTickRate) / serverTickRate }
 	triggeredRounded := tick(triggeredAdj)
 	if ignoresTick {
@@ -466,7 +500,9 @@ func (c *Calculator) defaultTrigger(db *ModDB, main *activeSkill, by *skillEffec
 	}
 	var skillRate float64
 	switch {
-	case out["EffectiveSourceRate"] == 0:
+	// CalcTriggers.lua:747: also when env.player.mainSkill skips the
+	// effective rate.
+	case out["EffectiveSourceRate"] == 0 || pm.flags["skipEffectiveRate"]:
 		skillRate = 0
 	case ignoresTick && (cfg.triggeredSkillCond == nil || len(triggered) == 1 && triggered[0].skill == main):
 		overlaps := cfg.overlaps
@@ -637,7 +673,13 @@ func (c *Calculator) cwcTrigger(db *ModDB, main *activeSkill) {
 		return
 	}
 	rateOfTrigger := 1 / interval
-	total := main.data.cooldown.or(0) / icdr
+	// CalcTriggers.lua:261, 276: the added cast time counts against the
+	// triggered skill's cooldown.
+	addsCast, hasAdds := processAddedCastTime(main)
+	if hasAdds {
+		out["addsCastTime"] = addsCast
+	}
+	total := math.Max(main.data.cooldown.or(0), addsCast) / icdr
 	if o, ok := main.mods.OverrideCfg(main.cfg, "CooldownRecovery"); ok {
 		total = o
 	}
