@@ -217,6 +217,27 @@ func radiusByLabel(label string) (radius, bool) {
 	return radius{}, false
 }
 
+// pobConqueredBy reports whether PoB sets node.conqueredBy for a node in
+// conquests' map (PassiveSpec.lua:1192 abyss conquests on any node;
+// 1196-1213 radius conquests skip ClassStart, Socket and ascendancy nodes).
+func pobConqueredBy(node *gamedata.Node, cq conquest) bool {
+	const firstAbyssType = 7 // timelessTypeByConqueror: abyss_* are 7-11
+	if cq.jewelType >= firstAbyssType {
+		return true
+	}
+	return node.ClassStartIndex == nil && !node.IsJewelSocket && node.AscendancyName == ""
+}
+
+// otherFuncsFor is the node's first pass radius functions: none when a
+// timeless jewel conquered it, as jewelOtherFuncs skip nodes with
+// node.conqueredBy (ModParser.lua:6683-6697).
+func otherFuncsFor(funcs []radiusFunc, node *gamedata.Node, cq conquest, conquered bool) []radiusFunc {
+	if conquered && pobConqueredBy(node, cq) {
+		return nil
+	}
+	return funcs
+}
+
 var attributeNodeNames = map[string]bool{"Dexterity": true, "Intelligence": true, "Strength": true}
 
 // conqueredStats ports the conquest part of PassiveSpecClass:BuildAllDependsAndPaths

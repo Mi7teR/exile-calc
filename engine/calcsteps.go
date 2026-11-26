@@ -319,7 +319,7 @@ func stepPassiveTree(c *Calculator, st *calcState) error {
 		if isConquered && !node.IsMastery {
 			stats, source, _ = c.conqueredStats(node, id, cq, res)
 		}
-		funcs, second := radiusFuncs.byNode[id], radiusFuncs.second[id]
+		funcs, second := otherFuncsFor(radiusFuncs.byNode[id], node, cq, isConquered), radiusFuncs.second[id]
 		mods := finishNode(c.nodeMods(res, stats, 0, source, node, funcs), add, node, second)
 		if !add {
 			return
