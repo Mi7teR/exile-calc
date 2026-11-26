@@ -1,6 +1,10 @@
 package engine
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/Mi7teR/poe-lib/pobcode"
+)
 
 func TestTypeExpressionMatch(t *testing.T) {
 	types := map[int]bool{stAura: true, stSpell: true}
@@ -56,5 +60,21 @@ func TestSkillStatsPurity(t *testing.T) {
 	c.separateBuffs(s)
 	if len(s.buffs) != 1 || s.buffs[0].typ != "Aura" || s.buffs[0].name != "Purity of Elements" || len(list.mods["ElementalResist"]) != 0 {
 		t.Fatalf("buffs: %+v", s.buffs)
+	}
+}
+
+// SkillsTab.lua LoadSkill/ProcessSocketGroup: a gemId with no known variant
+// (Arctic Armour saved with its old metadata id) resolves by the saved name.
+func TestResolveGemUnknownGemIDByName(t *testing.T) {
+	c := newCalc(t)
+	g := &pobcode.Gem{NameSpec: "Arctic Armour", SkillID: "ArcticArmour",
+		GemID: "Metadata/Items/Gems/SkillGemArcticArmour", VariantID: "ArcticArmour"}
+	gem, id, ok := c.resolveGem(g)
+	if !ok || gem == nil || id != "ArcticArmour" {
+		t.Fatalf("got gem %v id %q ok %v, want Arctic Armour", gem, id, ok)
+	}
+	g.NameSpec = "No Such Gem"
+	if _, _, ok := c.resolveGem(g); ok {
+		t.Error("an unknown gemId with an unknown name must stay unresolved")
 	}
 }

@@ -12,6 +12,18 @@ import (
 	"github.com/Mi7teR/poe-lib/pobcode"
 )
 
+// findSkillGem is the first pattern of SkillsTabClass:FindSkillGem
+// (Classes/SkillsTab.lua): the gem whose name equals nameSpec, ignoring
+// case; nil when none or more than one match. The abbreviation patterns
+// PoB tries next are not ported: saved builds carry full names.
+func (x *gemIndex) findSkillGem(nameSpec string) *gamedata.Gem {
+	ids := x.byName[strings.ToLower(strings.TrimSpace(nameSpec))]
+	if len(ids) != 1 {
+		return nil
+	}
+	return x.gems[ids[0]]
+}
+
 // resolveGem ports SkillsTabClass:LoadSkill and ProcessSocketGroup: the
 // gem data (or the granted effect alone, for skills from items).
 func (c *Calculator) resolveGem(g *pobcode.Gem) (*gamedata.Gem, string, bool) {
@@ -36,7 +48,15 @@ func (c *Calculator) resolveGem(g *pobcode.Gem) (*gamedata.Gem, string, bool) {
 			}
 		}
 		if gem == nil {
-			return nil, "", false
+			// SkillsTab.lua LoadSkill: a gemId with no known variant leaves
+			// gemId and skillId unset (the skillId attribute is not read),
+			// so ProcessSocketGroup matches the saved name (FindSkillGem).
+			// Builds saved with a gem's old metadata id (Arctic Armour's is
+			// SkillGemArcticArmour, its gameId SkillGemNewArcticArmour) load
+			// this way.
+			if gem = idx.findSkillGem(g.NameSpec); gem == nil {
+				return nil, "", false
+			}
 		}
 	case g.SkillID != "":
 		// Data.lua keys data.gemForSkill by the granted effect table, while
@@ -47,7 +67,9 @@ func (c *Calculator) resolveGem(g *pobcode.Gem) (*gamedata.Gem, string, bool) {
 		}
 		return nil, "", false
 	default:
-		return nil, "", false
+		if gem = idx.findSkillGem(g.NameSpec); gem == nil {
+			return nil, "", false
+		}
 	}
 	if ge := skills[gem.GrantedEffectID]; ge == nil || ge.Unsupported {
 		return nil, "", false

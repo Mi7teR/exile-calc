@@ -39,7 +39,7 @@ var reportStats = []string{}
 
 // Ratchet: builds where every stat above is within tolerance. Raise it as
 // the engine improves; never lower it.
-const minBuildsWithinTolerance = 93
+const minBuildsWithinTolerance = 94
 
 // minBuildsWithoutTimeless applies when the timeless jewel tables are absent.
 const minBuildsWithoutTimeless = 2

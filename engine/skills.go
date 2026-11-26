@@ -55,11 +55,12 @@ type gemIndex struct {
 	byGameID    map[string]map[string]*gamedata.Gem // gemsByGameId[gameId][variantId]
 	forBaseName map[string]string                   // gemForBaseName: lower-case name -> gem id
 	vaalBase    map[string]string                   // gemVaalGemIdForBaseGemId
+	byName      map[string][]string                 // lower-case gem name -> gem ids (FindSkillGem exact match)
 }
 
 func newGemIndex(d *gamedata.Data) *gemIndex {
 	x := &gemIndex{gems: d.Gems, byGameID: map[string]map[string]*gamedata.Gem{},
-		forBaseName: map[string]string{}, vaalBase: map[string]string{}}
+		forBaseName: map[string]string{}, vaalBase: map[string]string{}, byName: map[string][]string{}}
 	ids := make([]string, 0, len(d.Gems))
 	for id := range d.Gems {
 		ids = append(ids, id)
@@ -71,6 +72,7 @@ func newGemIndex(d *gamedata.Data) *gemIndex {
 			x.byGameID[g.GameID] = map[string]*gamedata.Gem{}
 		}
 		x.byGameID[g.GameID][g.VariantID] = g
+		x.byName[strings.ToLower(g.Name)] = append(x.byName[strings.ToLower(g.Name)], id)
 		base := g.Name
 		if ge := d.Skills.Effects[g.GrantedEffectID]; ge != nil && ge.Support && g.GrantedEffectID != "SupportBarrage" {
 			base += " Support"
