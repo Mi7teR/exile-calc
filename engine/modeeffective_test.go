@@ -80,13 +80,13 @@ func TestModeEffectiveGuards(t *testing.T) {
 		// 2253.
 		{"enemy CannotEvade", "MuBiMZ8WiDZn", "AccuracyHitChance", nil, []testMod{enemy(flagMod("CannotEvade"))}},
 		// 3319, 3324.
-		{"enemy SelfDoubleDamageChance", "MuBiMZ8WiDZn", "AverageHit", nil,
+		{"enemy SelfDoubleDamageChance", "MuBiMZ8WiDZn", "AverageDamage", nil,
 			[]testMod{enemy(numMod("SelfDoubleDamageChance", "BASE", 30))}},
 		// 2729: Intimidating Cry's double damage.
 		{"intimidating cry double damage", "D37AzBTWIbhf", "IntimidatingAvgDmg", nil,
 			[]testMod{enemy(numMod("SelfDoubleDamageChance", "BASE", 30))}},
 		// 3529: enemy resistances and damage taken on hits.
-		{"enemy damage taken from hits", "MuBiMZ8WiDZn", "AverageHit", nil,
+		{"enemy damage taken from hits", "MuBiMZ8WiDZn", "AverageDamage", nil,
 			[]testMod{enemy(numMod("DamageTaken", "INC", 50))}},
 		// 3529: the impale's stored physical hit.
 		{"impale stored hit", "MuBiMZ8WiDZn", "ImpaleDPS", []testMod{player(numMod("ImpaleChance", "BASE", 100))},
@@ -94,7 +94,7 @@ func TestModeEffectiveGuards(t *testing.T) {
 		// 4250-4254, 4312.
 		{"impale chance", "MuBiMZ8WiDZn", "ImpaleChance", nil, []testMod{player(numMod("ImpaleChance", "BASE", 40))}},
 		// 4322-4331.
-		{"enemy ailment avoidance", "MuBiMZ8WiDZn", "BleedChanceOnHit", nil,
+		{"enemy ailment avoidance", "MuBiMZ8WiDZn", "BleedChance", nil,
 			[]testMod{enemy(numMod("AvoidBleed", "BASE", 50))}},
 		// 1493-1496: debuff durations.
 		{"debuff duration", "MuBiMZ8WiDZn", "BleedDuration", nil,
@@ -183,5 +183,36 @@ func TestDropsBurningGround(t *testing.T) {
 			got,
 			res.Stats["BurningGroundFromIgnite"],
 		)
+	}
+}
+
+// TestAilmentModeCrit: the Configuration tab's ailmentMode "CRIT" leaves
+// no ailment chance on non-crits (CalcOffence.lua:4333-4338) and makes the
+// non-damaging ailments count crits (5469-5473). 3xww_v5I6_rn poisons
+// with spells.
+func TestAilmentModeCrit(t *testing.T) {
+	c := newCalc(t)
+	b := corpusBuild(t, "3xww_v5I6_rn")
+	base, err := c.Calc(b)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg := b.ActiveConfig()
+	cfg.Inputs = append(cfg.Inputs, pobcode.Input{Name: "ailmentMode", Kind: pobcode.KindString, String: "CRIT"})
+	res, err := c.Calc(b)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if base.Stats["PoisonChanceOnHit"] == 0 {
+		t.Fatal("the build has no poison chance on non-crits to remove")
+	}
+	for _, a := range ailmentTypeList {
+		if v := res.Stats[a+"ChanceOnHit"]; v != 0 {
+			t.Errorf("%sChanceOnHit %v, want 0", a, v)
+		}
+	}
+	want := res.Stats["PoisonChanceOnCrit"] * res.Stats["CritChance"] / 100
+	if got := res.Stats["PoisonChance"]; !near(got, want, 1e-9) {
+		t.Errorf("PoisonChance %v, want only from crits %v", got, want)
 	}
 }

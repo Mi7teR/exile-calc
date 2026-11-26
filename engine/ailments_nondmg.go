@@ -34,15 +34,6 @@ func nonDamagingAilmentData(name string) nonDamagingAilmentInfo {
 	return nonDamagingAilmentInfo{}
 }
 
-// passOnlyStats are the outputs of nonDamagingAilments that PoB keeps in
-// output.MainHand and output.OffHand of an attack: combineStat does not
-// carry them to the skill's output (CalcOffence.lua:5696-5741).
-var passOnlyStats = map[string]bool{
-	"ChillChance": true, "ChillDurationMod": true, "ChillSourceEffect": true, "KnockbackChance": true,
-	"KnockbackDistance": true, "KnockbackChanceOnHit": true, "KnockbackChanceOnCrit": true,
-	"EnemyStunThresholdMod": true, "EnemyStunDuration": true,
-}
-
 // knockbackChance is output.KnockbackChanceOnHit/OnCrit
 // (CalcOffence.lua:4256-4260, 4307-4311).
 func knockbackChance(s *activeSkill, cfg *Cfg) float64 {
@@ -125,10 +116,6 @@ func nonDamagingAilments(actor *ModDB, s *activeSkill, p *hitPass) {
 			out["FreezeDurationMod"] = 1 + inc/100 + self/100
 		}
 	}
-	mode := "AVERAGE"
-	if b := actor.theBuild(); b != nil {
-		mode = configString(b.ActiveConfig(), "ailmentMode", "AVERAGE")
-	}
 	ddm := debuffDurationMult(actor, s.cfg)
 	// pairs(ailments): the order does not change the results.
 	for _, a := range []string{"Chill", "Shock", "Scorch", "Brittle", "Sap"} {
@@ -141,7 +128,7 @@ func nonDamagingAilments(actor *ModDB, s *activeSkill, p *hitPass) {
 		if cond == nil {
 			cond = map[string]bool{}
 		}
-		cond["CriticalStrike"] = mode == "CRIT" && !actor.Flag("AilmentsAreNeverFromCrit")
+		cond["CriticalStrike"] = ailmentModeCrit(actor) && !actor.Flag("AilmentsAreNeverFromCrit")
 		cfg.SkillCond = cond
 		hit, crit := averageSourceDamage(s, cfg, out, a)
 		// damage > 0: false for the NaN of a chance that is 0 once crit

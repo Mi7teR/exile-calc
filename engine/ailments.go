@@ -12,8 +12,7 @@ import (
 // ignite, impale, skill DoT, culling and combined DPS (decay is in
 // offence_dps.go, the non-damaging ailments, knockback and stun in
 // ailments_nondmg.go). Not ported yet: preDotFunc, the legacy Perfect
-// Agony (CritMultiplierAppliesToDegen) and ailmentMode CRIT for the
-// damaging ailments.
+// Agony (CritMultiplierAppliesToDegen).
 
 // Data/Global.lua ModFlag and KeywordFlag bits for ailments.
 const (
@@ -173,7 +172,9 @@ func ailmentChances(actor *ModDB, s *activeSkill, p *hitPass) {
 			out["ChaosPoisonChance"] *= mult
 		}
 	}
-	if actor.Flag("AilmentsOnlyFromCrit") {
+	// CalcOffence.lua:4333-4338: ailmentMode "CRIT" (Configuration tab)
+	// or AilmentsOnlyFromCrit: no ailment from non-crits.
+	if ailmentModeCrit(actor) || actor.Flag("AilmentsOnlyFromCrit") {
 		for _, a := range ailmentTypeList {
 			out[a+"ChanceOnHit"] = 0
 		}
@@ -188,6 +189,12 @@ func ailmentChances(actor *ModDB, s *activeSkill, p *hitPass) {
 		}
 	}
 	cfg.SkillCond = cond
+}
+
+// ailmentModeCrit is env.configInput.ailmentMode == "CRIT".
+func ailmentModeCrit(actor *ModDB) bool {
+	b := actor.theBuild()
+	return b != nil && configString(b.ActiveConfig(), "ailmentMode", "AVERAGE") == "CRIT"
 }
 
 // ailmentDamage is calcAilmentDamage: the chance of type over hits and

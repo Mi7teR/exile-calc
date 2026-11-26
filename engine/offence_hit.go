@@ -171,6 +171,12 @@ func (c *Calculator) hitDamage(actor *ModDB, s *activeSkill, p *hitPass) {
 		p.cfg.SkillCond = cond
 		for _, t := range dmgTypeList {
 			if !s.flags["hit"] || list.FlagCfg(cfg, "DealNo"+t, "DealNoDamage") {
+				// CalcOffence.lua:3691-3701: the type's average is set, 0.
+				if pass == 1 {
+					out[t+"CritAverage"] = 0
+				} else {
+					out[t+"HitAverage"] = 0
+				}
 				continue
 			}
 			mn, mx := calcDamage(list, p, t, 0, false)
@@ -224,11 +230,9 @@ func (c *Calculator) hitDamage(actor *ModDB, s *activeSkill, p *hitPass) {
 						out["impaleStoredHitAvg"] += avg * (1 - out["CritChance"]/100)
 					}
 				}
-				effMult := c.enemyEffMult(actor, list, p.cfg, s, t, avg)
-				if pass == 2 {
-					out[t+"EffMult"] = effMult
-				}
-				avg *= effMult
+				// output[type.."EffMult"] is set only in CALCS mode
+				// (CalcOffence.lua:3641-3643).
+				avg *= c.enemyEffMult(actor, list, p.cfg, s, t, avg)
 			}
 			if pass == 1 {
 				totalCritAvg += avg

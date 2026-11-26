@@ -362,6 +362,7 @@ func (c *Calculator) offence(actor *ModDB, s *activeSkill, w1 hitSource, w2 *hit
 	if debugPasses != nil {
 		debugPasses(passes)
 	}
+	combine("PreEffectiveCritChance", "AVERAGE") // CalcOffence.lua:4003
 	combine("CritChance", "AVERAGE")
 	combine("CritMultiplier", "AVERAGE")
 	combine("AverageDamage", "DPS")
@@ -378,14 +379,8 @@ func (c *Calculator) offence(actor *ModDB, s *activeSkill, w1 hitSource, w2 *hit
 	}
 	combineAilments(s, out, passes)
 	decay(actor, s, out)
-	if isAttack {
-		out["AverageHit"] = passes[0].out["AverageHit"]
-		for k, v := range passes[0].out {
-			if _, ok := out[k]; !ok && !passOnlyStats[k] {
-				out[k] = v
-			}
-		}
-	}
+	// Attacks: PoB keeps each hand pass's stats in output.MainHand and
+	// output.OffHand; only combineStat's stats reach the skill's output.
 	dropsBurningGround(actor, s, out)
 	skillDot(actor, s, out, dpsMult, quantity)
 	combinedDPS(s, out, passes, dpsMult, quantity)
