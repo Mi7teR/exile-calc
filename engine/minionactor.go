@@ -31,6 +31,8 @@ func minionBaseMods(mdb *ModDB) {
 	mdb.NewMod("SpellBlockChanceMax", "BASE", 75, "Base")
 	mdb.NewMod("ImpaleStacksMax", "BASE", 5, "Base")
 	mdb.NewMod("SoulEaterMax", "BASE", 45, "Base") // soul_eater_maximum_stacks
+	mdb.NewMod("ShockStacksMax", "BASE", 1, "Base")
+	mdb.NewMod("ScorchStacksMax", "BASE", 1, "Base")
 	mdb.conditions["Buffed"], mdb.conditions["Combat"], mdb.conditions["Effective"] = true, true, true
 	chargeBaseMods(mdb)
 	initConditionMods(mdb)

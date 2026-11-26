@@ -504,6 +504,19 @@ var hooks = map[string]Hook{
 	//   mod("GemProperty", "LIST", { keyword = "grants_active_skill", key = "level", value = num }, { type = "SocketedIn", slotName = "{SlotName}" }, { type = "Multiplier", var = "Level", div = tonumber(div) }) } end,
 	"specialModList[^([%+%-]%d+) to level of socketed active skill gems per (%d+) player levels$]": socketedLevelPerPlayerLevels,
 	"specialModList[^([%+%-]%d+) to level of socketed skill gems per (%d+) player levels$]":        socketedLevelPerPlayerLevels,
+	// ["(%d+)%% chance for poisons inflicted with this weapon to deal (%d+)%% more damage"] = function(num, _, more) return {
+	//   mod("Damage", "MORE", tonumber(more) * num / 100, nil, 0, KeywordFlag.Poison, { type = "Condition", var = "{Hand}Attack" }, { type = "SkillType", skillType = SkillType.Attack }) } end,
+	"specialModList[^(%d+)%% chance for poisons inflicted with this weapon to deal (%d+)%% more damage$]": func(p *Parser, a []any) any {
+		return poisonChanceMore(a, map[string]any{"type": "Condition", "var": "{Hand}Attack"}, map[string]any{"type": "SkillType", "skillType": 1.0})
+	},
+	// ["(%d+)%% chance for poisons inflicted with blast rain or artillery balls?i?s?ta to deal (%d+)%% more damage"]: the same for Blast Rain and Artillery Ballista.
+	"specialModList[^(%d+)%% chance for poisons inflicted with blast rain or artillery balls?i?s?ta to deal (%d+)%% more damage$]": func(p *Parser, a []any) any {
+		return poisonChanceMore(a, map[string]any{"type": "SkillName", "skillNameList": []any{"Blast Rain", "Artillery Ballista"}})
+	},
+	// ["(%d+)%% chance for poisons inflicted with freezing pulse and eye of winter to deal (%d+)%% more damage"]: the same, transfigured gems included.
+	"specialModList[^(%d+)%% chance for poisons inflicted with freezing pulse and eye of winter to deal (%d+)%% more damage$]": func(p *Parser, a []any) any {
+		return poisonChanceMore(a, map[string]any{"type": "SkillName", "skillNameList": []any{"Freezing Pulse", "Eye of Winter"}, "includeTransfigured": true})
+	},
 	// ["([%a%s]+) reserves no mana"], ["([%a%s]+) has no reservation"] and
 	// ["([%a%s]+) has no reservation if cast as an aura"] = function(_, name) return {
 	//   mod("SkillData", "LIST", { key = "manaReservationFlat", value = 0 }, { type = "SkillId", skillId = gemIdLookup[name] },
@@ -1686,4 +1699,14 @@ func socketedLevelPerPlayerLevels(p *Parser, a []any) any {
 	return []any{withTags(newMod("GemProperty", "LIST", map[string]any{"keyword": "grants_active_skill", "key": "level", "value": arg(a, 0)}, 0, 0),
 		map[string]any{"type": "SocketedIn", "slotName": "{SlotName}"},
 		map[string]any{"type": "Multiplier", "var": "Level", "div": div})}
+}
+
+// poisonChanceMore is the Lua body of the "N% chance for poisons inflicted
+// with ... to deal M% more damage" lines: the averaged M * N / 100 more
+// poison damage (KeywordFlag.Poison).
+func poisonChanceMore(a []any, tags ...any) any {
+	n, _ := toNumber(arg(a, 0)).(float64)
+	more, _ := toNumber(argS(a, 2)).(float64)
+	const kwPoison = 0x200000 // KeywordFlag.Poison
+	return []any{withTags(newMod("Damage", "MORE", more*n/100, 0, kwPoison), tags...)}
 }

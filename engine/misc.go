@@ -389,6 +389,8 @@ func playerBaseMods(db *ModDB) {
 	db.NewMod("SocketedCursesHexLimitValue", "BASE", 1, "Base")
 	db.NewMod("ImpaleStacksMax", "BASE", 5, "Base") // impaled_debuff_number_of_reflected_hits
 	db.NewMod("SoulEaterMax", "BASE", 45, "Base")   // soul_eater_maximum_stacks
+	db.NewMod("ShockStacksMax", "BASE", 1, "Base")  // CalcSetup.lua initModDB
+	db.NewMod("ScorchStacksMax", "BASE", 1, "Base") // CalcSetup.lua initModDB
 	// Offence base mods of calcs.initEnv (characterConstants).
 	when := func(v string, neg bool) map[string]any {
 		t := map[string]any{"type": "Condition", "var": v}
