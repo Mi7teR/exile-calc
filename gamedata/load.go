@@ -122,16 +122,19 @@ func decodeFile(fsys embed.FS, dir, name string, dst any) error {
 }
 
 // decodeSkills decodes a Skills object with its effects split into chunks
-// decoded in parallel.
+// decoded in parallel. Every other field decodes through Skills itself
+// (skillsFields), so a field added to Skills later is decoded too.
 func decodeSkills(dec *json.Decoder) (*Skills, error) {
 	var raw struct {
-		Effects json.RawMessage     `json:"effects"`
-		StatMap map[string]*StatMap `json:"statMap"`
+		skillsFields
+
+		// Effects shadows skillsFields.Effects (the shallower field wins).
+		Effects json.RawMessage `json:"effects"`
 	}
 	if err := dec.Decode(&raw); err != nil {
 		return nil, err
 	}
-	s := &Skills{StatMap: raw.StatMap}
+	s := (*Skills)(&raw.skillsFields)
 	if raw.Effects == nil {
 		return s, nil
 	}
@@ -139,6 +142,9 @@ func decodeSkills(dec *json.Decoder) (*Skills, error) {
 	s.Effects, err = decodeParallel[*Skill](json.NewDecoder(bytes.NewReader(raw.Effects)))
 	return s, err
 }
+
+// skillsFields is Skills without its methods, for decodeSkills.
+type skillsFields Skills
 
 // decodeParallel decodes a JSON object (or null) into a map, as Decode
 // would, with the values decoded by several goroutines.
