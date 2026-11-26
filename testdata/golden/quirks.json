@@ -141,6 +141,44 @@
       "value": 6918794.71397955
     }
   },
+  "s6VBtCrbXmk1": {
+    "AverageDamage": {
+      "reason": "PoB counts summoned totems in calcs.perform (CalcPerform.lua:1359-1376) before it computes attributes (doActorAttribsConditions, CalcPerform.lua:1978), so Replica Iron Commander's \"+1 to maximum number of Summoned Totems per 200 Strength\" is 0 there: TotemsSummoned is 8 for the defence and per-totem buffs, 20 in calcs.offence (CalcOffence.lua:1436). The engine counts the totems after the attributes. Value: the oracle on the same build with the config input TotemsSummoned = 20.",
+      "value": 77141.376375024
+    },
+    "CombinedDPS": {
+      "reason": "PoB counts summoned totems in calcs.perform (CalcPerform.lua:1359-1376) before it computes attributes (doActorAttribsConditions, CalcPerform.lua:1978), so Replica Iron Commander's \"+1 to maximum number of Summoned Totems per 200 Strength\" is 0 there: TotemsSummoned is 8 for the defence and per-totem buffs, 20 in calcs.offence (CalcOffence.lua:1436). The engine counts the totems after the attributes. Value: the oracle on the same build with the config input TotemsSummoned = 20.",
+      "value": 117193.17898894
+    },
+    "LifeRegenRecovery": {
+      "reason": "PoB counts summoned totems in calcs.perform (CalcPerform.lua:1359-1376) before it computes attributes (doActorAttribsConditions, CalcPerform.lua:1978), so Replica Iron Commander's \"+1 to maximum number of Summoned Totems per 200 Strength\" is 0 there: TotemsSummoned is 8 for the defence and per-totem buffs, 20 in calcs.offence (CalcOffence.lua:1436). The engine counts the totems after the attributes. Value: the oracle on the same build with the config input TotemsSummoned = 20.",
+      "value": 1767.2
+    },
+    "ManaRegenRecovery": {
+      "reason": "PoB counts summoned totems in calcs.perform (CalcPerform.lua:1359-1376) before it computes attributes (doActorAttribsConditions, CalcPerform.lua:1978), so Replica Iron Commander's \"+1 to maximum number of Summoned Totems per 200 Strength\" is 0 there: TotemsSummoned is 8 for the defence and per-totem buffs, 20 in calcs.offence (CalcOffence.lua:1436). The engine counts the totems after the attributes. Value: the oracle on the same build with the config input TotemsSummoned = 20.",
+      "value": 318
+    },
+    "MovementSpeedMod": {
+      "reason": "PoB counts summoned totems in calcs.perform (CalcPerform.lua:1359-1376) before it computes attributes (doActorAttribsConditions, CalcPerform.lua:1978), so Replica Iron Commander's \"+1 to maximum number of Summoned Totems per 200 Strength\" is 0 there: TotemsSummoned is 8 for the defence and per-totem buffs, 20 in calcs.offence (CalcOffence.lua:1436). The engine counts the totems after the attributes. Value: the oracle on the same build with the config input TotemsSummoned = 20.",
+      "value": 1.61
+    },
+    "TotalDPS": {
+      "reason": "PoB counts summoned totems in calcs.perform (CalcPerform.lua:1359-1376) before it computes attributes (doActorAttribsConditions, CalcPerform.lua:1978), so Replica Iron Commander's \"+1 to maximum number of Summoned Totems per 200 Strength\" is 0 there: TotemsSummoned is 8 for the defence and per-totem buffs, 20 in calcs.offence (CalcOffence.lua:1436). The engine counts the totems after the attributes. Value: the oracle on the same build with the config input TotemsSummoned = 20.",
+      "value": 117193.17898894
+    },
+    "WithBleedDPS": {
+      "reason": "PoB counts summoned totems in calcs.perform (CalcPerform.lua:1359-1376) before it computes attributes (doActorAttribsConditions, CalcPerform.lua:1978), so Replica Iron Commander's \"+1 to maximum number of Summoned Totems per 200 Strength\" is 0 there: TotemsSummoned is 8 for the defence and per-totem buffs, 20 in calcs.offence (CalcOffence.lua:1436). The engine counts the totems after the attributes. Value: the oracle on the same build with the config input TotemsSummoned = 20.",
+      "value": 117193.17898894
+    },
+    "WithIgniteDPS": {
+      "reason": "PoB counts summoned totems in calcs.perform (CalcPerform.lua:1359-1376) before it computes attributes (doActorAttribsConditions, CalcPerform.lua:1978), so Replica Iron Commander's \"+1 to maximum number of Summoned Totems per 200 Strength\" is 0 there: TotemsSummoned is 8 for the defence and per-totem buffs, 20 in calcs.offence (CalcOffence.lua:1436). The engine counts the totems after the attributes. Value: the oracle on the same build with the config input TotemsSummoned = 20.",
+      "value": 117193.17898894
+    },
+    "WithPoisonDPS": {
+      "reason": "PoB counts summoned totems in calcs.perform (CalcPerform.lua:1359-1376) before it computes attributes (doActorAttribsConditions, CalcPerform.lua:1978), so Replica Iron Commander's \"+1 to maximum number of Summoned Totems per 200 Strength\" is 0 there: TotemsSummoned is 8 for the defence and per-totem buffs, 20 in calcs.offence (CalcOffence.lua:1436). The engine counts the totems after the attributes. Value: the oracle on the same build with the config input TotemsSummoned = 20.",
+      "value": 117193.17898894
+    }
+  },
   "yvENgQrpk-61": {
     "BleedDPS": {
       "reason": "Kinetic Fusillade's attack-speed efficiency applies once; PoB's postCritFunc scales dpsMultiplier on every pass, so a dual wielder's off hand (and what follows from it) gets it twice.",

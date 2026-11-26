@@ -12,14 +12,13 @@ oracle and the engine compute the same build. A spec saved without
 `clusterHashFormatVersion` stays without it (PoB loads it as format 1 and
 remaps its cluster ids). The engine matches PoB on the compared defence
 stats (attributes, life, mana, resistances, armour, evasion, energy
-shield, ward, block, the EHP chain) within 0.5% for every build but one:
-s6VBtCrbXmk1 misses LifeRegenRecovery, ManaRegenRecovery and
-MovementSpeedMod, because PoB counts its summoned totems before it
-computes attributes (Replica Iron Commander's "per 200 Strength" totems
-are 0 at that point; the engine counts them).
+shield, ward, block, the EHP chain) within 0.5% for every build.
+s6VBtCrbXmk1 is compared through quirks.json: PoB counts its summoned
+totems before it computes attributes (Replica Iron Commander's "per 200
+Strength" totems are 0 there); the engine counts them, as the game does.
 
 Known player offence and Full DPS misses (all per-skill engine gaps):
-s6VBtCrbXmk1 (Shrapnel Ballista hit chance and damage), M0Gidxpivlwx
+M0Gidxpivlwx
 (Summon Spectral Tiger from the Farrul bloodline: tree-granted skill
 groups are not created), and Full DPS of Kh5YfbuwGaG0 (Seismic Trap),
 KR_vSVUJvzBw (Rain of Arrows), s7Z32pDJEybO (Flame Surge of Combusting),

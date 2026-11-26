@@ -161,6 +161,11 @@ func convertedModTags(tags []map[string]any, mult float64, minionMods bool) []ma
 // with any totem skill, ActiveTotemLimit is the main skill's limit and
 // TotemsSummoned (read by "per summoned totem" mods) the configured count
 // or that limit.
+// PoB differs: it counts the totems (CalcPerform.lua:1359-1376) before it
+// computes the attributes (doActorAttribsConditions, :1978), so totem limits
+// per Strength/Dexterity (Replica Iron Commander) are 0 there; here the
+// attributes come first, as in the game (testdata/golden/quirks.json,
+// s6VBtCrbXmk1).
 // brandCounts is the Brand part of calcs.perform's active skill loop: each
 // brand's attached count (the configured number up to the attach limit,
 // else the limit) and the ActiveBrand, BrandsAttachedToEnemy and enemy
