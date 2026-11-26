@@ -27,6 +27,7 @@ func TestCalcStepOrder(t *testing.T) {
 		"flasks",
 		"skillModLayer",
 		"earlyEnemyMods",
+		"minionCounts",
 		"armourESToLife",
 		"attributesLifeMana",
 		"reservations",

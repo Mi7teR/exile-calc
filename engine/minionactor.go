@@ -281,7 +281,13 @@ func minionBuffsOf(db *ModDB, s *activeSkill, mdb *ModDB, mainCfg *Cfg, out map[
 				if list.Flag("CannotShareWarcryBuffs") {
 					continue
 				}
-				bonus, uptime := warcryBonus(db, s, b)
+				// CalcPerform.lua:2438-2447: the bonus and uptime of the same
+				// loop iteration as the player's buff, before the player's
+				// buffs (an aura's increased duration) are applied.
+				bonus, uptime := b.warcryBonus, b.warcryUptime
+				if !b.warcrySet {
+					bonus, uptime = warcryBonus(db, s, b)
+				}
 				warcry := strings.ReplaceAll(strings.ReplaceAll(strings.ReplaceAll(b.name, " Cry", ""), "'s", ""), " ", "")
 				mdb.conditions["AffectedBy"+warcry] = true
 				inc := list.SumCfg(cfg, "INC", "BuffEffect") + mdb.SumCfg(cfg, "INC", "BuffEffectOnSelf")
@@ -480,6 +486,14 @@ var minionResultStats = []string{
 	"EvadeChance", "MeleeEvadeChance", "ProjectileEvadeChance",
 	"SpellSuppressionChance", "EffectiveSpellSuppressionChance", "SpellSuppressionEffect",
 	"AttackDodgeChance", "SpellDodgeChance", "EffectiveAttackDodgeChance", "EffectiveSpellDodgeChance",
+	// Pools, recovery and calcs.buildDefenceEstimations.
+	"LifeUnreserved", "LifeRecoverable", "LifeHitPool", "LifeRegenRecovery", "EnergyShieldRecharge",
+	"PhysicalDamageReduction", "AverageEvadeChance", "ConfiguredEvadeChance",
+	"MeleeNotHitChance", "ProjectileNotHitChance", "SpellNotHitChance", "SpellProjectileNotHitChance",
+	"AverageNotHitChance", "ConfiguredNotHitChance",
+	"PhysicalMaximumHitTaken", "FireMaximumHitTaken", "ColdMaximumHitTaken", "LightningMaximumHitTaken",
+	"ChaosMaximumHitTaken", "SecondMinimalMaximumHitTaken",
+	"TotalEHP", "TotalNumberOfHits", "NumberOfDamagingHits", "EHPSurvivalTime",
 	// The leech caps (minionLeechCaps).
 	"MaxLifeLeechInstance", "MaxLifeLeechRatePercent", "MaxLifeLeechRate", "MaxEnergyShieldLeechInstance",
 	"MaxEnergyShieldLeechRate", "MaxManaLeechInstance", "MaxManaLeechRate",
@@ -665,11 +679,25 @@ func (c *Calculator) minionDefence(db *ModDB, mc *minionCalc) {
 		}
 	}
 	c.resistances(mdb)
+	// CalcDefence.lua:676-680 ("Formless Inferno"): the minion's life and
+	// mana again, after its resistances, and its reservation (none: no
+	// skill reserves the minion's pools, so the reserved_* fields are nil).
+	c.lifeMana(mdb)
+	lifeManaReservation(mdb, nil, nil, nil, false)
 	c.defence(mdb, mc.gear, map[string]bool{})
 	// The rest of calcs.defence(env, env.minion) (CalcPerform.lua:3840):
 	// spell suppression, dodge and the recovery parts.
 	avoidanceAndRecovery(mdb)
 	minionLeechCaps(mdb)
+	recoup(mdb)
+	// calcs.buildDefenceEstimations(env, env.minion) (CalcPerform.lua:3841),
+	// with the env's enemy config.
+	if mdb.enemyEnv == nil {
+		mdb.enemyEnv = db.enemyEnv
+	}
+	if mdb.enemyEnv != nil {
+		buildDefenceEstimations(mdb)
+	}
 	for _, k := range minionResultStats {
 		mc.res.Stats[k] = mdb.output[k]
 	}

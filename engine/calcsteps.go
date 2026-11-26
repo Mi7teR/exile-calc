@@ -101,6 +101,7 @@ var calcSteps = []calcStep{
 	{"flasks", stepFlasks},
 	{"skillModLayer", stepSkillModLayer},
 	{"earlyEnemyMods", stepEarlyEnemyMods},
+	{"minionCounts", stepMinionCounts},
 	{"armourESToLife", stepArmourESToLife},
 	{"attributesLifeMana", stepAttributesLifeMana},
 	{"reservations", stepReservations},
@@ -806,14 +807,23 @@ func stepTinctures(c *Calculator, st *calcState) error {
 	return nil
 }
 
+// stepMinionCounts: the minion counts of calcs.perform's skill loop
+// (CalcPerform.lua:1440-1508), with OnlyMinion. They come before the
+// attributes (1979) and so before env.minion takes the main skill's
+// MinionModifier mods (1991), which Companionship's OnlyMinion condition
+// gates.
+func stepMinionCounts(c *Calculator, st *calcState) error {
+	c.minionCounts(st.db, st.skills)
+	return nil
+}
+
 // stepSkillCounts: CalcPerform.lua's per-skill counts — brands, totems,
-// minions, exerts, "Calculate number of active heralds and auras affecting
-// self" — and Mana applies to Shock.
-func stepSkillCounts(c *Calculator, st *calcState) error {
+// exerts (the minion counts are stepMinionCounts), "Calculate number of
+// active heralds and auras affecting self" — and Mana applies to Shock.
+func stepSkillCounts(_ *Calculator, st *calcState) error {
 	db, skills := st.db, st.skills
 	brandCounts(db, skills)
 	totemCounts(db, skills)
-	c.minionCounts(db, skills)
 	warcryExertMods(db, skills)
 	triggeredOnDeath(skills)
 	heraldAuraCounts(db, skills)

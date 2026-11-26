@@ -94,3 +94,16 @@ func TestMinionSpellSuppressionModLine(t *testing.T) {
 		}
 	}
 }
+
+// Data.lua:253-255: the recharge and regeneration bases are divided in
+// float64 steps as Lua does, not as exact constants: 2000/60/100 is
+// 0.33333333333333337, which rounds an ES recharge of exactly x.5 up
+// (Uj4J57WyPC4k's Sentinels: 275 ES, 38% increased: 127, not 126).
+func TestRechargeBaseLikeLua(t *testing.T) {
+	if energyShieldRechargeBase != 0.33333333333333337 {
+		t.Errorf("ES recharge base %v", energyShieldRechargeBase)
+	}
+	if got := round(275*energyShieldRechargeBase*(1+38.0/100), 0); got != 127 {
+		t.Errorf("recharge %v, want 127", got)
+	}
+}

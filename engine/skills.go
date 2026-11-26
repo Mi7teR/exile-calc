@@ -230,6 +230,12 @@ type skillBuff struct {
 	hasStackLimit   bool
 	allowTotemBuff  bool
 	mods            []Mod
+	// warcry is the warcry power bonus and uptime the player's buff loop
+	// computed for a Warcry buff (CalcPerform.lua:2412-2422), which its
+	// env.minion part reuses (2438-2447), when warcrySet.
+	warcryBonus  []float64
+	warcryUptime float64
+	warcrySet    bool
 }
 
 type activeSkill struct {

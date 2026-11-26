@@ -525,6 +525,7 @@ func (c *Calculator) warcry(
 		return
 	}
 	bonus, uptime := warcryBonus(db, s, b)
+	b.warcryBonus, b.warcryUptime, b.warcrySet = bonus, uptime, true
 	if e := db.partyExports; e != nil {
 		// CalcPerform.lua:2468-2475: buff.modList with the warcryPowerBonus
 		// written on its tags (2414-2418), and Rallying Cry's weapon damage,
