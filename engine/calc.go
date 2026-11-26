@@ -39,8 +39,12 @@ type Calculator struct {
 	grants grantCache // item.grantedSkills by item (grantedskills.go)
 	// reqs caches the attribute requirements of jewels by grantKey
 	// (requirements.go); reqCount bounds it.
-	reqs     sync.Map
-	reqCount atomic.Int64
+	reqs sync.Map
+	// merges caches mergeTwoLineMods decisions by line pair (bounded like
+	// reqs): whether a line and the next parse only together.
+	merges     sync.Map
+	mergeCount atomic.Int64
+	reqCount   atomic.Int64
 }
 
 func New() (*Calculator, error) {

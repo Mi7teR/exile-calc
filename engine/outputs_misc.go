@@ -1,6 +1,10 @@
 package engine
 
-import "math"
+import (
+	"math"
+
+	"github.com/Mi7teR/poe-lib/pobcode"
+)
 
 // lootBonuses is CalcPerform.lua:1511-1514, Bisco's Collar's quantity and
 // rarity from normal and magic enemies.
@@ -545,16 +549,12 @@ func (c *Calculator) lifeFlaskMultipliers(db *ModDB, slots []flaskSlot) {
 		if sl.item == nil {
 			continue
 		}
-		it, mods := c.itemMods(sl.item, &Result{})
-		if it == nil || it.Base == nil || it.Base.Flask == nil || it.Base.SubType != "Life" {
+		d, ok := c.lifeFlaskData(sl.item)
+		if !ok {
 			continue
 		}
 		found = true
-		f := it.Base.Flask
-		base := f.Life * (1 + float64(it.Quality)/100) * (1 + calcLocal(mods, "FlaskRecovery", "INC")/100)
-		instant := calcLocal(mods, "FlaskInstantRecovery", "BASE")
-		recovery = math.Max(recovery, base*instant/100+base*(1-instant/100))
-		charges = math.Max(charges, float64(f.ChargesMax)+calcLocal(mods, "FlaskCharges", "BASE"))
+		recovery, charges = math.Max(recovery, d[0]), math.Max(charges, d[1])
 	}
 	if found {
 		db.output["LifeFlaskRecovery"], db.output["LifeFlaskCharges"] = recovery, charges
@@ -705,4 +705,35 @@ func applyDmgTakenConversion(actor *ModDB, s *activeSkill, src string, base floa
 		total += damage * (resMult * reductMult)
 	}
 	return total
+}
+
+// lifeFlaskData is a Life flask's flaskData.lifeTotal and chargesMax
+// (Item.lua:2466-2484), cached per Calculator by item (bounded like the
+// requirement cache); ok is false for other items.
+func (c *Calculator) lifeFlaskData(item *pobcode.Item) ([2]float64, bool) {
+	key := "lifeflask\x00" + grantKey(item)
+	if v, ok := c.reqs.Load(key); ok {
+		d, isLife := v.([2]float64)
+		return d, isLife
+	}
+	it, mods := c.itemMods(item, &Result{})
+	var d [2]float64
+	isLife := it != nil && it.Base != nil && it.Base.Flask != nil && it.Base.SubType == "Life"
+	if isLife {
+		f := it.Base.Flask
+		base := f.Life * (1 + float64(it.Quality)/100) * (1 + calcLocal(mods, "FlaskRecovery", "INC")/100)
+		instant := calcLocal(mods, "FlaskInstantRecovery", "BASE")
+		d = [2]float64{base*instant/100 + base*(1-instant/100),
+			float64(f.ChargesMax) + calcLocal(mods, "FlaskCharges", "BASE")}
+	}
+	if c.reqCount.Load() < grantCacheCap {
+		var v any = false
+		if isLife {
+			v = d
+		}
+		if _, loaded := c.reqs.LoadOrStore(key, v); !loaded {
+			c.reqCount.Add(1)
+		}
+	}
+	return d, isLife
 }

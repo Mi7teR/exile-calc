@@ -375,16 +375,36 @@ var (
 // modGroup becomes one mod line, keeping the first line's tags. The
 // merged list is what the saved ModRange ids and their count refer to.
 func (c *Calculator) mergeTwoLineMods(it *itemtext.Item, group []itemtext.ModLine) []itemtext.ModLine {
-	var out []itemtext.ModLine
+	if len(group) < 2 {
+		return group
+	}
+	out := make([]itemtext.ModLine, 0, len(group))
+	ranged := func(text string, l itemtext.ModLine) string {
+		if !strings.ContainsRune(text, '(') && catalystScalar(it, l) == 1 {
+			return text // applyRange would not change it
+		}
+		return applyRange(text, 1, catalystScalar(it, l))
+	}
+	merges := func(l, next itemtext.ModLine) bool {
+		key := fmt.Sprintf("%s\x00%s\x00%g", l.Text, next.Text, catalystScalar(it, l))
+		if v, ok := c.merges.Load(key); ok {
+			m, _ := v.(bool)
+			return m
+		}
+		m := !c.parser.Parse(ranged(l.Text, l)).Parsed() &&
+			c.parser.Parse(ranged(l.Text+" "+next.Text, l)).Parsed()
+		if c.mergeCount.Load() < grantCacheCap {
+			if _, loaded := c.merges.LoadOrStore(key, m); !loaded {
+				c.mergeCount.Add(1)
+			}
+		}
+		return m
+	}
 	for i := 0; i < len(group); i++ {
 		l := group[i]
-		if i+1 < len(group) && l.ModGroup == group[i+1].ModGroup &&
-			!c.parser.Parse(applyRange(l.Text, 1, catalystScalar(it, l))).Parsed() {
-			comb := l.Text + " " + group[i+1].Text
-			if c.parser.Parse(applyRange(comb, 1, catalystScalar(it, l))).Parsed() {
-				l.Text = comb
-				i++
-			}
+		if i+1 < len(group) && l.ModGroup == group[i+1].ModGroup && merges(l, group[i+1]) {
+			l.Text += " " + group[i+1].Text
+			i++
 		}
 		out = append(out, l)
 	}
