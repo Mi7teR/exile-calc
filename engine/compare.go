@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"maps"
 	"math"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -23,16 +24,28 @@ type Comparer struct {
 	c      *Calculator
 	b      *pobcode.Build
 	before map[string]float64
+	// unparsed and incomplete are the base Result's.
+	unparsed, incomplete []string
 	// usedFullDPS is getMiscCalculator's usedFullDPS: the base Full DPS
 	// has skills, so every comparison computes Full DPS too.
 	usedFullDPS bool
 }
 
 // ItemComparison is the change from putting one item in one slot.
+//
+// Delta is exact (no rounding); round it for display. A stat equal on
+// both sides (the same infinity included) has no entry, and neither has
+// one whose difference is NaN (NaN on either side).
 type ItemComparison struct {
 	Before, After map[string]float64 // Result.Stats (+ "FullDPS", "FullDotDPS" when used)
 	Delta         map[string]float64 // After - Before, only non-zero
 	Replaced      []string           // slots the new item emptied or replaced ("Weapon 2" for a two-hander)
+	// Unparsed and Incomplete are the entries of the after build's
+	// Result.Unparsed and Result.Incomplete that the base build's Result
+	// does not have, in order: mod lines of the new item the parser did
+	// not understand, parts it made the engine leave out. Non-empty means
+	// After (and so Delta) may be incomplete.
+	Unparsed, Incomplete []string
 }
 
 // NewComparer computes b once (Calc, and Full DPS when b has skills in
@@ -46,7 +59,10 @@ func (c *Calculator) NewComparer(b *pobcode.Build) (*Comparer, error) {
 	if err != nil {
 		return nil, err
 	}
-	cp := &Comparer{c: c, b: b, usedFullDPS: len(full.Skills) > 0}
+	cp := &Comparer{
+		c: c, b: b, usedFullDPS: len(full.Skills) > 0,
+		unparsed: slices.Clone(res.Unparsed), incomplete: slices.Clone(res.Incomplete),
+	}
 	cp.before = cp.stats(res, full)
 	return cp, nil
 }
@@ -75,6 +91,13 @@ func (cp *Comparer) stats(res *Result, full *FullDPSResult) map[string]float64 {
 // inactive weapon set, an unallocated jewel socket) gives no change, as
 // in PoB. The caller picks a slot that fits the item: the item type is
 // not checked against the slot.
+//
+// Gems socketed in the slot are kept, as in PoB, where socket groups are
+// tied to slot names, not items (CalcSetup.lua's socket group loop
+// before "Process support gems"); that includes the gems of an offhand
+// a two-hander empties. The item already in the slot, given again, gives
+// an empty Delta (PoB's tooltip shows "Removing this item" for it
+// instead, ItemsTab.lua AddItemTooltip).
 //
 // As CalcSetup.lua's override.repSlotName/repItem (calcs.initEnv), a
 // Staff or two-handed sword, axe or mace in a "Weapon 1" slot empties the
@@ -108,17 +131,41 @@ func (cp *Comparer) Item(slot string, itemText string) (*ItemComparison, error) 
 	after := cp.stats(res, full)
 	delta := map[string]float64{}
 	for k, v := range after {
-		if w := cp.before[k]; v != w && !(math.IsNaN(v) && math.IsNaN(w)) {
-			delta[k] = v - w
+		if w := cp.before[k]; v != w {
+			if d := v - w; !math.IsNaN(d) {
+				delta[k] = d
+			}
 		}
 	}
-	for k, v := range cp.before {
-		if _, ok := after[k]; !ok && v != 0 {
-			delta[k] = -v
+	for k, w := range cp.before {
+		if _, ok := after[k]; !ok && w != 0 && !math.IsNaN(w) {
+			delta[k] = -w
 		}
 	}
 	// Before is a copy: callers may change their maps.
-	return &ItemComparison{Before: maps.Clone(cp.before), After: after, Delta: delta, Replaced: replaced}, nil
+	return &ItemComparison{
+		Before: maps.Clone(cp.before), After: after, Delta: delta, Replaced: replaced,
+		Unparsed: newEntries(res.Unparsed, cp.unparsed), Incomplete: newEntries(res.Incomplete, cp.incomplete),
+	}, nil
+}
+
+// newEntries returns the entries of after that base does not have, in
+// order, counting repeats: a line base has once and after twice is new
+// once.
+func newEntries(after, base []string) []string {
+	seen := make(map[string]int, len(base))
+	for _, e := range base {
+		seen[e]++
+	}
+	var out []string
+	for _, e := range after {
+		if seen[e] > 0 {
+			seen[e]--
+			continue
+		}
+		out = append(out, e)
+	}
+	return out
 }
 
 // withItem returns a copy of the build with a new item of that text in
@@ -284,8 +331,10 @@ func validSlot(slot string) bool {
 	return false
 }
 
-// normaliseItemText is pobcode's: an item's Raw has no indentation and no
-// blank lines.
+// normaliseItemText is a copy of pobcode's normaliseItemText
+// (pobcode/xml.go), which builds Item.Raw from the XML text: no
+// indentation and no blank lines. TestNormaliseItemTextMatchesPobcode
+// keeps the two the same.
 func normaliseItemText(s string) string {
 	var lines []string
 	for l := range strings.SplitSeq(s, "\n") {

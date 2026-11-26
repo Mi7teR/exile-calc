@@ -63,11 +63,11 @@ Like PoB's item tooltip: compute the build once, then ask what an item
 copied from the game would change in a slot.
 
 ```go
-cmp, err := calc.NewComparer(b) // one Calc; keep it while the build is loaded
+comparer, err := calc.NewComparer(b) // one Calc; keep it while the build is loaded
 if err != nil {
 	return err
 }
-r, err := cmp.Item("Ring 1", clipboardText) // game Ctrl+C text or PoB item text
+r, err := comparer.Item("Ring 1", clipboardText) // game Ctrl+C text or PoB item text
 if err != nil {
 	return err // unknown slot or item text that is not an item
 }
@@ -78,8 +78,9 @@ for _, stat := range []string{"Life", "FireResist", "ColdResist", "LightningResi
 }
 ```
 
-`Delta` holds only the stats that changed; `FullDPS` is there when the
-build has skills in Full DPS. A two-hander in `"Weapon 1"` empties
+`Delta` holds only the stats that changed, unrounded; `FullDPS` is there
+when the build has skills in Full DPS. `r.Unparsed` lists the item's mod
+lines the engine did not understand. A two-hander in `"Weapon 1"` empties
 `"Weapon 2"` (`r.Replaced` says so). `Item` is safe to call from several
 goroutines; the build must not be changed while the Comparer is in use.
 
