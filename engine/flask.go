@@ -95,7 +95,9 @@ func (c *Calculator) applyFlasks(db *ModDB, res *Result, slots []flaskSlot) *fla
 	effectInc := db.SumCfg(player, "INC", "FlaskEffect")
 	st.effectInc = effectInc
 	effectIncMagic := db.SumCfg(player, "INC", "MagicUtilityFlaskEffect")
-	flaskBreakdown(db, effectInc, len(flasks))
+	if db.buildBreakdown { // breakdown-only outputs: MAIN mode
+		flaskBreakdown(db, effectInc, len(flasks))
+	}
 	merged := map[string][]Mod{}
 	var keys []string
 	add := func(key string, m Mod) {

@@ -114,9 +114,14 @@ func (c *Calculator) costWarnings(base *Result, keep func(*activeSkill) bool, li
 func checkCosts(base, r *Result, name string, lists CostWarnings) {
 	out := base.Stats
 	// Calcs.lua:425: a Flag, nil (no key) when false.
+	// Calcs.lua:425: output.EnergyShieldProtectsMana = env.modDB:Flag(...),
+	// assigned for every calculated skill; FlagInternal returns true or
+	// nil, so the key exists only while the flag is set.
 	protects := base.DB.Flag("EnergyShieldProtectsMana")
 	if protects {
 		out["EnergyShieldProtectsMana"] = 1
+	} else {
+		delete(out, "EnergyShieldProtectsMana")
 	}
 	for _, p := range costWarnPools {
 		if !cannotPay(out, r, p.pool, p.cost, protects) {

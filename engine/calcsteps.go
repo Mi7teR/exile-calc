@@ -168,7 +168,9 @@ func (c *Calculator) calc(b *pobcode.Build, opts calcOpts) (*Result, error) {
 		// are merged: ExtraJewelFunc mods (Ngamahu, Flame's Advance) make
 		// PoB build the env again with them in the radius jewel list.
 		if step.name == "grantedPassives" && opts.extraJewelFuncs == nil {
-			extra := append([]Mod{}, st.db.mods["ExtraJewelFunc"]...)
+			// env.modDB:Tabulate("LIST", nil, "ExtraJewelFunc"): LIST mods
+			// whose tags hold, over the parent chain.
+			extra := tabulateMods(st.db, "LIST", "ExtraJewelFunc")
 			if len(extra) > 0 {
 				opts.extraJewelFuncs = extra
 				return c.calc(b, opts)
@@ -760,8 +762,10 @@ func stepFlasks(c *Calculator, st *calcState) error {
 	}
 	st.tinctures = readTinctureEffect(db)
 	// CalcPerform.lua:1876-1880 "tincture breakdown": outputs PoB sets only
-	// with a breakdown, which MAIN mode always has.
-	db.output["TinctureEffect"], db.output["TinctureLimit"] = st.tinctures.inc, st.tinctures.limit
+	// with a breakdown (MAIN mode).
+	if db.buildBreakdown {
+		db.output["TinctureEffect"], db.output["TinctureLimit"] = st.tinctures.inc, st.tinctures.limit
+	}
 	st.flaskSt = c.applyFlasks(db, res, st.flasks)
 	c.lifeFlaskMultipliers(db, st.flasks)
 	c.mergeKeystones(db, st.keystones, res)

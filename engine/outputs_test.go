@@ -165,3 +165,55 @@ func TestRoundNoFMA(t *testing.T) {
 		t.Errorf("floorTo = %v, want 1.3 (the 0.0001 slack)", got)
 	}
 }
+
+// TestBreakdownOnlyOutputsMainMode: the flask and tincture breakdown
+// outputs (CalcPerform.lua:1617-1637, 1876-1880) exist only with a
+// breakdown, i.e. in MAIN mode, not in a CALCULATOR pass.
+func TestBreakdownOnlyOutputsMainMode(t *testing.T) {
+	c := newCalc(t)
+	b := corpusBuild(t, "l_wLyFOgjuvZ")
+	main, err := c.calc(b, calcOpts{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	calc, err := c.calc(b, calcOpts{calculator: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, k := range []string{"TinctureEffect", "TinctureLimit", "FlaskEffect"} {
+		if _, ok := main.Stats[k]; !ok {
+			t.Errorf("MAIN: %s missing", k)
+		}
+		if _, ok := calc.Stats[k]; ok {
+			t.Errorf("CALCULATOR: %s set", k)
+		}
+	}
+}
+
+// TestTabulateModsEvaluatesTags: ExtraJewelFunc is read through Tabulate
+// (CalcSetup.lua:1470), so a LIST mod whose condition fails is left out.
+func TestTabulateModsEvaluatesTags(t *testing.T) {
+	db := NewModDB()
+	db.Add(Mod{Name: "ExtraJewelFunc", Type: "LIST", Value: "yes", Source: "a"})
+	db.Add(Mod{Name: "ExtraJewelFunc", Type: "LIST", Value: "no", Source: "b",
+		Tags: []map[string]any{{"type": "Condition", "var": "Never"}}})
+	got := tabulateMods(db, "LIST", "ExtraJewelFunc")
+	if len(got) != 1 || got[0].Source != "a" {
+		t.Errorf("tabulateMods = %v, want only the unconditional mod", got)
+	}
+}
+
+// TestPerSecondCostLuaTruthiness: CalcOffence.lua:5965 skips a resource
+// that already has a per second cost unless "EB and Sum(...)" holds; Sum
+// returns a number and Lua's 0 is truthy, so Eldritch Battery alone lets
+// the mana cost through (as ES) even without ManaCostAsEnergyShieldCost.
+func TestPerSecondCostLuaTruthiness(t *testing.T) {
+	actor := NewModDB()
+	actor.NewMod("EnergyShieldProtectsMana", "FLAG", 1, "test")
+	s := &activeSkill{mods: actor.child(), data: &skillData{}, flags: map[string]bool{}, cfg: &Cfg{}}
+	out := map[string]float64{"ManaHasCost": 1, "ManaCost": 10, "ManaPerSecondHasCost": 1, "Speed": 2}
+	perSecondCosts(actor, s, out)
+	if out["ESPerSecondCost"] != 20 {
+		t.Errorf("ESPerSecondCost = %v, want 20 (10 mana as ES, 2 uses per second)", out["ESPerSecondCost"])
+	}
+}

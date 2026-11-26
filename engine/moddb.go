@@ -554,6 +554,24 @@ func (db *ModDB) MaxCfg(cfg *Cfg, names ...string) (float64, bool) {
 	return max, found
 }
 
+// tabulateMods is ModStore:Tabulate(typ, nil, name) keeping the mods
+// themselves (value.mod): the mods of that type whose tags evaluate.
+func tabulateMods(db *ModDB, typ, name string) []Mod {
+	var mods []Mod
+	for d := db; d != nil; d = d.parent {
+		for i := range d.mods[name] {
+			m := &d.mods[name][i]
+			if !eligible(m, typ, nil) {
+				continue
+			}
+			if _, ok := db.eval(m, nil); ok {
+				mods = append(mods, *m)
+			}
+		}
+	}
+	return mods
+}
+
 // TabulateCfg is ModStore:Tabulate(typ, cfg, name) over the parent chain.
 func (db *ModDB) TabulateCfg(cfg *Cfg, typ, name string) []Row {
 	var rows []Row

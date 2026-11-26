@@ -206,7 +206,9 @@ func perSecondCosts(actor *ModDB, s *activeSkill, out map[string]float64) {
 	for _, res := range []string{"Mana", "Life", "ES", "Soul", "Rage", "ManaPercent", "LifePercent"} {
 		perSecondSet := out[res+"PerSecondHasCost"] != 0
 		if out[res+"HasCost"] == 0 || !(out[res+"Cost"] > 0) ||
-			(perSecondSet && !(eb && list.SumCfg(s.cfg, "BASE", "ManaCostAsEnergyShieldCost") != 0)) ||
+			// Lua: "not (EB and Sum(...))": Sum returns a number, and 0 is
+			// truthy, so only EB counts (CalcOffence.lua:5965).
+			(perSecondSet && !eb) ||
 			!(out["Speed"] > 0 || hasCD) {
 			continue
 		}
