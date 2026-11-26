@@ -6,6 +6,7 @@
 package modparser
 
 import (
+	"math"
 	"regexp"
 	"strconv"
 	"strings"
@@ -295,10 +296,14 @@ func (p *Parser) parseMod(line string, order int, miss *missInfo) ([]any, string
 			miss.set(special)
 		}
 		// A Lua function that returns nil leaves the line unparsed.
-		if !ok || out == nil || unresolved(out) {
+		if !ok || out == nil {
 			return nil, line
 		}
-		return asList(deepCopy(out)), ""
+		out = resolveConstants(deepCopy(out))
+		if unresolved(out) {
+			return nil, line
+		}
+		return asList(out), ""
 	}
 	if m := addToCluster.FindStringSubmatch(line); m != nil {
 		return []any{newMod("AddToClusterJewelNode", "LIST", m[1], 0, 0)}, ""
@@ -594,6 +599,26 @@ func deepCopy(v any) any {
 			l[i] = deepCopy(e)
 		}
 		return l
+	}
+	return v
+}
+
+// resolveConstants replaces the Lua constants the generator exports as
+// references ({"$ref": "m_huge"}, ModParser.lua's local m_huge = math.huge)
+// with their values, in place.
+func resolveConstants(v any) any {
+	switch x := v.(type) {
+	case map[string]any:
+		if r, ok := x["$ref"].(string); ok && len(x) == 1 && r == "m_huge" {
+			return math.Inf(1)
+		}
+		for k, e := range x {
+			x[k] = resolveConstants(e)
+		}
+	case []any:
+		for i, e := range x {
+			x[i] = resolveConstants(e)
+		}
 	}
 	return v
 }

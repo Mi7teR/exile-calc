@@ -22,6 +22,10 @@ func TestTranslateLuaPattern(t *testing.T) {
 		{`x{y}|z`, "x{y}|z", []string{"x{y}|z"}},
 		{`[^%d]+`, "ab1", []string{"ab"}},
 		{`^%a+$`, "abc", []string{"abc"}},
+		// A quantifier with nothing to quantify is a plain character.
+		{`^+(%d+) to`, "+25 to", []string{"+25 to", "25"}},
+		{`^+(%d+) to`, "25 to", nil},
+		{`(a)+b`, "a+b", []string{"a+b", "a"}},
 	}
 	for _, c := range cases {
 		re, err := translateLuaPattern(c.pat)

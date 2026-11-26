@@ -59,7 +59,15 @@ func translateLuaPattern(p string) (*regexp.Regexp, error) {
 			} else {
 				b.WriteString(`\$`)
 			}
-		case c == '(' || c == ')' || c == '.' || c == '*' || c == '+' || c == '?':
+		case c == '*' || c == '+' || c == '?':
+			// Like "-": Lua reads a quantifier with no single-char item
+			// before it ("^+(%d+) to ...") as a plain character.
+			if i > 0 && quantifiable(p, i) {
+				b.WriteByte(c)
+			} else {
+				b.WriteString(`\` + string(c))
+			}
+		case c == '(' || c == ')' || c == '.':
 			b.WriteByte(c)
 		default:
 			b.WriteString(regexp.QuoteMeta(string(c)))

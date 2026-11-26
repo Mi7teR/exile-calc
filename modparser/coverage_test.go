@@ -4,6 +4,7 @@ import (
 	"compress/gzip"
 	"encoding/json"
 	"fmt"
+	"math"
 	"os"
 	"reflect"
 	"regexp"
@@ -149,11 +150,35 @@ func pct(a, b int) float64 { return 100 * float64(a) / float64(b) }
 
 func equalMods(got []any, want any) bool {
 	// Round-trip through JSON so both sides use the same Go types.
-	g, _ := json.Marshal(got)
+	g, _ := json.Marshal(infAsRef(got))
 	var gv any
 	_ = json.Unmarshal(g, &gv)
 	// ModCache.lua prints numbers with 14 significant digits.
 	return reflect.DeepEqual(sig14(gv), sig14(want)) || (len(got) == 0 && fmt.Sprint(want) == "[]")
+}
+
+// infAsRef encodes +Inf the way the ModCache export does ({"$ref":
+// "math.huge"}), which JSON cannot hold as a number.
+func infAsRef(v any) any {
+	switch x := v.(type) {
+	case float64:
+		if math.IsInf(x, 1) {
+			return map[string]any{"$ref": "math.huge"}
+		}
+	case []any:
+		out := make([]any, len(x))
+		for i, e := range x {
+			out[i] = infAsRef(e)
+		}
+		return out
+	case map[string]any:
+		out := make(map[string]any, len(x))
+		for k, e := range x {
+			out[k] = infAsRef(e)
+		}
+		return out
+	}
+	return v
 }
 
 func sig14(v any) any {
