@@ -51,6 +51,9 @@ type hitSource struct {
 	// (unarmed, shield, monster without attackRange).
 	rng, rangeBonus float64
 	hasRange        bool
+	// all1H is weaponData.countsAsAll1H (Varunastra's "counts as all one
+	// handed melee weapon types").
+	all1H bool
 }
 
 type passShared struct {
@@ -126,6 +129,18 @@ func (c *Calculator) offence(actor *ModDB, s *activeSkill, w1 hitSource, w2 *hit
 	out["ActiveMineLimit"] = list.SumCfg(cfg, "BASE", "ActiveMineLimit")
 	c.offenceStatConversions(actor, s, w1, w2, out)
 	preSkillTypeFunc(actor, s)
+	// CalcOffence.lua:1057-1065: the minion limit and the minions summoned
+	// per cast.
+	hasMinion := minionType(s) != "" && c.data.Minions[minionType(s)] != nil
+	if hasMinion {
+		if limit := c.data.Minions[minionType(s)].Limit; limit != "" {
+			out["ActiveMinionLimit"] = activeMinionLimit(actor, list, cfg, limit)
+		}
+		out["SummonedMinionsPerCast"] = math.Floor(valCfg(list, cfg, "MinionPerCastCount"))
+		if out["SummonedMinionsPerCast"] == 0 {
+			out["SummonedMinionsPerCast"] = 1
+		}
+	}
 	chainStats(actor, s, out)
 	projectileStats(s, out)
 	pierceForkStats(actor, s, out)
@@ -409,6 +424,15 @@ func (c *Calculator) offence(actor *ModDB, s *activeSkill, w1 hitSource, w2 *hit
 	// Attacks: PoB keeps each hand pass's stats in output.MainHand and
 	// output.OffHand; only combineStat's stats reach the skill's output.
 	dropsBurningGround(actor, s, out)
+	// CalcOffence.lua:4140-4142: the summoning rate, which the minion's
+	// Falling Slam and Minion Instability read as their hit rate.
+	if hasMinion {
+		rate, ok := out["HitSpeed"]
+		if !ok {
+			rate = out["Speed"]
+		}
+		data.set("summonSpeed", out["SummonedMinionsPerCast"]*rate*dpsMult)
+	}
 	skillDot(actor, s, out, dpsMult, quantity)
 	combinedDPS(s, out, passes, dpsMult, quantity, monsterLife)
 	perSecondCosts(actor, s, out)
@@ -633,4 +657,19 @@ func initialFunc(actor *ModDB, s *activeSkill, w1 hitSource, w2 *hitSource) {
 	if h := hooksOf(s); h != nil && h.initial != nil {
 		h.initial(actor, s, w1, w2)
 	}
+}
+
+// activeMinionLimit is the skill's minion limit (CalcOffence.lua:1059):
+// the player's override of the limit stat, else the stat scaled by the
+// skill's more ActiveMinionLimit.
+func activeMinionLimit(actor, list *ModDB, cfg *Cfg, limit string) float64 {
+	player := actor // env.modDB
+	if actor.owner != nil {
+		player = actor.owner
+	}
+	n, ok := player.Override(limit)
+	if !ok {
+		n = valCfg(list, cfg, limit) * list.MoreCfg(cfg, "ActiveMinionLimit")
+	}
+	return math.Floor(n)
 }

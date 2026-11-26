@@ -116,7 +116,7 @@ func nonDamagingAilments(actor *ModDB, s *activeSkill, p *hitPass) {
 			out["FreezeDurationMod"] = 1 + inc/100 + self/100
 		}
 	}
-	ddm := debuffDurationMult(actor, s.cfg)
+	ddm := debuffDurationMult(actor.enemy, s.cfg)
 	// pairs(ailments): the order does not change the results.
 	for _, a := range []string{"Chill", "Shock", "Scorch", "Brittle", "Sap"} {
 		if out[a+"ChanceOnHit"]+out[a+"ChanceOnCrit"] <= 0 {

@@ -35,6 +35,10 @@ func convertConfigOptions(src string) ([]gamedata.ConfigOption, error) {
 		}
 		return nil
 	}
+	mapAffix := map[string]bool{}
+	for _, m := range mapAffixOption.FindAllStringSubmatch(src, -1) {
+		mapAffix[m[1]] = true
+	}
 	var out []gamedata.ConfigOption
 	for _, e := range list.List {
 		t, ok := e.(*luadata.Table)
@@ -50,6 +54,7 @@ func convertConfigOptions(src string) ([]gamedata.ConfigOption, error) {
 			Var: string(name), Type: string(typ),
 			DefaultState:            plain(t.Get("defaultState")),
 			DefaultPlaceholderState: plain(t.Get("defaultPlaceholderState")),
+			MapAffix:                mapAffix[string(name)],
 		}
 		if f, ok := t.Get("apply").(*luadata.Func); ok {
 			o.Apply = f.Source

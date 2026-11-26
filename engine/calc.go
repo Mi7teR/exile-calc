@@ -16,12 +16,13 @@ import (
 
 // Calculator holds the game data; it is safe for concurrent use.
 type Calculator struct {
-	data   *gamedata.Data
-	parser *modparser.Parser
-	items  *itemtext.Parser
-	luts   *timelessLUTs
-	config configApplies
-	gemIdx *gemIndex
+	data       *gamedata.Data
+	parser     *modparser.Parser
+	items      *itemtext.Parser
+	luts       *timelessLUTs
+	config     configApplies
+	mapAffixes mapAffixFuncs
+	gemIdx     *gemIndex
 
 	keystoneOnce sync.Once
 	keystones    map[string]keystone // PassiveTree.lua keystoneMap
@@ -82,6 +83,8 @@ type Result struct {
 	main *activeSkill
 	// build is the calculated build (Build).
 	build *pobcode.Build
+	// party is the Party tab export, when the build exports one.
+	party *partyExportCache
 	// callerGroups maps build's groups to the input build's (the second
 	// result of applyGrantedSkills); nil is the identity.
 	callerGroups []int
@@ -414,4 +417,32 @@ func (c *Calculator) customMods(db *ModDB, res *Result, config *pobcode.ConfigSe
 			}
 		}
 	}
+}
+
+// PartyExport is the build's Party tab export of one buff type, the text
+// PoB saves as an ExportedBuffs element for party members to import
+// (Classes/PartyTab.lua:575-655, exportBuffs 996-1043): "PlayerMods"
+// (saved as PartyMemberStats), "Aura", "Curse", "Warcry", "Link",
+// "EnemyConditions" or "EnemyMods". It is "" unless the build's Party tab
+// exports ("Export Support" on the Import tab) and the calculation is in
+// PoB's MAIN mode.
+func (r *Result) PartyExport(buffType string) string {
+	if r == nil || r.party == nil {
+		return ""
+	}
+	s, _ := r.PartyExportErr(buffType)
+	return s
+}
+
+// PartyExportErr is PartyExport with the error of a failed export pass
+// ("" and nil when the build does not export buffs).
+func (r *Result) PartyExportErr(buffType string) (string, error) {
+	if r == nil || r.party == nil {
+		return "", nil
+	}
+	e, err := r.party.exports()
+	if err != nil || e == nil {
+		return "", err
+	}
+	return e.text(buffType), nil
 }

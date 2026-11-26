@@ -155,6 +155,10 @@ func itemWeapon(it *itemtext.Item, mods []modparser.Mod) (hitSource, string, boo
 		}
 		v, _ := m.Value.(map[string]any)
 		key, _ := v["key"].(string)
+		if key == "countsAsAll1H" {
+			out.all1H = truthy(v["value"])
+			continue
+		}
 		f, ok := num(v["value"])
 		if !ok {
 			continue

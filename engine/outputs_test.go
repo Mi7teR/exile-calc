@@ -129,7 +129,7 @@ func TestTripleDamageChance(t *testing.T) {
 
 // TestPlayerOutputCrossCheck compares every key of
 // testdata/golden/player-output-keys.txt with the oracle on all corpus
-// builds. zKMTzbWQ2h1C's leech keys wait for map mods (TestLeechStats).
+// builds.
 func TestPlayerOutputCrossCheck(t *testing.T) {
 	raw, err := os.ReadFile("../testdata/golden/player-output-keys.txt")
 	if err != nil {
@@ -141,14 +141,7 @@ func TestPlayerOutputCrossCheck(t *testing.T) {
 			keys = append(keys, l)
 		}
 	}
-	var leech []string
-	for _, k := range keys {
-		if (strings.HasPrefix(k, "Life") || strings.HasPrefix(k, "Mana")) && strings.Contains(k, "Leech") &&
-			!strings.HasPrefix(k, "Max") {
-			leech = append(leech, k)
-		}
-	}
-	oracleStatsExcept(t, false, map[string][]string{"zKMTzbWQ2h1C": leech}, keys...)
+	oracleStats(t, false, keys...)
 }
 
 // TestRoundNoFMA: Common.lua round and floor round val * 10^dec before the

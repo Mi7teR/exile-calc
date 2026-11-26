@@ -10,6 +10,16 @@ import (
 // actor's EnemyModifier lists give its enemy, each added once.
 type enemyModifiers map[uintptr]bool
 
+// mark records db's EnemyModifier mods as applied without applying them.
+func (applied enemyModifiers) mark(db *ModDB) {
+	for _, e := range db.List(nil, "EnemyModifier") {
+		v, _ := e.Value.(map[string]any)
+		if mm, ok := v["mod"].(map[string]any); ok {
+			applied[reflect.ValueOf(mm).Pointer()] = true
+		}
+	}
+}
+
 func (applied enemyModifiers) apply(db *ModDB) {
 	for _, e := range db.List(nil, "EnemyModifier") {
 		v, _ := e.Value.(map[string]any)
@@ -131,6 +141,11 @@ func enemyAilments(db *ModDB, skills []*activeSkill, guaranteedBonechill bool) {
 				}
 				enemy.NewMod("DamageTaken", "INC", cur, "Shock", when, map[string]any{"type": "Multiplier", "var": "ShockStacks", "limit": limit})
 				out["CurrentShock"] = cur * math.Min(enemy.Sum("BASE", "Multiplier:ShockStacks"), limit)
+				// CalcPerform.lua:3560-3562: a display mod, with a breakdown.
+				if db.hasBreakdown() {
+					enemy.NewMod("DamageTakenByShock", "INC", cur, "Shock Stacks", when,
+						map[string]any{"type": "Multiplier", "var": "ShockStacks", "limit": limit})
+				}
 			} else {
 				enemy.NewMod("DamageTaken", "INC", cur, "Shock", when)
 			}
@@ -142,6 +157,11 @@ func enemyAilments(db *ModDB, skills []*activeSkill, guaranteedBonechill bool) {
 				}
 				enemy.NewMod("ElementalResist", "BASE", -cur, "Scorch", when, map[string]any{"type": "Multiplier", "var": "ScorchStacks", "limit": limit})
 				out["CurrentScorch"] = cur * math.Min(enemy.Sum("BASE", "Multiplier:ScorchStacks"), limit)
+				// CalcPerform.lua:3576-3578: a display mod, with a breakdown.
+				if db.hasBreakdown() {
+					enemy.NewMod("ElementalResistByScorch", "BASE", -cur, "Scorch Stacks", when,
+						map[string]any{"type": "Multiplier", "var": "ScorchStacks", "limit": limit})
+				}
 			} else {
 				enemy.NewMod("ElementalResist", "BASE", -cur, "Scorch", when)
 			}

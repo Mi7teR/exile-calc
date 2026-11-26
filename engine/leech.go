@@ -30,8 +30,8 @@ func leechCaps(db *ModDB) {
 	pct := calcVal(db, "MaxLifeLeechRate")
 	if db.Flag("MaximumLifeLeechIsEqualToParent") && db.owner != nil {
 		pct = db.owner.output["MaxLifeLeechRatePercent"]
-	} else if db.Flag("MaximumLifeLeechIsEqualToPartyMember") && db.partyMembers != nil {
-		pct = db.partyMembers.output["MaxLifeLeechRatePercent"]
+	} else if pm := actorPartyMembers(db); db.Flag("MaximumLifeLeechIsEqualToPartyMember") && pm != nil {
+		pct = pm.output["MaxLifeLeechRatePercent"]
 	}
 	out["MaxLifeLeechRatePercent"] = pct
 	out["MaxLifeLeechRate"] = out["Life"] * pct / 100
@@ -39,6 +39,17 @@ func leechCaps(db *ModDB) {
 	out["MaxEnergyShieldLeechRate"] = out["EnergyShield"] * calcVal(db, "MaxEnergyShieldLeechRate") / 100
 	out["MaxManaLeechInstance"] = out["Mana"] * calcVal(db, "MaxManaLeechInstance") / 100
 	out["MaxManaLeechRate"] = out["Mana"] * calcVal(db, "MaxManaLeechRate") / 100
+}
+
+// actorPartyMembers is actor.partyMembers: env.partyMembers, which a
+// minion reaches through its owner.
+func actorPartyMembers(db *ModDB) *ModDB {
+	for d := db; d != nil; d = d.owner {
+		if d.partyMembers != nil {
+			return d.partyMembers
+		}
+	}
+	return nil
 }
 
 // leechPass is the leech of one crit/non-crit pass of a hit pass

@@ -131,6 +131,26 @@ func (c *Calculator) applyBuffs(db *ModDB, skills []*activeSkill, res *Result) (
 		}
 		mergeBuff(src, buffs, name)
 	}
+	addDebuff := func(src []Mod, name string) {
+		if _, ok := debuffs[name]; !ok {
+			debuffOrder = append(debuffOrder, name)
+		}
+		mergeBuff(src, debuffs, name)
+	}
+	pm := mainSkill(skills)
+	// env.minion, and linksApplyToMinions (CalcPerform.lua:2743-2744) on its
+	// ModDB as the buff loop sees it.
+	envMinion, linkMinion := false, false
+	if pm != nil && db.enemyEnv != nil {
+		if m := c.minionOf(pm, int(db.multipliers["Level"]), db.enemyEnv.level); m != nil {
+			envMinion = true
+			if !m.data.Hostile {
+				casting, _ := c.castingMinionSkills(db, pm, m, res)
+				linkMinion = linksApplyToMinion(db, casting, pm)
+			}
+		}
+	}
+	linked := false // #linkSkills >= 1
 	// CalcPerform.lua:2242: the active spectres' modLists, before the
 	// skills' buffs; their mods are inserted, not merged.
 	sp := c.spectreEffectsOf(db, skills)
@@ -159,22 +179,35 @@ func (c *Calculator) applyBuffs(db *ModDB, skills []*activeSkill, res *Result) (
 					db.Add(m)
 				}
 			case "Buff":
-				if s.flags["totem"] && !b.allowTotemBuff || b.applyNotPlayer {
+				// CalcPerform.lua:2353.
+				if !modeBuffs(db) || s.flags["totem"] && !b.allowTotemBuff {
 					continue
 				}
 				store, bcfg := db, (*Cfg)(nil)
 				if b.activeSkillBuff {
 					store, bcfg = list, cfg
 				}
-				db.conditions["AffectedBy"+strings.ReplaceAll(b.name, " ", "")] = true
-				inc := store.SumCfg(bcfg, "INC", "BuffEffect", "BuffEffectOnSelf", "BuffEffectOnPlayer") +
-					list.SumCfg(cfg, "INC", strings.ReplaceAll(b.name, " ", "")+"Effect")
-				more := store.MoreCfg(bcfg, "BuffEffect", "BuffEffectOnSelf")
-				add(scaleMods(b.mods, (1+inc/100)*more), b.name)
-				if truthy(s.data.val("thisIsNotABuff")) {
-					notBuff[b.name] = true
+				effectName := strings.ReplaceAll(b.name, " ", "") + "Effect"
+				if !b.applyNotPlayer {
+					db.conditions["AffectedBy"+strings.ReplaceAll(b.name, " ", "")] = true
+					inc := store.SumCfg(bcfg, "INC", "BuffEffect", "BuffEffectOnSelf", "BuffEffectOnPlayer") +
+						list.SumCfg(cfg, "INC", effectName)
+					more := store.MoreCfg(bcfg, "BuffEffect", "BuffEffectOnSelf")
+					add(scaleMods(b.mods, (1+inc/100)*more), b.name)
+					if truthy(s.data.val("thisIsNotABuff")) {
+						notBuff[b.name] = true
+					}
+				}
+				// CalcPerform.lua:2377-2382.
+				if e := db.partyExports; e != nil &&
+					(b.applyAllies || list.Flag("BuffAppliesToAllies") || list.Flag("BuffAppliesToPartyMembers")) {
+					inc := store.SumCfg(bcfg, "INC", "BuffEffect") + list.SumCfg(cfg, "INC", effectName)
+					e.other[b.name] = &partyExport{effectMult: (1 + inc/100) * store.MoreCfg(bcfg, "BuffEffect"), mods: b.mods}
 				}
 			case "Aura":
+				if !modeBuffs(db) { // CalcPerform.lua:2479
+					continue
+				}
 				extra := extraAuraMods(db, cfg)
 				mult := (1 + list.SumCfg(cfg, "INC", auraEffectNames...)/100) * list.MoreCfg(cfg, auraEffectNames...)
 				// A stronger party aura of that name applies instead.
@@ -187,12 +220,10 @@ func (c *Calculator) applyBuffs(db *ModDB, skills []*activeSkill, res *Result) (
 					db.conditions["AffectedBy"+strings.ReplaceAll(b.name, " ", "")] = true
 					add(append(scaleMods(b.mods, mult), scaleMods(extra, mult)...), b.name)
 				}
-				if db.Flag("AurasAffectEnemies") {
-					res.Incomplete = append(res.Incomplete, "auras affecting enemies: "+b.name)
-				}
-				totemAura(db, s, b, extra, skills, add)
+				c.playerAuraOthers(db, s, pm, b, extra, add, addDebuff)
 			case "Guard":
-				if s.flags["totem"] && !b.allowTotemBuff || b.applyNotPlayer {
+				// CalcPerform.lua:2385.
+				if !modeBuffs(db) || s.flags["totem"] && !b.allowTotemBuff || b.applyNotPlayer {
 					continue
 				}
 				store, bcfg := db, (*Cfg)(nil)
@@ -206,7 +237,9 @@ func (c *Calculator) applyBuffs(db *ModDB, skills []*activeSkill, res *Result) (
 				}
 				mergeBuff(scaleMods(b.mods, (1+inc/100)*more), guards, b.name)
 			case "Warcry":
-				c.warcry(db, s, b, mainCfg(skills), warcries, add)
+				if modeBuffs(db) { // CalcPerform.lua:2398
+					c.warcry(db, s, b, mainCfg(skills), warcries, envMinion, add)
+				}
 			case "Debuff", "AuraDebuff":
 				stack := 1.0
 				if b.stackVar != "" {
@@ -219,7 +252,7 @@ func (c *Calculator) applyBuffs(db *ModDB, skills []*activeSkill, res *Result) (
 				} else if v, ok := num(s.data.val("stackCount")); ok {
 					stack = v
 				}
-				if stack <= 0 {
+				if !modeEffective(db) || stack <= 0 { // CalcPerform.lua:2632
 					continue
 				}
 				name := strings.ReplaceAll(b.name, " ", "")
@@ -232,6 +265,10 @@ func (c *Calculator) applyBuffs(db *ModDB, skills []*activeSkill, res *Result) (
 					mult = 0
 					if !db.Flag("SelfAurasOnlyAffectYou") {
 						mult = (1 + list.SumCfg(cfg, "INC", "AuraEffect", "BuffEffect", "DebuffEffect")/100) * list.MoreCfg(cfg, "AuraEffect", "BuffEffect", "DebuffEffect")
+						if e := db.partyExports; e != nil {
+							// CalcPerform.lua:2658-2669.
+							e.setAuraDebuff(b.name, &partyExport{effectMult: mult, mods: append(append([]Mod(nil), b.mods...), extra...)})
+						}
 						if db.party.auraBeats("AuraDebuff", b.name, mult) {
 							mult = 0
 						}
@@ -253,7 +290,17 @@ func (c *Calculator) applyBuffs(db *ModDB, skills []*activeSkill, res *Result) (
 				}
 			case "Link":
 				// The player is never linked to itself: a link reaches the
-				// main minion (minionBuffs) or the party (buffExports only).
+				// main minion (minionBuffs) or the party (CalcPerform.lua
+				// 2745-2773), while no link has reached the minion.
+				if linked || !modeBuffs(db) { // CalcPerform.lua:2745
+					continue
+				}
+				if e := db.partyExports; e != nil {
+					extra := extraEffectMods(db, cfg, "ExtraLinkEffect")
+					mult := (1 + list.SumCfg(cfg, "INC", "LinkEffect", "BuffEffect")/100) * list.MoreCfg(cfg, "LinkEffect", "BuffEffect")
+					e.link[b.name] = &partyExport{effectMult: mult, mods: append(append([]Mod(nil), b.mods...), extra...)}
+				}
+				linked = linkMinion
 			}
 		}
 		// Wither: the skill or its (main) minion can wither.
@@ -283,12 +330,7 @@ func (c *Calculator) applyBuffs(db *ModDB, skills []*activeSkill, res *Result) (
 				break
 			}
 		}
-		curses = append(curses, c.minionAurasOnPlayer(db, s, add, func(src []Mod, name string) {
-			if _, ok := debuffs[name]; !ok {
-				debuffOrder = append(debuffOrder, name)
-			}
-			mergeBuff(src, debuffs, name)
-		}, res)...)
+		curses = append(curses, c.minionAurasOnPlayer(db, s, pm, add, addDebuff, notBuff, res)...)
 	}
 	db.party.partyBuffsOnPlayer(db, add, func(src []Mod, name string) {
 		if _, ok := debuffs[name]; !ok {
@@ -473,7 +515,9 @@ func warcryBonus(db *ModDB, s *activeSkill, b *skillBuff) ([]float64, float64) {
 // warcry ports the Warcry branch of calcs.perform: exerted attacks, warcry
 // power bonuses on mods tagged with a div, uptime from duration and
 // cooldown, and the buff on the player scaled by buff effect.
-func (c *Calculator) warcry(db *ModDB, s *activeSkill, b *skillBuff, mainCfg *Cfg, seen map[string]bool, add func([]Mod, string)) {
+func (c *Calculator) warcry(
+	db *ModDB, s *activeSkill, b *skillBuff, mainCfg *Cfg, seen map[string]bool, envMinion bool, add func([]Mod, string),
+) {
 	list, cfg := s.mods, s.cfg
 	name := strings.ReplaceAll(strings.ReplaceAll(strings.ReplaceAll(b.name, " Cry", ""), "'s", ""), " ", "")
 	if base := list.SumCfg(mainCfg, "BASE", name+"ExertedAttacks"); base > 0 {
@@ -488,6 +532,27 @@ func (c *Calculator) warcry(db *ModDB, s *activeSkill, b *skillBuff, mainCfg *Cf
 		return
 	}
 	bonus, uptime := warcryBonus(db, s, b)
+	b.warcryBonus, b.warcryUptime, b.warcrySet = bonus, uptime, true
+	if e := db.partyExports; e != nil {
+		// CalcPerform.lua:2468-2475: buff.modList with the warcryPowerBonus
+		// written on its tags (2414-2418), and Rallying Cry's weapon damage,
+		// which exists only with env.minion (2449-2465).
+		mods := make([]Mod, 0, len(b.mods))
+		for i, m := range b.mods {
+			if len(m.Tags) > 0 && tagStr(m.Tags[0], "effectType") == "Warcry" {
+				if _, hasDiv := tagNum(m.Tags[0], "div"); hasDiv {
+					m.Tags = append([]map[string]any{maps.Clone(m.Tags[0])}, m.Tags[1:]...)
+					m.Tags[0]["warcryPowerBonus"] = bonus[i]
+				}
+			}
+			mods = append(mods, m)
+		}
+		if envMinion && s.active.ge.Name == "Rallying Cry" {
+			mods = append(mods, rallyingCryWeaponMods(db, s, mainCfg)...)
+		}
+		mult := (1 + list.SumCfg(cfg, "INC", "BuffEffect")/100) * list.MoreCfg(cfg, "BuffEffect") * uptime
+		e.warcry[b.name] = &partyExport{effectMult: mult, mods: mods}
+	}
 	if db.Flag("CannotGainWarcryBuffs") || b.applyNotPlayer {
 		return
 	}
@@ -503,14 +568,14 @@ func (c *Calculator) warcry(db *ModDB, s *activeSkill, b *skillBuff, mainCfg *Cf
 
 const buffExpirationSlowCap = 0.25 // Data.lua data.misc
 
-// debuffDurationMult is calcs.offence's debuffDurationMult
-// (CalcOffence.lua:1493-1496): 1 / the enemy's BuffExpireFaster, at least
-// BuffExpirationSlowCap, with env.mode_effective; 1 without.
-func debuffDurationMult(actor *ModDB, cfg *Cfg) float64 {
-	if !modeEffective(actor) {
+// debuffDurationMult is CalcOffence.lua:327-330 and 1493-1496: with
+// env.mode_effective (the enemy's Effective condition), the enemy's buffs
+// expiring faster shorten the skill's debuffs.
+func debuffDurationMult(enemy *ModDB, cfg *Cfg) float64 {
+	if !modeEffective(enemy) {
 		return 1
 	}
-	return 1 / math.Max(buffExpirationSlowCap, calcMod(actor.enemy, cfg, "BuffExpireFaster"))
+	return 1 / math.Max(buffExpirationSlowCap, calcMod(enemy, cfg, "BuffExpireFaster"))
 }
 
 // skillDuration is calcSkillDuration (CalcOffence.lua).
@@ -523,22 +588,45 @@ func skillDuration(list *ModDB, cfg *Cfg, data *skillData, enemy *ModDB) float64
 	base, _ := data.duration.get()
 	d := (base + list.SumCfg(cfg, "BASE", "Duration", "PrimaryDuration")) * mod
 	if truthy(data.val("debuff")) && enemy != nil {
-		d /= math.Max(buffExpirationSlowCap, calcMod(enemy, cfg, "BuffExpireFaster"))
+		if modeEffective(enemy) { // CalcOffence.lua:328
+			d /= math.Max(buffExpirationSlowCap, calcMod(enemy, cfg, "BuffExpireFaster"))
+		}
 	}
 	return d
 }
 
 // extraCurses ports the player part of "Check for extra curses"
-// (CalcPerform.lua): ExtraCurse mods with applyToPlayer (config options,
-// "You are Cursed with ...") put the curse gem's curse mods on the player,
-// scaled by curse effect on self.
+// (CalcPerform.lua:3177-3224): ExtraCurse mods with applyToPlayer (config
+// options, "You are Cursed with ...") put the curse gem's curse mods on
+// the player, scaled by curse effect on self; the others are curses on
+// the enemy.
 func (c *Calculator) extraCurses(db *ModDB, curses []*enemyCurse, res *Result) []*enemyCurse {
-	if db.Flag("Condition:OnConsecratedGround") {
-		effect := 1 + db.Sum("INC", "ConsecratedGroundEffect")/100
-		db.NewMod("CurseEffectOnSelf", "INC", -50*effect, "Consecrated Ground")
+	return append(curses, c.actorExtraCurses(db, extraCursePass{self: true, enemy: true}, res)...)
+}
+
+// extraCursePass is which part of an actor's "Check for extra curses"
+// pass runs: self, the Consecrated Ground mod and the applyToPlayer curses
+// on the actor; enemy, the curses on the enemy (in minionCurses when
+// minion).
+type extraCursePass struct {
+	self, enemy, minion bool
+}
+
+// actorExtraCurses is one iteration of "Check for extra curses"
+// (CalcPerform.lua:3178-3224) for actor (env.player's modDB, or
+// env.minion's into minionCurses).
+func (c *Calculator) actorExtraCurses(actor *ModDB, pass extraCursePass, res *Result) []*enemyCurse {
+	if pass.self && modeCombat(actor) && actor.Flag("Condition:OnConsecratedGround") { // CalcPerform.lua:3180
+		effect := 1 + actor.Sum("INC", "ConsecratedGroundEffect")/100
+		actor.NewMod("CurseEffectOnSelf", "INC", -50*effect, "Consecrated Ground")
 	}
-	for _, e := range db.List(nil, "ExtraCurse") {
+	var curses []*enemyCurse
+	for _, e := range actor.List(nil, "ExtraCurse") {
 		v, _ := e.Value.(map[string]any)
+		toSelf := truthy(v["applyToPlayer"])
+		if toSelf && !pass.self || !toSelf && !pass.enemy {
+			continue
+		}
 		id, _ := v["skillId"].(string)
 		ge := c.data.Skills.Effects[id]
 		if ge == nil {
@@ -559,24 +647,25 @@ func (c *Calculator) extraCurses(db *ModDB, curses []*enemyCurse, res *Result) [
 				}
 			}
 		}
-		if !truthy(v["applyToPlayer"]) {
-			if !db.enemy.Flag("Hexproof") || db.Flag("CursesIgnoreHexproof") {
-				scale := (1 + db.enemy.Sum("INC", "CurseEffectOnSelf")/100) * db.enemy.More("CurseEffectOnSelf")
-				curses = append(curses, &enemyCurse{name: ge.Name, priority: c.cursePriorityOf(ge.Name, nil), mods: scaleMods(curse, scale)})
+		if !toSelf {
+			if !actor.enemy.Flag("Hexproof") || actor.Flag("CursesIgnoreHexproof") {
+				scale := (1 + actor.enemy.Sum("INC", "CurseEffectOnSelf")/100) * actor.enemy.More("CurseEffectOnSelf")
+				curses = append(curses, &enemyCurse{name: ge.Name, priority: c.cursePriorityOf(ge.Name, nil),
+					minion: pass.minion, mods: scaleMods(curse, scale)})
 			}
 			continue
 		}
-		if db.Sum("BASE", "AvoidCurse") >= 100 {
+		if actor.Sum("BASE", "AvoidCurse") >= 100 {
 			continue
 		}
-		db.conditions["Cursed"] = true
-		db.multipliers["CurseOnSelf"]++
-		db.conditions["AffectedBy"+strings.ReplaceAll(ge.Name, " ", "")] = true
+		actor.conditions["Cursed"] = true
+		actor.multipliers["CurseOnSelf"]++
+		actor.conditions["AffectedBy"+strings.ReplaceAll(ge.Name, " ", "")] = true
 		cfg := &Cfg{SkillName: ge.Name}
-		inc := db.SumCfg(cfg, "INC", "CurseEffectOnSelf") + gem.Sum("INC", "CurseEffectAgainstPlayer")
-		more := db.MoreCfg(cfg, "CurseEffectOnSelf") * gem.More("CurseEffectAgainstPlayer")
+		inc := actor.SumCfg(cfg, "INC", "CurseEffectOnSelf") + gem.Sum("INC", "CurseEffectAgainstPlayer")
+		more := actor.MoreCfg(cfg, "CurseEffectOnSelf") * gem.More("CurseEffectAgainstPlayer")
 		for _, m := range scaleMods(curse, math.Max((1+inc/100)*more, 0)) {
-			db.Add(m)
+			actor.Add(m)
 		}
 	}
 	return curses
@@ -602,6 +691,9 @@ func extraAuras(db *ModDB, main *activeSkill) {
 			if !truthy(v["notBuff"]) {
 				db.multipliers["BuffOnSelf"]++
 			}
+		}
+		if x := db.partyExports; x != nil && (truthy(v["fromAllies"]) || !db.Flag("SelfAurasCannotAffectAllies")) {
+			x.extraAura = append(x.extraAura, modFromMap(mm, e.Mod.Source)) // CalcPerform.lua:3469
 		}
 		if (truthy(v["fromAllies"]) || !db.Flag("SelfAurasCannotAffectAllies")) && totem {
 			m := modFromMap(mm, e.Mod.Source)
@@ -632,7 +724,12 @@ func scaleMods(l []Mod, scale float64) []Mod {
 // Wrath), their debuffs on the enemy, and their curses, returned as
 // minionCurses. The minion skills read the minion's own mods
 // (castingMinionSkills).
-func (c *Calculator) minionAurasOnPlayer(db *ModDB, s *activeSkill, add, debuff func([]Mod, string), res *Result) []*enemyCurse {
+//
+// pm is env.player.mainSkill: while it is a totem, the minion's auras also
+// reach its totems (CalcPerform.lua:2934-2964).
+func (c *Calculator) minionAurasOnPlayer(
+	db *ModDB, s, pm *activeSkill, add, debuff func([]Mod, string), notBuff map[string]bool, res *Result,
+) []*enemyCurse {
 	if s.summon != nil || db.enemyEnv == nil {
 		return nil
 	}
@@ -652,6 +749,8 @@ func (c *Calculator) minionAurasOnPlayer(db *ModDB, s *activeSkill, add, debuff 
 			name := strings.ReplaceAll(b.name, " ", "")
 			if b.typ == "Debuff" || b.typ == "AuraDebuff" {
 				// Debuffs need no "enable" (CalcPerform.lua:2979).
+				// env.minion's AffectedBy condition (CalcPerform.lua:3012-3014)
+				// is set by minionSkillBuffsOf.
 				minionDebuff(db, ms, b, debuff)
 				continue
 			}
@@ -660,8 +759,8 @@ func (c *Calculator) minionAurasOnPlayer(db *ModDB, s *activeSkill, add, debuff 
 			}
 			switch b.typ {
 			case "Curse":
-				// CalcPerform.lua:2967.
-				if db.enemy.Flag("Hexproof") && !ms.types[stMark] {
+				// CalcPerform.lua:2968.
+				if !modeEffective(db) || db.enemy.Flag("Hexproof") && !ms.types[stMark] {
 					continue
 				}
 				inc := list.SumCfg(cfg, "INC", "CurseEffect") + db.enemy.Sum("INC", "CurseEffectOnSelf")
@@ -669,7 +768,7 @@ func (c *Calculator) minionAurasOnPlayer(db *ModDB, s *activeSkill, add, debuff 
 				curses = append(curses, &enemyCurse{name: b.name, priority: c.cursePriorityOf(b.name, ms),
 					minion: true, mods: scaleMods(b.mods, (1+inc/100)*more)})
 			case "Buff":
-				if !b.applyAllies {
+				if !modeBuffs(db) || !b.applyAllies { // CalcPerform.lua:2831
 					continue
 				}
 				store, bcfg := casting, (*Cfg)(nil)
@@ -679,34 +778,188 @@ func (c *Calculator) minionAurasOnPlayer(db *ModDB, s *activeSkill, add, debuff 
 				db.conditions["AffectedBy"+name] = true
 				inc := store.SumCfg(bcfg, "INC", "BuffEffect", "BuffEffectOnPlayer") + db.Sum("INC", "BuffEffectOnSelf")
 				more := store.MoreCfg(bcfg, "BuffEffect", "BuffEffectOnPlayer") * db.More("BuffEffectOnSelf")
+				// CalcPerform.lua:2840-2845: the scaled mods, then the
+				// unscaled ones merged over them.
 				add(scaleMods(b.mods, (1+inc/100)*more), b.name)
+				add(b.mods, b.name)
+				if truthy(ms.data.val("thisIsNotABuff")) {
+					notBuff[b.name] = true
+				}
+				if e := db.partyExports; e != nil {
+					// CalcPerform.lua:2846-2851.
+					e.other[b.name] = &partyExport{
+						effectMult: (1 + store.SumCfg(bcfg, "INC", "BuffEffect")/100) * store.MoreCfg(bcfg, "BuffEffect"),
+						mods:       b.mods,
+					}
+				}
 			case "Aura":
-				if casting.Flag("SelfAurasCannotAffectAllies", "SelfAurasOnlyAffectYou", "SelfAuraSkillsCannotAffectAllies") ||
-					list.FlagCfg(cfg, "SelfAurasAffectYouAndLinkedTarget") || db.Flag("AlliesAurasCannotAffectSelf") || db.conditions["AffectedBy"+name] {
+				if !modeBuffs(db) || // CalcPerform.lua:2873
+					casting.Flag("SelfAurasCannotAffectAllies", "SelfAurasOnlyAffectYou", "SelfAuraSkillsCannotAffectAllies") ||
+					list.FlagCfg(cfg, "SelfAurasAffectYouAndLinkedTarget") {
 					continue
 				}
-				inc := list.SumCfg(cfg, "INC", "AuraEffect", "BuffEffect", "BuffEffectOnPlayer", "AuraBuffEffect") + db.SumCfg(cfg, "INC", "BuffEffectOnSelf", "AuraEffectOnSelf")
-				more := list.MoreCfg(cfg, "AuraEffect", "BuffEffect", "AuraBuffEffect") * db.MoreCfg(cfg, "BuffEffectOnSelf", "AuraEffectOnSelf")
-				if db.party.auraBeats("Aura", b.name, (1+inc/100)*more) {
-					continue
+				extra := extraAuraMods(casting, cfg)
+				if !db.Flag("AlliesAurasCannotAffectSelf") && !db.conditions["AffectedBy"+name] {
+					inc := list.SumCfg(cfg, "INC", "AuraEffect", "BuffEffect", "BuffEffectOnPlayer", "AuraBuffEffect") + db.SumCfg(cfg, "INC", "BuffEffectOnSelf", "AuraEffectOnSelf")
+					more := list.MoreCfg(cfg, "AuraEffect", "BuffEffect", "AuraBuffEffect") * db.MoreCfg(cfg, "BuffEffectOnSelf", "AuraEffectOnSelf")
+					mult := (1 + inc/100) * more
+					if !db.party.auraBeats("Aura", b.name, mult) {
+						db.conditions["AffectedByAura"] = true
+						if strings.HasPrefix(b.name, "Vaal") && len(b.name) > 5 {
+							db.conditions["AffectedBy"+strings.ReplaceAll(b.name[5:], " ", "")] = true
+						}
+						db.conditions["AffectedBy"+name] = true
+						src := append(scaleMods(b.mods, mult), scaleMods(extra, mult)...)
+						setSpectreSource(src, s, casting, b.name)
+						add(src, b.name)
+					}
 				}
-				db.conditions["AffectedByAura"] = true
-				if strings.HasPrefix(b.name, "Vaal") && len(b.name) > 5 {
-					db.conditions["AffectedBy"+strings.ReplaceAll(b.name[5:], " ", "")] = true
+				if e := db.partyExports; e != nil {
+					// CalcPerform.lua:2923-2933.
+					mods := append(append([]Mod(nil), b.mods...), extra...)
+					setSpectreSource(mods, s, casting, b.name)
+					e.setAura(b.name, &partyExport{
+						effectMult: (1 + list.SumCfg(cfg, "INC", "AuraEffect", "BuffEffect")/100) * list.MoreCfg(cfg, "AuraEffect", "BuffEffect"),
+						mods:       mods,
+					})
 				}
-				db.conditions["AffectedBy"+name] = true
-				add(scaleMods(b.mods, (1+inc/100)*more), b.name)
+				// CalcPerform.lua:2934-2964: the player's main skill is a
+				// totem, which the aura's defences reach.
+				if pm != nil && pm.flags["totem"] && pm.mods != nil && !pm.mods.conditions["AffectedBy"+name] {
+					pm.mods.conditions["AffectedBy"+name] = true
+					pm.mods.conditions["AffectedByAura"] = true
+					scale := math.Max((1+list.SumCfg(cfg, "INC", "AuraEffect", "BuffEffect", "AuraBuffEffect")/100)*
+						list.MoreCfg(cfg, "AuraEffect", "BuffEffect", "AuraBuffEffect"), 0)
+					src := totemAuraMods(scale, extra, b.mods)
+					setSpectreSource(src, s, casting, "")
+					add(src, "Totem "+b.name)
+				}
 			}
 		}
 	}
 	return curses
 }
 
-// minionDebuff is the Debuff and AuraDebuff branch of calcs.perform's
-// minion skill buffs (CalcPerform.lua:2979): the debuff on the enemy,
-// scaled by the minion skill's debuff (and aura) effect and its stacks.
-// The party's buff exports are not kept.
-func minionDebuff(db *ModDB, ms *activeSkill, b *skillBuff, debuff func([]Mod, string)) {
+// playerAuraOthers is the rest of calcs.perform's Aura branch for the
+// player's aura b of skill s (CalcPerform.lua:2512-2618), after its effect
+// on the player; env.minion's part is minionBuffs. The aura's Party tab
+// export, its debuff on the enemy with AurasAffectEnemies, its totem copy
+// while env.player.mainSkill pm is a totem, and the ExtraAuraDebuffEffect
+// debuff of an aura without an AuraDebuff.
+func (c *Calculator) playerAuraOthers(db *ModDB, s, pm *activeSkill, b *skillBuff, extra []Mod, add, addDebuff func([]Mod, string)) {
+	list, cfg := s.mods, s.cfg
+	name := strings.ReplaceAll(b.name, " ", "")
+	both := func() []Mod { return append(append([]Mod(nil), b.mods...), extra...) }
+	if !db.Flag("SelfAurasCannotAffectAllies") && !db.Flag("SelfAurasOnlyAffectYou") && !db.Flag("SelfAuraSkillsCannotAffectAllies") {
+		mult := (1 + list.SumCfg(cfg, "INC", "AuraEffect", "BuffEffect")/100) * list.MoreCfg(cfg, "AuraEffect", "BuffEffect")
+		if e := db.partyExports; e != nil {
+			e.setAura(b.name, &partyExport{effectMult: mult, mods: both()}) // CalcPerform.lua:2527-2536
+		}
+		// CalcPerform.lua:2537-2550.
+		if db.Flag("AurasAffectEnemies") && !list.FlagCfg(cfg, "SelfAurasAffectYouAndLinkedTarget") {
+			if e := db.partyExports; e != nil {
+				e.setAuraDebuff(b.name, &partyExport{effectMult: mult, mods: both()})
+			}
+			addDebuff(append(scaleMods(b.mods, mult), scaleMods(extra, mult)...), b.name)
+		}
+	}
+	// CalcPerform.lua:2552-2580.
+	if pm != nil && pm.flags["totem"] && pm.mods != nil &&
+		!db.Flag("SelfAurasCannotAffectAllies") && !db.Flag("SelfAuraSkillsCannotAffectAllies") {
+		pm.mods.conditions["AffectedBy"+name] = true
+		pm.mods.conditions["AffectedByAura"] = true
+		scale := math.Max((1+list.SumCfg(cfg, "INC", "AuraEffect", "BuffEffect", "AuraBuffEffect")/100)*
+			list.MoreCfg(cfg, "AuraEffect", "BuffEffect", "AuraBuffEffect"), 0)
+		add(totemAuraMods(scale, extra, b.mods), "Totem "+b.name)
+	}
+	// CalcPerform.lua:2582-2618: the multiplier (2607-2609) goes to the
+	// Party tab export only; the extra debuff mods are merged unscaled
+	// (2615). Their one source, the banners' ExtraAuraDebuffEffect
+	// (ModParser.lua:5525), is unscalable, so this is also the game's.
+	if !modeEffective(db) || len(db.List(cfg, "ExtraAuraDebuffEffect")) == 0 || db.Flag("SelfAurasOnlyAffectYou") ||
+		list.FlagCfg(cfg, "SelfAurasAffectYouAndLinkedTarget") {
+		return
+	}
+	for _, x := range s.buffs {
+		if x.typ == "AuraDebuff" {
+			return
+		}
+	}
+	mods := extraAuraDebuffMods(db, cfg)
+	mult := (1 + list.SumCfg(cfg, "INC", "AuraEffect", "BuffEffect", "DebuffEffect")/100) *
+		list.MoreCfg(cfg, "AuraEffect", "BuffEffect", "DebuffEffect")
+	if e := db.partyExports; e != nil {
+		e.setAuraDebuff(b.name, &partyExport{effectMult: mult, mods: mods})
+	}
+	addDebuff(mods, b.name)
+}
+
+// totemResistName is the mod.name:match("Resist?M?a?x?$") of the totem
+// aura branches.
+var totemResistName = regexp.MustCompile(`Resist?M?a?x?$`)
+
+// totemAuraMods is the totem part of calcs.perform's aura branches
+// (CalcPerform.lua:2940-2961 for a minion's aura): the energy shield,
+// armour, evasion and resistance mods of the lists, renamed Totem<name>
+// and scaled; a whole number stays whole (math.modf of the value rounded
+// to two places).
+func totemAuraMods(scale float64, lists ...[]Mod) []Mod {
+	var out []Mod
+	sc := func(v float64) float64 {
+		if math.Floor(v) == v {
+			i, _ := math.Modf(round(v*scale, 2))
+			return i
+		}
+		return v * scale
+	}
+	for _, l := range lists {
+		for _, m := range l {
+			if m.Name != "EnergyShield" && m.Name != "Armour" && m.Name != "Evasion" && !totemResistName.MatchString(m.Name) {
+				continue
+			}
+			m.Name = "Totem" + m.Name
+			if scale != 1 {
+				if f, isNum := m.Value.(float64); isNum {
+					m.Value = sc(f)
+				} else if v, isMap := m.Value.(map[string]any); isMap {
+					if mm, hasMod := v["mod"].(map[string]any); hasMod {
+						if iv, isInner := mm["value"].(float64); isInner {
+							inner := maps.Clone(mm)
+							inner["value"] = sc(iv)
+							nv := maps.Clone(v)
+							nv["mod"] = inner
+							m.Value = nv
+						}
+					}
+				}
+			}
+			out = append(out, m)
+		}
+	}
+	return out
+}
+
+// setSpectreSource is calcs.perform's setSpectreSource
+// (CalcPerform.lua:2814-2826) for the minion of summoning skill s, with
+// casting its ModDB: a spectre's mods get the source "Spectre:<buff> -
+// <minion>", or "Spectre:<minion>" without a buff name.
+func setSpectreSource(mods []Mod, s *activeSkill, casting *ModDB, buffName string) {
+	if !s.flags["spectre"] || casting.minionData == nil {
+		return
+	}
+	source := "Spectre:" + casting.minionData.Name
+	if buffName != "" {
+		source = "Spectre:" + buffName + " - " + casting.minionData.Name
+	}
+	for i := range mods {
+		mods[i].Source = source
+	}
+}
+
+// debuffStack is the stackCount of calcs.perform's Debuff and AuraDebuff
+// branches (CalcPerform.lua:2980-2990): the stack variable within its
+// limit, else skillData.stackCount, else 1.
+func debuffStack(ms *activeSkill, b *skillBuff) float64 {
 	list, cfg := ms.mods, ms.cfg
 	stack := 1.0
 	if b.stackVar != "" {
@@ -719,8 +972,19 @@ func minionDebuff(db *ModDB, ms *activeSkill, b *skillBuff, debuff func([]Mod, s
 	} else if v, ok := num(ms.data.val("stackCount")); ok {
 		stack = v
 	}
-	if stack <= 0 {
-		return
+	return stack
+}
+
+// minionDebuff is the Debuff and AuraDebuff branch of calcs.perform's
+// minion skill buffs (CalcPerform.lua:2979): the debuff on the enemy,
+// scaled by the minion skill's debuff (and aura) effect and its stacks.
+// The party's buff exports are not kept. It reports whether the debuff
+// applied (a positive stack count).
+func minionDebuff(db *ModDB, ms *activeSkill, b *skillBuff, debuff func([]Mod, string)) bool {
+	list, cfg := ms.mods, ms.cfg
+	stack := debuffStack(ms, b)
+	if !modeEffective(db) || stack <= 0 { // CalcPerform.lua:2991
+		return false
 	}
 	name := strings.ReplaceAll(b.name, " ", "")
 	mult := 1.0
@@ -728,8 +992,16 @@ func minionDebuff(db *ModDB, ms *activeSkill, b *skillBuff, debuff func([]Mod, s
 		mult = 0
 		if !list.Flag("SelfAurasOnlyAffectYou") || list.FlagCfg(cfg, "SelfAurasAffectYouAndLinkedTarget") {
 			mult = (1 + list.SumCfg(cfg, "INC", "AuraEffect", "BuffEffect", "DebuffEffect")/100) * list.MoreCfg(cfg, "AuraEffect", "BuffEffect", "DebuffEffect")
-			if db.enemy.conditions["AffectedBy"+name] || db.party.auraBeats("AuraDebuff", b.name, mult) {
+			switch {
+			case db.enemy.conditions["AffectedBy"+name]:
 				mult = 0
+			default:
+				if e := db.partyExports; e != nil {
+					e.setAuraDebuff(b.name, &partyExport{effectMult: mult, mods: b.mods}) // CalcPerform.lua:3002
+				}
+				if db.party.auraBeats("AuraDebuff", b.name, mult) {
+					mult = 0
+				}
 			}
 		}
 	}
@@ -743,76 +1015,5 @@ func minionDebuff(db *ModDB, ms *activeSkill, b *skillBuff, debuff func([]Mod, s
 		src = append(src, Mod{Name: "Multiplier:" + b.name + "Stack", Type: "BASE", Value: v, Source: b.name})
 	}
 	debuff(src, b.name)
-}
-
-// totemAuraMod is mod.name:match("Resist?M?a?x?$") of CalcPerform.lua:2566.
-var totemAuraMod = regexp.MustCompile(`Resist?M?a?x?$`)
-
-// totemAura is CalcPerform.lua:2551-2581: with a totem main skill, an
-// aura's defence and resistance mods also go to the totem as Totem<name>
-// mods, scaled by the aura's effect, and the main skill counts as
-// affected by the aura.
-func totemAura(db *ModDB, s *activeSkill, b *skillBuff, extra []Mod, skills []*activeSkill,
-	add func([]Mod, string),
-) {
-	var main *activeSkill
-	for _, x := range skills {
-		if x.main {
-			main = x
-		}
-	}
-	if main == nil || !main.flags["totem"] || db.Flag("SelfAurasCannotAffectAllies") ||
-		db.Flag("SelfAuraSkillsCannotAffectAllies") {
-		return
-	}
-	main.mods.conditions["AffectedBy"+strings.ReplaceAll(b.name, " ", "")] = true
-	main.mods.conditions["AffectedByAura"] = true
-	list, cfg := s.mods, s.cfg
-	names := []string{"AuraEffect", "BuffEffect", "AuraBuffEffect"}
-	scale := math.Max((1+list.SumCfg(cfg, "INC", names...)/100)*list.MoreCfg(cfg, names...), 0)
-	scaled := func(v float64) float64 {
-		if math.Floor(v) == v {
-			return modfInt(round(v*scale, 2))
-		}
-		return v * scale
-	}
-	var src []Mod
-	for _, ms := range [][]Mod{extra, b.mods} {
-		for _, m := range ms {
-			if m.Name != "EnergyShield" && m.Name != "Armour" && m.Name != "Evasion" && !totemAuraMod.MatchString(m.Name) {
-				continue
-			}
-			m.Name = "Totem" + m.Name
-			if scale != 1 {
-				m.Value = scaleTotemValue(m.Value, scaled)
-			}
-			src = append(src, m)
-		}
-	}
-	add(src, "Totem "+b.name)
-}
-
-// scaleTotemValue scales a totem aura mod's value: a number, or the inner
-// mod of a { mod = ... } value (CalcPerform.lua:2569-2575).
-func scaleTotemValue(v any, scaled func(float64) float64) any {
-	if f, isNum := v.(float64); isNum {
-		return scaled(f)
-	}
-	mv, isMap := v.(map[string]any)
-	if !isMap {
-		return v
-	}
-	inner, hasMod := mv["mod"].(map[string]any)
-	if !hasMod {
-		return v
-	}
-	f, isNum := num(inner["value"])
-	if !isNum {
-		return v
-	}
-	inner = maps.Clone(inner)
-	inner["value"] = scaled(f)
-	mv = maps.Clone(mv)
-	mv["mod"] = inner
-	return mv
+	return true
 }

@@ -274,7 +274,7 @@ func (c *Calculator) minionLifeMods(db *ModDB, skills []*activeSkill, buffs map[
 // area, read with the main skill's cfg, once each.
 func warcryExertMods(db *ModDB, skills []*activeSkill) {
 	main := mainSkill(skills)
-	if main == nil {
+	if main == nil || !modeBuffs(db) { // CalcPerform.lua:1466
 		return
 	}
 	for _, s := range skills {

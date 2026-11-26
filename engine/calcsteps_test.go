@@ -27,6 +27,9 @@ func TestCalcStepOrder(t *testing.T) {
 		"flasks",
 		"skillModLayer",
 		"earlyEnemyMods",
+		"hexDoom",
+		"minionCounts",
+		"lootBonuses",
 		"armourESToLife",
 		"attributesLifeMana",
 		"reservations",
@@ -44,8 +47,8 @@ func TestCalcStepOrder(t *testing.T) {
 		"skillInfo",
 		"allyLife",
 		"defence",
-		"minion",
 		"offence",
+		"minionOffence",
 		"unsupportedTags",
 	}
 	got := make([]string, len(calcSteps))

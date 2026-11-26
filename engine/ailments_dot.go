@@ -28,7 +28,7 @@ func ignite(actor *ModDB, s *activeSkill, p *hitPass, global map[string]float64,
 	}
 	durationMod := math.Max(calcMod(list, dotCfg, "EnemyIgniteDuration", "EnemyAilmentDuration", "EnemyElementalAilmentDuration", "DamagingAilmentDuration")*
 		calcMod(enemy, nil, "SelfIgniteDuration", "SelfAilmentDuration", "SelfElementalAilmentDuration"), 0)
-	debuffDurationMult := debuffDurationMult(actor, s.cfg)
+	debuffDurationMult := debuffDurationMult(enemy, s.cfg)
 	global["IgniteDuration"] = durationBase * durationMod / rateMod * debuffDurationMult
 	chance := float64(out["IgniteChanceOnHit"]/100*(1-critChance/100)) + out["IgniteChanceOnCrit"]/100*critChance/100
 	stacks := out["HitChance"] / 100 * chance * dpsMult
@@ -111,23 +111,26 @@ func ignite(actor *ModDB, s *activeSkill, p *hitPass, global map[string]float64,
 	}
 	s.flags["ignite"] = true
 	fireEff := func() float64 {
+		if !modeEffective(actor) { // CalcOffence.lua:5799
+			return 1
+		}
 		r := enemyResist(actor, dotCfg, "Fire")
 		inc := enemy.SumCfg(dotCfg, "INC", "DamageTaken", "DamageTakenOverTime", "FireDamageTaken", "FireDamageTakenOverTime", "ElementalDamageTaken")
 		more := enemy.MoreCfg(dotCfg, "DamageTaken", "DamageTakenOverTime", "FireDamageTaken", "FireDamageTakenOverTime", "ElementalDamageTaken")
 		return (1 - r/100) * (1 + inc/100) * more
 	}
-	// CalcOffence.lua:5233-5256: the enemy's resistance and damage taken
-	// only with env.mode_effective.
 	effMult := 1.0
+	switch {
+	case !modeEffective(actor): // CalcOffence.lua:5234
+	case list.FlagCfg(cfg, "IgniteToChaos"):
+		r := enemyResist(actor, dotCfg, "Chaos")
+		inc := enemy.SumCfg(dotCfg, "INC", "DamageTaken", "DamageTakenOverTime", "ChaosDamageTaken", "ChaosDamageTakenOverTime")
+		more := enemy.MoreCfg(dotCfg, "DamageTaken", "DamageTakenOverTime", "ChaosDamageTaken", "ChaosDamageTakenOverTime")
+		effMult = (1 - r/100) * (1 + inc/100) * more
+	default:
+		effMult = fireEff()
+	}
 	if modeEffective(actor) {
-		if list.FlagCfg(cfg, "IgniteToChaos") {
-			r := enemyResist(actor, dotCfg, "Chaos")
-			inc := enemy.SumCfg(dotCfg, "INC", "DamageTaken", "DamageTakenOverTime", "ChaosDamageTaken", "ChaosDamageTakenOverTime")
-			more := enemy.MoreCfg(dotCfg, "DamageTaken", "DamageTakenOverTime", "ChaosDamageTaken", "ChaosDamageTakenOverTime")
-			effMult = (1 - r/100) * (1 + inc/100) * more
-		} else {
-			effMult = fireEff()
-		}
 		global["IgniteEffMult"] = effMult
 	}
 	if debugAilmentCfg != nil {
@@ -186,7 +189,7 @@ func bleed(actor *ModDB, s *activeSkill, p *hitPass, global map[string]float64, 
 	}
 	durationMod := math.Max(calcMod(list, dotCfg, durNames...)*calcMod(enemy, nil, "SelfBleedDuration", "SelfAilmentDuration")/calcMod(enemy, dotCfg, "BleedExpireRate"), 0)
 	rateMod := calcMod(list, cfg, "BleedFaster") + enemy.Sum("INC", "SelfBleedFaster")/100
-	debuffDurationMult := debuffDurationMult(actor, s.cfg)
+	debuffDurationMult := debuffDurationMult(enemy, s.cfg)
 	global["BleedDuration"] = durationBase * durationMod / rateMod * debuffDurationMult
 	critChance := out["CritChance"]
 	chance := float64(out["BleedChanceOnHit"]/100*(1-critChance/100)) + out["BleedChanceOnCrit"]/100*critChance/100
@@ -284,7 +287,7 @@ func poison(actor *ModDB, s *activeSkill, p *hitPass, global map[string]float64,
 		durNames = append(durNames, "Duration")
 	}
 	durationMod := math.Max(calcMod(list, dotCfg, durNames...)*calcMod(enemy, nil, "SelfPoisonDuration", "SelfAilmentDuration"), 0)
-	debuffDurationMult := debuffDurationMult(actor, s.cfg)
+	debuffDurationMult := debuffDurationMult(enemy, s.cfg)
 	global["PoisonDuration"] = durationBase * durationMod / rateMod * debuffDurationMult
 	critChance := out["CritChance"]
 	chaosChance := 0.0

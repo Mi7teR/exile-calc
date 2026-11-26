@@ -46,6 +46,8 @@ type calcState struct {
 	// b (groupGrant): computed in MAIN mode, given by calcOpts in
 	// CALCULATOR mode, whose groups the MAIN pass left as PoB keeps them.
 	grants []groupGrant
+	// buffMode is the CALCS pass's misc_buffMode ("": EFFECTIVE).
+	buffMode string
 
 	// Passive tree.
 	allocated    map[int]bool
@@ -79,6 +81,7 @@ type calcState struct {
 	guaranteedBonechill bool
 	curses              []*enemyCurse
 	buffs               map[string][]Mod
+	minion              *minionCalc // env.minion until its offence
 }
 
 // calcStep is one named stage of Calc.
@@ -112,6 +115,9 @@ var calcSteps = []calcStep{
 	{"flasks", stepFlasks},
 	{"skillModLayer", stepSkillModLayer},
 	{"earlyEnemyMods", stepEarlyEnemyMods},
+	{"hexDoom", stepHexDoom},
+	{"minionCounts", stepMinionCounts},
+	{"lootBonuses", stepLootBonuses},
 	{"armourESToLife", stepArmourESToLife},
 	{"attributesLifeMana", stepAttributesLifeMana},
 	{"reservations", stepReservations},
@@ -129,8 +135,8 @@ var calcSteps = []calcStep{
 	{"skillInfo", stepSkillInfo},
 	{"allyLife", stepAllyLife},
 	{"defence", stepDefence},
-	{"minion", stepMinion},
 	{"offence", stepOffence},
+	{"minionOffence", stepMinionOffence},
 	{"unsupportedTags", stepUnsupportedTags},
 }
 
@@ -140,7 +146,13 @@ func (c *Calculator) Calc(b *pobcode.Build) (*Result, error) {
 	if err != nil {
 		return nil, err
 	}
-	return res, c.buildOutput(res)
+	if err = c.buildOutput(res); err != nil {
+		return nil, err
+	}
+	if b.Party != nil && b.Party.ExportBuffs {
+		res.party = newPartyExportCache(c, b)
+	}
+	return res, nil
 }
 
 // calcOpts are the calcState settings Calc leaves at zero.
@@ -149,6 +161,7 @@ type calcOpts struct {
 	skillPass  bool         // calcState.skillPass
 	compared   int          // calcState.compared
 	grants     []groupGrant // calcState.grants in CALCULATOR mode
+	buffMode   string       // calcState.buffMode
 	// extraJewelFuncs is calcState.extraJewelFuncs: non-nil (maybe empty)
 	// once the first pass has collected them.
 	extraJewelFuncs []Mod
@@ -159,7 +172,7 @@ type calcOpts struct {
 func (c *Calculator) calc(b *pobcode.Build, opts calcOpts) (*Result, error) {
 	// The steps of calcSteps run in order over a fresh calcState.
 	st := &calcState{b: b, calculator: opts.calculator, skillPass: opts.skillPass, compared: opts.compared,
-		grants: opts.grants, extraJewelFuncs: opts.extraJewelFuncs}
+		grants: opts.grants, extraJewelFuncs: opts.extraJewelFuncs, buffMode: opts.buffMode}
 	for _, step := range calcSteps {
 		if err := step.run(c, st); err != nil {
 			return nil, err
@@ -227,6 +240,7 @@ func stepBaseMods(_ *Calculator, st *calcState) error {
 		db.NewMod("Totem"+r+"ResistMax", "BASE", baseMaxResist, "Base")
 	}
 	chargeBaseMods(db)
+	playerChargeBaseMods(db)
 	db.NewMod("ManaRegen", "BASE", manaRegenBase, "Base", map[string]any{"type": "PerStat", "stat": "Mana", "div": 1.0})
 	db.NewMod("BlockChanceMax", "BASE", 75, "Base")      // characterConstants maximum_block_%
 	db.NewMod("SpellBlockChanceMax", "BASE", 75, "Base") // base_maximum_spell_block_%
@@ -490,7 +504,12 @@ func stepItems(c *Calculator, st *calcState) error {
 				ringItems[slot.Name] = b.Item(slot.ItemID)
 			}
 			scale, mode := bonusScale(b.Item(slot.ItemID))
-			it, mods := c.addItem(db, res, b.Item(slot.ItemID), scale, slot.Name, mode)
+			add := c.addItem
+			if pit := c.peekItem(b.Item(slot.ItemID)); pit != nil && pit.Base != nil && pit.Base.Type == "Shield" &&
+				c.necromanticAegis(st.allocated) {
+				add = c.addAegisItem
+			}
+			it, mods := add(db, res, b.Item(slot.ItemID), scale, slot.Name, mode)
 			if it != nil {
 				gearMods[slot.Name] = mods
 				gear = append(gear, equipped{slot.Name, it})
@@ -680,10 +699,13 @@ func stepItemConditions(c *Calculator, st *calcState) error {
 // tab's enemy mods (697), all before the tree nodes (786) and items (811).
 func stepConfig(c *Calculator, st *calcState) error {
 	db, b, res := st.db, st.b, st.res
-	buffMode(db)
-	buffMode(db.enemy)
+	buffMode(db, st.buffMode)
+	buffMode(db.enemy, st.buffMode)
 	db.enemyEnv = newEnemyEnv(st.config, c.data.Config, b.Level, c.data.Monster, res)
 	db.enemy.NewMod("Accuracy", "BASE", enemyAccuracy(c.data.Monster, db.enemyEnv.level), "Base")
+	// CalcSetup.lua:690.
+	db.enemy.Add(Mod{Name: "Condition:AgainstDamageOverTime", Type: "FLAG", Value: true, Source: "Base", Flags: mfDot,
+		Tags: []map[string]any{{"type": "ActorCondition", "actor": "player", "var": "Combat"}}})
 	c.applyConfig(db, res, st.config)
 	// CalcSetup.lua: env.enemyDB:AddList(build.partyTab.enemyModList).
 	db.party = newPartyActor(b.Party)
@@ -746,6 +768,12 @@ func stepSkills(c *Calculator, st *calcState) error {
 // catch any that were added by flasks".
 func stepFlasks(c *Calculator, st *calcState) error {
 	db, res := st.db, st.res
+	// CalcPerform.lua:1324-1326: with Necromantic Aegis the shield leaves
+	// the player's item list once calcs.perform starts (env.aegisItem
+	// keeps it for the minion).
+	if db.aegis != nil {
+		delete(db.items, "Weapon 2")
+	}
 	st.keystones = map[string]bool{}
 	// CalcSetup.lua:153-154: an allocated keystone node adds its Keystone
 	// LIST mod, so mergeKeystones marks it in env.keystonesAdded; the
@@ -817,7 +845,8 @@ func stepArmourESToLife(_ *Calculator, st *calcState) error {
 func stepAttributesLifeMana(c *Calculator, st *calcState) error {
 	db := st.db
 	damageToAuraEffect(db)
-	combatConditions(db, mainSkill(st.skills))
+	main := mainSkill(st.skills)
+	combatConditions(db, main, main)
 	c.attributes(db)
 	shrineBuffs(db)
 	c.lifeMana(db)
@@ -845,17 +874,39 @@ func stepTinctures(c *Calculator, st *calcState) error {
 	return nil
 }
 
+// stepMinionCounts: the minion counts of calcs.perform's skill loop
+// (CalcPerform.lua:1440-1508), with OnlyMinion. They come before the
+// attributes (1979) and so before env.minion takes the main skill's
+// MinionModifier mods (1991), which Companionship's OnlyMinion condition
+// gates.
+func stepMinionCounts(c *Calculator, st *calcState) error {
+	c.minionCounts(st.db, st.skills)
+	return nil
+}
+
+// stepHexDoom: the hex doom of the same skill loop (CalcPerform.lua:
+// 1380-1388), before the minion counts of 1440-1508.
+func stepHexDoom(_ *Calculator, st *calcState) error {
+	hexDoom(st.db, st.skills)
+	return nil
+}
+
+// stepLootBonuses: Bisco's Collar (CalcPerform.lua:1511-1514), right
+// after the skill loop's OnlyMinion.
+func stepLootBonuses(_ *Calculator, st *calcState) error {
+	lootBonuses(st.db)
+	return nil
+}
+
 // stepSkillCounts: CalcPerform.lua's per-skill counts — brands, totems,
-// minions, exerts, "Calculate number of active heralds and auras affecting
-// self" — and Mana applies to Shock.
-func stepSkillCounts(c *Calculator, st *calcState) error {
+// exerts (the minion counts are stepMinionCounts), "Calculate number of
+// active heralds and auras affecting self" — and Mana applies to Shock.
+func stepSkillCounts(_ *Calculator, st *calcState) error {
 	db, skills := st.db, st.skills
 	brandCounts(db, skills)
 	totemCounts(db, skills)
-	hexDoom(db, skills)
-	c.minionCounts(db, skills)
-	lootBonuses(db)
 	warcryExertMods(db, skills)
+	triggeredOnDeath(skills)
 	heraldAuraCounts(db, skills)
 	manaAppliesToShock(db)
 	return nil
@@ -877,7 +928,15 @@ func stepEarlyCharges(_ *Calculator, st *calcState) error {
 
 // stepBuffs: CalcPerform.lua "Combine buffs/debuffs" (Buff, Aura, ...).
 func stepBuffs(c *Calculator, st *calcState) error {
+	// partyTabEnableExportBuffs (CalcPerform.lua:1314).
+	if p := st.b.Party; p != nil && p.ExportBuffs && !st.calculator {
+		st.db.partyExports = newPartyExports()
+	}
 	st.curses, st.buffs = c.applyBuffs(st.db, st.skills, st.res)
+	st.minion = c.minionInit(st.db, st.skills, st.curses, st.b.Level, st.res)
+	if st.minion != nil {
+		st.res.Minion = st.minion.res
+	}
 	return nil
 }
 
@@ -885,7 +944,15 @@ func stepBuffs(c *Calculator, st *calcState) error {
 // slots.
 func stepCurses(c *Calculator, st *calcState) error {
 	st.curses = c.extraCurses(st.db, st.curses, st.res)
-	c.applyCurses(st.db, st.skills, st.curses, st.res)
+	if mc := st.minion; mc != nil {
+		// CalcPerform.lua:3178-3224 for env.minion's modDB.
+		pass := extraCursePass{self: true, enemy: true, minion: true}
+		st.curses = append(st.curses, c.actorExtraCurses(mc.mdb, pass, st.res)...)
+	}
+	slots := c.applyCurses(st.db, st.skills, st.curses, st.res)
+	if mc := st.minion; mc != nil {
+		mc.applyBuffs(st.db, st.buffs, slots, st.res)
+	}
 	return nil
 }
 
@@ -896,7 +963,13 @@ func stepExtraAuras(c *Calculator, st *calcState) error {
 	impaleStacks(db)
 	hallowingFlame(db, mainSkill(st.skills))
 	extraAuras(db, mainSkill(st.skills))
+	if mc := st.minion; mc != nil {
+		extraAurasToMinion(db, mc.mdb) // CalcPerform.lua:3462-3468
+	}
 	db.party.partyExtraAuras(db)
+	if mc := st.minion; mc != nil {
+		db.party.partyExtraAuras(mc.mdb) // CalcPerform.lua:3486-3490
+	}
 	c.mergeKeystones(db, st.keystones, st.res)
 	return nil
 }
@@ -947,6 +1020,9 @@ func stepDisableWeapons(_ *Calculator, st *calcState) error {
 // stepDefenceForConditionals: CalcPerform.lua calcs.defenceForConditionals.
 func stepDefenceForConditionals(_ *Calculator, st *calcState) error {
 	defenceForConditionals(st.db, st.gearMods)
+	if mc := st.minion; mc != nil {
+		defenceForConditionals(mc.mdb, mc.gear) // CalcPerform.lua:3519-3521
+	}
 	return nil
 }
 
@@ -967,11 +1043,15 @@ func stepCharges(_ *Calculator, st *calcState) error {
 // exposures and consecrated ground.
 func stepActorMisc(_ *Calculator, st *calcState) error {
 	db, skills := st.db, st.skills
-	actorMisc(db, mainSkill(skills), st.flaskSt.silver, st.flaskSt.silverInc)
+	main := mainSkill(skills)
+	actorMisc(db, main, main, st.flaskSt.silver, st.flaskSt.silverInc)
 	rage(db, mainCfg(skills))
 	st.playerEnemyMods.apply(db)
+	if mc := st.minion; mc != nil {
+		mc.misc(db) // CalcPerform.lua:3526-3529
+	}
 	enemyAilments(db, skills, st.guaranteedBonechill)
-	actorMisc(db.enemy, nil, false, -100)
+	actorMisc(db.enemy, nil, main, false, -100)
 	exposures(db)
 	consecratedGround(db)
 	return nil
@@ -1005,9 +1085,15 @@ func stepDefence(c *Calculator, st *calcState) error {
 	return nil
 }
 
-// stepMinion: the main skill's minion (CalcPerform.lua env.minion).
-func stepMinion(c *Calculator, st *calcState) error {
-	st.res.Minion = c.mainMinion(st.db, st.skills, st.buffs, st.b.Level, st.res)
+// stepMinionOffence: CalcPerform.lua:3844-3845, calcs.triggers and
+// calcs.offence for env.minion, after the player's offence.
+func stepMinionOffence(c *Calculator, st *calcState) error {
+	c.minionOffence(st.db, st.minion, st.res)
+	// CalcPerform.lua:3848-3968: the rest of the Party tab export.
+	if e := st.db.partyExports; e != nil {
+		w1, _ := playerWeapons(st.db, st.gearMods, st.spec.ClassID)
+		e.finish(st.db, mainSkill(st.skills), w1)
+	}
 	return nil
 }
 

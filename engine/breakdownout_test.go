@@ -335,15 +335,5 @@ func TestLeechStats(t *testing.T) {
 	}
 	keys = append(keys, "MaxLifeLeechRatePercent", "PvpAverageDamage", "PvpTotalDPS", "TotalMin", "TotalMax",
 		"EnemyLifeRegen", "EnemyManaRegen", "EnemyEnergyShieldRegen")
-	skip := map[string][]string{
-		// Waiting for map mods (ported on the minion-rest branch): the active
-		// config has "of Congealment" (enemies cannot be leeched from,
-		// Data/ModMap.lua:213-220). Re-enable after that merge.
-		"zKMTzbWQ2h1C": {
-			"LifeLeechDuration", "LifeLeechGainRate", "LifeLeechInstances", "LifeLeechInstant",
-			"LifeLeechInstantRate", "LifeLeechPerHit", "LifeLeechRate", "ManaLeechDuration", "ManaLeechGainRate",
-			"ManaLeechInstances", "ManaLeechInstant", "ManaLeechInstantRate", "ManaLeechPerHit", "ManaLeechRate",
-		},
-	}
-	oracleStatsExcept(t, false, skip, keys...)
+	oracleStats(t, false, keys...)
 }

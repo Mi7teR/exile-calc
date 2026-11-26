@@ -42,6 +42,8 @@ func wintertideBrandPreDamage(actor *ModDB, s *activeSkill, _ map[string]float64
 	if s.part == 1 && hitTime > 0 {
 		list, cfg := s.mods, s.cfg
 		skillMaxStages := list.SumCfg(cfg, "BASE", "Multiplier:WintertideBrandMaxStages")
+		// Data/Skills/act_int.lua:21280: the skill's own multiplier, in
+		// every buff mode.
 		debuffDurationMult := 1 / math.Max(buffExpirationSlowCap, calcMod(actor.enemy, cfg, "BuffExpireFaster"))
 		duration := skillDuration(list, cfg, data, nil) * debuffDurationMult
 		if duration <= 0 {

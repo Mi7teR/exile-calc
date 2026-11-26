@@ -97,13 +97,21 @@ func itemConditions(db *ModDB, gear []equipped) {
 
 	// doActorAttribsConditions
 	w1, w2 := bySlot["Weapon 1"], bySlot["Weapon 2"]
+	all1H := playerAll1H(db)
+	var types, names [2]string
+	for i, it := range []*itemtext.Item{w1, w2} {
+		if it != nil && it.Base != nil && it.Base.Weapon != nil {
+			types[i], names[i] = it.Base.Type, it.Name
+		}
+	}
+	db.all1HAdded = all1HAdded(types, all1H, names)
 	switch {
 	case w2 != nil && w2.Base != nil && w2.Base.Type == "Shield":
 		cond["UsingShield"] = true
 	case w2 == nil:
 		cond["OffHandIsEmpty"] = true
 	}
-	weapon := func(it *itemtext.Item) {
+	weapon := func(it *itemtext.Item, all1H bool) {
 		if it == nil || it.Base == nil || it.Base.Weapon == nil {
 			return
 		}
@@ -112,6 +120,13 @@ func itemConditions(db *ModDB, gear []equipped) {
 			return
 		}
 		cond["Using"+info.flag] = true
+		// CalcPerform.lua:162-175, 200-213.
+		if all1H {
+			for _, f := range []string{"Axe", "Sword", "Dagger", "Mace", "Claw"} {
+				cond["Using"+f] = true
+			}
+			cond["WieldingDifferentWeaponTypes"] = true
+		}
 		if info.melee {
 			cond["UsingMeleeWeapon"] = true
 		}
@@ -127,9 +142,9 @@ func itemConditions(db *ModDB, gear []equipped) {
 			cond["Unencumbered"] = true
 		}
 	} else {
-		weapon(w1)
+		weapon(w1, all1H[0])
 	}
-	weapon(w2)
+	weapon(w2, all1H[1])
 	for _, s := range []string{"Helmet", "Body Armour", "Gloves", "Boots"} {
 		if bySlot[s] != nil {
 			cond["Using"+s] = true
@@ -138,10 +153,10 @@ func itemConditions(db *ModDB, gear []equipped) {
 	if w1 != nil && w2 != nil && w1.Base != nil && w2.Base != nil && w1.Base.Weapon != nil && w2.Base.Weapon != nil {
 		cond["DualWielding"] = true
 		t1, t2 := w1.Base.Type, w2.Base.Type
-		if t1 == "Claw" && t2 == "Claw" {
+		if (t1 == "Claw" || all1H[0]) && (t2 == "Claw" || all1H[1]) {
 			cond["DualWieldingClaws"] = true
 		}
-		if t1 == "Dagger" && t2 == "Dagger" {
+		if (t1 == "Dagger" || all1H[0]) && (t2 == "Dagger" || all1H[1]) {
 			cond["DualWieldingDaggers"] = true
 		}
 		// getWeaponType: thrusting swords count as one handed swords.
@@ -163,26 +178,63 @@ func itemConditions(db *ModDB, gear []equipped) {
 	}
 }
 
-// buffMode sets CalcSetup.lua's mode conditions for the main output
-// (buffMode "EFFECTIVE").
-func buffMode(db *ModDB) {
-	db.conditions["Buffed"] = true
-	db.conditions["Combat"] = true
-	db.conditions["Effective"] = true
+// playerAll1H is the countsAsAll1H of the player's weaponData1 and
+// weaponData2: their items' WeaponData mods (Item.lua:2361-2363).
+func playerAll1H(db *ModDB) [2]bool {
+	var out [2]bool
+	for i, slot := range []string{slotWeapon1, slotWeapon2} {
+		if w, _, ok := itemWeapon(db.items[slot], db.gearMods[slot]); ok {
+			out[i] = w.all1H
+		}
+	}
+	return out
 }
 
-// modeEffective is env.mode_effective (CalcSetup.lua:583-599), which every
-// actor's Effective condition mirrors (CalcSetup.lua:134): true in MAIN and
-// CALCULATOR mode (buffMode "EFFECTIVE"); only the Calcs tab's other buff
-// modes clear it.
-func modeEffective(actor *ModDB) bool { return actor.conditions["Effective"] }
+// buffMode sets CalcSetup.lua's mode conditions (132-134) for buffMode
+// mode (578-599): "" is EFFECTIVE, the mode of every pass but the Calcs
+// tab's, whose misc_buffMode may also be COMBAT, BUFFED or UNBUFFED.
+func buffMode(db *ModDB, mode string) {
+	buffs, combat, effective := false, false, false
+	switch mode {
+	case "", "EFFECTIVE":
+		buffs, combat, effective = true, true, true
+	case "COMBAT":
+		buffs, combat = true, true
+	case "BUFFED":
+		buffs = true
+	}
+	db.conditions[condBuffed], db.conditions[condCombat], db.conditions[condEffective] = buffs, combat, effective
+}
+
+// The mode conditions (CalcSetup.lua:132-134).
+const (
+	condBuffed    = "Buffed"
+	condCombat    = "Combat"
+	condEffective = "Effective"
+)
+
+// copyModeConditions gives a minion's ModDB the env's mode conditions
+// (calcs.initModDB, CalcSetup.lua:132-134).
+func copyModeConditions(mdb, owner *ModDB) {
+	for _, k := range []string{condBuffed, condCombat, condEffective} {
+		mdb.conditions[k] = owner.conditions[k]
+	}
+}
+
+// modeBuffs, modeCombat and modeEffective are env.mode_buffs, mode_combat
+// and mode_effective, read from an actor's mode conditions, which
+// CalcSetup.lua:132-134 sets to them for the player, the enemy and the
+// minion alike.
+func modeBuffs(actor *ModDB) bool     { return actor.conditions[condBuffed] }
+func modeCombat(actor *ModDB) bool    { return actor.conditions[condCombat] }
+func modeEffective(actor *ModDB) bool { return actor.conditions[condEffective] }
 
 // minionEquipmentConditions ports the equipment conditions of
 // doActorAttribsConditions (CalcPerform.lua:148-245) for env.minion
 // (CalcPerform.lua:1998): from its itemList and the types of its
 // weaponData1 (w1, "None" when unarmed) and weaponData2 (w2, "" when it
 // has none). countsAsAll1H (Varunastra) is not ported, as for the player.
-func minionEquipmentConditions(cond map[string]bool, items map[string]*itemtext.Item, w1, w2 string) {
+func minionEquipmentConditions(cond map[string]bool, items map[string]*itemtext.Item, w1, w2 string, all1H [2]bool) {
 	// CalcPerform.lua:149: actor == env.player is false for a minion; the
 	// minion's aegis item is not ported.
 	if it := items["Weapon 2"]; it != nil && it.Base != nil && it.Base.Type == "Shield" {
@@ -196,7 +248,7 @@ func minionEquipmentConditions(cond map[string]bool, items map[string]*itemtext.
 			cond["Unencumbered"] = true
 		}
 	} else {
-		weaponTypeConditions(cond, w1)
+		weaponTypeConditions(cond, w1, all1H[0])
 	}
 	for _, s := range []string{"Helmet", "Body Armour", "Gloves", "Boots"} {
 		if items[s] != nil {
@@ -204,16 +256,24 @@ func minionEquipmentConditions(cond map[string]bool, items map[string]*itemtext.
 		}
 	}
 	if w2 != "" {
-		weaponTypeConditions(cond, w2)
-		dualWieldConditions(cond, items, w1, w2)
+		weaponTypeConditions(cond, w2, all1H[1])
+		dualWieldConditions(cond, items, w1, w2, all1H)
 	}
 }
 
 // weaponTypeConditions are the Using<flag> and hand conditions of one
-// weapon type (CalcPerform.lua:160-185, 198-221).
-func weaponTypeConditions(cond map[string]bool, typ string) {
+// weapon type (CalcPerform.lua:160-185, 198-221); a weapon that counts as
+// all one handed melee types sets each type's condition and
+// WieldingDifferentWeaponTypes (162-175, 200-213).
+func weaponTypeConditions(cond map[string]bool, typ string, all1H bool) {
 	info := weaponTypeInfo[typ]
 	cond["Using"+info.flag] = true
+	if all1H {
+		for _, f := range []string{"Axe", "Sword", "Dagger", "Mace", "Claw"} {
+			cond["Using"+f] = true
+		}
+		cond["WieldingDifferentWeaponTypes"] = true
+	}
 	if info.melee {
 		cond["UsingMeleeWeapon"] = true
 	}
@@ -225,18 +285,70 @@ func weaponTypeConditions(cond map[string]bool, typ string) {
 }
 
 // dualWieldConditions is CalcPerform.lua:223-245 for weapon types w1 and w2.
-func dualWieldConditions(cond map[string]bool, items map[string]*itemtext.Item, w1, w2 string) {
+func dualWieldConditions(cond map[string]bool, items map[string]*itemtext.Item, w1, w2 string, all1H [2]bool) {
 	cond["DualWielding"] = true
-	if w1 == "Claw" && w2 == "Claw" {
+	if (w1 == "Claw" || all1H[0]) && (w2 == "Claw" || all1H[1]) {
 		cond["DualWieldingClaws"] = true
 	}
-	if w1 == "Dagger" && w2 == "Dagger" {
+	if (w1 == "Dagger" || all1H[0]) && (w2 == "Dagger" || all1H[1]) {
 		cond["DualWieldingDaggers"] = true
 	}
 	differ := weaponKind(items["Weapon 1"], w1) != weaponKind(items["Weapon 2"], w2)
 	if differ && weaponTypeInfo[w1].oneHand && weaponTypeInfo[w2].oneHand {
 		cond["WieldingDifferentWeaponTypes"] = true
 	}
+}
+
+// oneHandMeleeTypes are the weapon types countsAsAll1H stands for
+// (CalcActiveSkill.lua:220, CalcTools.lua:142-146).
+var oneHandMeleeTypes = []string{ //nolint:gochecknoglobals // PoB data, as weaponTypeInfo
+	"Claw", "Dagger", "One Handed Axe", "One Handed Mace", "One Handed Sword"}
+
+// all1HAdded is the Added<condition> fields doActorAttribsConditions
+// writes on a countsAsAll1H weapon (CalcPerform.lua:162-175, 200-213), of
+// the weapon ModStore reads them from (ModStore.lua:635): the main hand's
+// if it counts as all one handed types, else the off hand's; nil with
+// neither. names are the weapons' item names (weaponData.name).
+func all1HAdded(types [2]string, all1H [2]bool, names [2]string) map[string]bool {
+	cond := map[string]bool{}
+	var added [2]map[string]bool
+	hand := func(i int) {
+		cond["Using"+weaponTypeInfo[types[i]].flag] = true
+		if !all1H[i] {
+			return
+		}
+		a := map[string]bool{}
+		for _, f := range []string{"Axe", "Sword", "Dagger", "Mace", "Claw"} {
+			v := "Using" + f
+			a[v] = !cond[v]
+			if f == "Sword" {
+				a[v] = strings.Contains(names[i], "Varunastra") || !cond[v] // Varunastra is a sword
+			}
+			cond[v] = true
+		}
+		added[i] = a
+	}
+	if types[0] != "" && types[0] != "None" {
+		hand(0)
+	}
+	if types[1] != "" {
+		hand(1)
+	}
+	if added[0] != nil {
+		return added[0]
+	}
+	return added[1]
+}
+
+// addedUsingDagger is weaponData.AddedUsingDagger of each hand
+// (CalcPerform.lua:167, 205): a countsAsAll1H weapon that made the actor
+// count as using a dagger.
+func addedUsingDagger(types [2]string, all1H [2]bool) [2]bool {
+	dagger := func(i int) bool { return weaponTypeInfo[types[i]].flag == "Dagger" }
+	var out [2]bool
+	out[0] = all1H[0] && types[0] != "" && types[0] != "None" && !dagger(0)
+	out[1] = all1H[1] && types[1] != "" && !dagger(0) && !all1H[0] && !dagger(1)
+	return out
 }
 
 // weaponKind is getWeaponType (CalcPerform.lua:231-237): thrusting swords

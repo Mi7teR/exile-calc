@@ -47,13 +47,14 @@ func (c *Calculator) crit(s *activeSkill, p *hitPass, enemy *ModDB, actor *ModDB
 			out["PreEffectiveCritChance"], out["PreBifurcateCritChance"], out["CritChance"] = 100, 100, 100
 		} else {
 			var base, inc, more = 0.0, 0.0, 1.0
+			// CalcOffence.lua:3131-3133, 3146, 3162, 3167, 3247, 3261: the
+			// enemy's and the effective parts are env.mode_effective.
+			eff := modeEffective(actor)
 			if !hasOverride {
 				base = list.SumCfg(cfg, "BASE", "CritChance")
 				inc = list.SumCfg(cfg, "INC", "CritChance")
 				more = list.MoreCfg(cfg, "CritChance")
-				// CalcOffence.lua:3131-3133: the enemy's SelfCritChance
-				// only with env.mode_effective.
-				if modeEffective(actor) {
+				if eff {
 					base += enemy.Sum("BASE", "SelfCritChance")
 					inc += enemy.Sum("INC", "SelfCritChance")
 					more *= enemy.More("SelfCritChance")
@@ -70,8 +71,7 @@ func (c *Calculator) crit(s *activeSkill, p *hitPass, enemy *ModDB, actor *ModDB
 			}
 			out["PreEffectiveCritChance"] = cc
 			rolls := 0.0
-			// CalcOffence.lua:3146: lucky crit only with env.mode_effective.
-			if modeEffective(actor) && list.FlagCfg(cfg, "CritChanceLucky") {
+			if eff && list.FlagCfg(cfg, "CritChanceLucky") {
 				rolls++
 			}
 			if list.FlagCfg(s.cfg, "ExtremeLuck") {
@@ -85,13 +85,10 @@ func (c *Calculator) crit(s *activeSkill, p *hitPass, enemy *ModDB, actor *ModDB
 				}
 			}
 			out["PreBifurcateCritChance"] = cc
-			// CalcOffence.lua:3162: only with env.mode_effective.
-			if modeEffective(actor) && list.FlagCfg(cfg, "BifurcateCrit") {
+			if eff && list.FlagCfg(cfg, "BifurcateCrit") {
 				cc = (1 - math.Pow(1-cc/100, 2)) * 100 //nolint:staticcheck // matches PoB CalcOffence.lua:3163
 			}
-			// CalcOffence.lua:3167-3179: the guaranteed crit uses and the
-			// crit confirmation roll only with env.mode_effective.
-			if modeEffective(actor) {
+			if eff {
 				for _, x := range []struct {
 					flag string
 					n    float64
@@ -113,15 +110,13 @@ func (c *Calculator) crit(s *activeSkill, p *hitPass, enemy *ModDB, actor *ModDB
 			if o, ok := list.OverrideCfg(s.cfg, "CritMultiplier"); ok {
 				extra = (o - 100) / 100
 			}
-			// CalcOffence.lua:3247-3250: the enemy's SelfCritMultiplier
-			// only with env.mode_effective.
-			if modeEffective(actor) {
+			if modeEffective(actor) { // CalcOffence.lua:3247
 				enemyInc := 1 + enemy.Sum("INC", "SelfCritMultiplier")/100
 				extra += enemy.Sum("BASE", "SelfCritMultiplier") / 100
 				extra = round(extra*enemyInc, 2)
 			}
 			override, hasOverride := list.OverrideCfg(cfg, "CritChance")
-			// CalcOffence.lua:3261: env.mode_effective, as above.
+			// CalcOffence.lua:3261.
 			if modeEffective(actor) && list.FlagCfg(cfg, "BifurcateCrit") && !(hasOverride && override == 100) {
 				pre := out["PreBifurcateCritChance"]
 				multiChance := pre * pre / 100

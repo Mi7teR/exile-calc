@@ -27,7 +27,7 @@ func TestApplyConfig(t *testing.T) {
 			t.Errorf("incomplete: %s", s)
 		}
 	}
-	buffMode(db)
+	buffMode(db, "")
 	if !db.GetCondition("MassiveShrine") {
 		t.Error("Condition:MassiveShrine not set")
 	}

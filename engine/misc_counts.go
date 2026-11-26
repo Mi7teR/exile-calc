@@ -10,6 +10,9 @@ import (
 // heraldAuraCounts is "Calculate number of active heralds and auras
 // affecting self" of calcs.perform (mode_buffs).
 func heraldAuraCounts(db *ModDB, skills []*activeSkill) {
+	if !modeBuffs(db) { // CalcPerform.lua:2199
+		return
+	}
 	heralds, auras := map[string]bool{}, map[string]bool{}
 	for _, s := range skills {
 		name := s.cfg.SkillName

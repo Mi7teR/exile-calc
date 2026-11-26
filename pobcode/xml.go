@@ -21,6 +21,12 @@ type xPoB struct {
 	Config  xConfig  `xml:"Config"`
 	Import  *xImport `xml:"Import"`
 	Party   *xParty  `xml:"Party"`
+	Calcs   *xCalcs  `xml:"Calcs"`
+}
+
+// xCalcs is Classes/CalcsTab.lua Save; only the inputs are kept.
+type xCalcs struct {
+	Inputs []xInput `xml:"Input"`
 }
 
 // xImport is Classes/ImportTab.lua Save; only exportParty is kept.
@@ -164,6 +170,13 @@ type xGem struct {
 	SkillMinion        string `xml:"skillMinion,attr,omitempty"`
 	SkillMinionItemSet string `xml:"skillMinionItemSet,attr,omitempty"`
 	SkillMinionSkill   string `xml:"skillMinionSkill,attr,omitempty"`
+
+	SkillPartCalcs          string `xml:"skillPartCalcs,attr,omitempty"`
+	SkillStageCountCalcs    string `xml:"skillStageCountCalcs,attr,omitempty"`
+	SkillMineCountCalcs     string `xml:"skillMineCountCalcs,attr,omitempty"`
+	SkillMinionCalcs        string `xml:"skillMinionCalcs,attr,omitempty"`
+	SkillMinionItemSetCalcs string `xml:"skillMinionItemSetCalcs,attr,omitempty"`
+	SkillMinionSkillCalcs   string `xml:"skillMinionSkillCalcs,attr,omitempty"`
 }
 
 type xConfig struct {
@@ -400,6 +413,13 @@ func Parse(data []byte) (*Build, error) {
 					SkillMinion:        gm.SkillMinion,
 					SkillMinionItemSet: p.int("Gem.skillMinionItemSet", gm.SkillMinionItemSet, 0),
 					SkillMinionSkill:   p.int("Gem.skillMinionSkill", gm.SkillMinionSkill, 0),
+
+					SkillPartCalcs:          p.int("Gem.skillPartCalcs", gm.SkillPartCalcs, 0),
+					SkillStageCountCalcs:    p.int("Gem.skillStageCountCalcs", gm.SkillStageCountCalcs, 0),
+					SkillMineCountCalcs:     p.int("Gem.skillMineCountCalcs", gm.SkillMineCountCalcs, 0),
+					SkillMinionCalcs:        gm.SkillMinionCalcs,
+					SkillMinionItemSetCalcs: p.int("Gem.skillMinionItemSetCalcs", gm.SkillMinionItemSetCalcs, 0),
+					SkillMinionSkillCalcs:   p.int("Gem.skillMinionSkillCalcs", gm.SkillMinionSkillCalcs, 0),
 				})
 			}
 			set.Groups = append(set.Groups, g)
@@ -445,6 +465,11 @@ func Parse(data []byte) (*Build, error) {
 	}
 
 	b.Party = parseParty(&x)
+	if x.Calcs != nil {
+		for _, in := range x.Calcs.Inputs {
+			b.CalcsInputs = append(b.CalcsInputs, p.input(in))
+		}
+	}
 
 	if p.err != nil {
 		return nil, p.err
@@ -612,6 +637,13 @@ func (b *Build) XML() ([]byte, error) {
 					SkillMinion:        gm.SkillMinion,
 					SkillMinionItemSet: itoaOpt(gm.SkillMinionItemSet),
 					SkillMinionSkill:   itoaOpt(gm.SkillMinionSkill),
+
+					SkillPartCalcs:          itoaOpt(gm.SkillPartCalcs),
+					SkillStageCountCalcs:    itoaOpt(gm.SkillStageCountCalcs),
+					SkillMineCountCalcs:     itoaOpt(gm.SkillMineCountCalcs),
+					SkillMinionCalcs:        gm.SkillMinionCalcs,
+					SkillMinionItemSetCalcs: itoaOpt(gm.SkillMinionItemSetCalcs),
+					SkillMinionSkillCalcs:   itoaOpt(gm.SkillMinionSkillCalcs),
 				})
 			}
 			xs.Skills = append(xs.Skills, xk)
@@ -641,6 +673,13 @@ func (b *Build) XML() ([]byte, error) {
 			for _, pb := range p.Buffs {
 				x.Party.Imported = append(x.Party.Imported, xPartyBuffs(pb))
 			}
+		}
+	}
+
+	if len(b.CalcsInputs) > 0 {
+		x.Calcs = &xCalcs{}
+		for _, in := range b.CalcsInputs {
+			x.Calcs.Inputs = append(x.Calcs.Inputs, toXInput(in))
 		}
 	}
 

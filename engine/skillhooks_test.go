@@ -89,3 +89,75 @@ func TestSkillHookRegistryDuplicatePanics(t *testing.T) {
 	}()
 	registerSkill([]string{"X"}, skillHooks{preSkillType: noop})
 }
+
+// TestMinionSkillHooks: a minion skill has only its own granted effect's
+// functions (Data/Skills/minion.lua, spectre.lua), not those of a player
+// skill of the same name.
+func TestMinionSkillHooks(t *testing.T) {
+	summon := triggerTestSkill("Raise Spectre")
+	minionSkill := func(id, name string) *activeSkill {
+		s := triggerTestSkill(name)
+		s.active.id, s.summon = id, summon
+		return s
+	}
+	if hooksOf(triggerTestSkill("Cyclone")) == nil {
+		t.Fatal("the player's Cyclone has no hooks")
+	}
+	if h := hooksOf(minionSkill("AzmeriVikingCyclone", "Cyclone")); h != nil {
+		t.Errorf("a spectre's Cyclone has the player's hooks: %+v", h)
+	}
+	// spectre.lua:7277: Barrage hits once per projectile, without the
+	// player Barrage's skill part check.
+	hydra := minionSkill("AzmeriHydraBarrage", "Barrage")
+	preDamageFunc(nil, hydra, map[string]float64{"ProjectileCount": 10})
+	if got := hydra.data.dpsMultiplier.or(1); got != 10 {
+		t.Errorf("Azmeri Hydra Barrage dpsMultiplier %v, want 10", got)
+	}
+	// minion.lua:756 and 1756: one hit per summoned minion.
+	for _, id := range []string{"GAZombieCorpseGroundImpact", "MinionInstability"} {
+		s := minionSkill(id, "x")
+		preDamageFunc(nil, s, map[string]float64{})
+		if got, _ := s.data.hitTimeOverride.get(); got != 1 {
+			t.Errorf("%s without summonSpeed: hitTimeOverride %v, want 1", id, got)
+		}
+		summon.data.set("summonSpeed", 2.5)
+		preDamageFunc(nil, s, map[string]float64{})
+		if got, _ := s.data.hitTimeOverride.get(); got != 0.4 {
+			t.Errorf("%s: hitTimeOverride %v, want 0.4", id, got)
+		}
+		summon.data.del("summonSpeed")
+	}
+}
+
+// TestFallingSlamSummonSpeed: with Falling Slam as the Raised Zombie's main
+// skill it hits at Raise Zombie's summoning rate (skillData.summonSpeed,
+// CalcOffence.lua:4141), which needs the player's offence before the
+// minion's. JEhRArCR8lqN with skillMinionSkill 3: PoB 1.6153846153846 and
+// 21588.366993529.
+func TestFallingSlamSummonSpeed(t *testing.T) {
+	b := corpusBuild(t, "JEhRArCR8lqN")
+	set := b.ActiveSkills()
+	for gi := range set.Groups {
+		for k := range set.Groups[gi].Gems {
+			if g := &set.Groups[gi].Gems[k]; g.NameSpec == "Raise Zombie" {
+				g.SkillMinionSkill = 3
+			}
+		}
+	}
+	mins, err := newCalc(t).CalcMinions(b)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, m := range mins {
+		if m.Minion == "Raised Zombie" {
+			if got := m.Stats["Speed"]; !near(got, 1.6153846153846, 1e-9) {
+				t.Errorf("Falling Slam speed %v, want 1.6153846153846", got)
+			}
+			if got := m.Stats["TotalDPS"]; !near(got, 21588.366993529, 1e-9) {
+				t.Errorf("Falling Slam TotalDPS %v, want 21588.366993529", got)
+			}
+			return
+		}
+	}
+	t.Fatal("no Raised Zombie")
+}

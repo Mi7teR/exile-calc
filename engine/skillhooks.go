@@ -63,9 +63,49 @@ func registerSkill(names []string, h skillHooks) {
 	}
 }
 
-// hooksOf returns the hooks of s's gem, or nil if it has none.
+// minionSkillHookRegistry maps a minion skill's granted effect id to its
+// hooks. PoB keeps a skill's functions on its granted effect, and the
+// minion skills of Data/Skills/minion.lua and spectre.lua have their own
+// effects even where they share a player skill's name (a spectre's
+// "Barrage", "Cyclone" or "Spark"), so they take none of the player
+// hooks above. These are every function those two files define: three
+// preDamageFuncs. The only other skills in a minion's skill list are
+// Melee, Anger, Hatred and Wrath (Data/Minions.lua, Data/Spectres.lua),
+// which have no hooks.
+var minionSkillHookRegistry = map[string]*skillHooks{
+	"GAZombieCorpseGroundImpact": {preDamage: summonSpeedHitTimePreDamage},
+	"MinionInstability":          {preDamage: summonSpeedHitTimePreDamage},
+	"AzmeriHydraBarrage":         {preDamage: azmeriHydraBarragePreDamage},
+}
+
+// hooksOf returns the hooks of s's gem, or nil if it has none; a minion's
+// skill (summonSkill set) has only the hooks of its own granted effect.
 func hooksOf(s *activeSkill) *skillHooks {
+	if s.summon != nil {
+		return minionSkillHookRegistry[s.active.id]
+	}
 	return skillHookRegistry[s.active.ge.Name]
+}
+
+// summonSpeedHitTimePreDamage is the preDamageFunc of Falling Slam
+// (Data/Skills/minion.lua:756-758) and Minion Instability
+// (minion.lua:1756-1758): the skill hits once per minion the summoning
+// skill raises, skillData.summonSpeed (CalcOffence.lua:4141, or 1).
+func summonSpeedHitTimePreDamage(_ *ModDB, s *activeSkill, _ map[string]float64) {
+	speed := 1.0
+	if s.summon != nil {
+		if v, ok := num(s.summon.data.val("summonSpeed")); ok {
+			speed = v
+		}
+	}
+	s.data.hitTimeOverride = optF{1 / speed, true}
+}
+
+// azmeriHydraBarragePreDamage is the Azmeri Hydra's Barrage preDamageFunc
+// (Data/Skills/spectre.lua:7277-7279): one hit per projectile, with no
+// skill part check.
+func azmeriHydraBarragePreDamage(_ *ModDB, s *activeSkill, out map[string]float64) {
+	s.data.dpsMultiplier = optF{out["ProjectileCount"], true}
 }
 
 // mulDPS scales the skill's dpsMultiplier (default 1) by m.

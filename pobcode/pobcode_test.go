@@ -481,3 +481,40 @@ func TestSpectreListRoundTrip(t *testing.T) {
 		t.Error("a build without spectres must parse to none")
 	}
 }
+
+// TestCalcsRoundTrip: the Calcs tab's inputs (CalcsTab.lua Load/Save) and
+// the gems' *Calcs selections (SkillsTab.lua:503-514, 613-624) survive two
+// rounds.
+func TestCalcsRoundTrip(t *testing.T) {
+	x := string(readFile(t, "testdata/modern.xml"))
+	x = strings.Replace(x, `</PathOfBuilding>`, `<Calcs><Input name="skill_number" number="2"/>`+
+		`<Input name="misc_buffMode" string="EFFECTIVE"/><Input name="showMinion" boolean="true"/></Calcs></PathOfBuilding>`, 1)
+	x = strings.Replace(x, `<Gem `, `<Gem skillPartCalcs="2" skillStageCountCalcs="3" skillMineCountCalcs="4" `+
+		`skillMinionCalcs="RaisedZombie" skillMinionItemSetCalcs="5" skillMinionSkillCalcs="6" `, 1)
+	b, err := Parse([]byte(x))
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []Input{
+		{Name: "skill_number", Kind: KindNumber, Number: 2},
+		{Name: "misc_buffMode", Kind: KindString, String: "EFFECTIVE"},
+		{Name: "showMinion", Kind: KindBool, Bool: true},
+	}
+	for round := range 2 {
+		if !slices.Equal(b.CalcsInputs, want) {
+			t.Errorf("round %d: calcs inputs %+v", round, b.CalcsInputs)
+		}
+		g := b.SkillSets[0].Groups[0].Gems[0]
+		if g.SkillPartCalcs != 2 || g.SkillStageCountCalcs != 3 || g.SkillMineCountCalcs != 4 ||
+			g.SkillMinionCalcs != "RaisedZombie" || g.SkillMinionItemSetCalcs != 5 || g.SkillMinionSkillCalcs != 6 {
+			t.Errorf("round %d: gem %+v", round, g)
+		}
+		out, xerr := b.XML()
+		if xerr != nil {
+			t.Fatal(xerr)
+		}
+		if b, err = Parse(out); err != nil {
+			t.Fatal(err)
+		}
+	}
+}

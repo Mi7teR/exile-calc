@@ -108,7 +108,7 @@ func ailmentChances(actor *ModDB, s *activeSkill, p *hitPass) {
 	out["PoisonChanceOnCrit"] = chance(hit && !list.FlagCfg(cfg, "CannotPoison"), "PoisonChance", "SelfPoisonChance")
 	// CalcOffence.lua:4250-4254: impale only with env.mode_effective.
 	out["ImpaleChanceOnCrit"] = 0
-	if hit && modeEffective(actor) {
+	if hit && modeEffective(actor) { // CalcOffence.lua:4254
 		out["ImpaleChanceOnCrit"] = math.Min(100, list.SumCfg(cfg, "BASE", "ImpaleChance"))
 	}
 	out["KnockbackChanceOnCrit"] = knockbackChance(s, cfg) // CalcOffence.lua:4256-4260
@@ -466,6 +466,9 @@ func hitSpeed(global map[string]float64) float64 {
 // dotTakenMult is the effective DoT multiplier of type t on the enemy
 // (resist or, for physical, damage reduction; damage taken).
 func dotTakenMult(actor *ModDB, cfg *Cfg, t string) float64 {
+	if !modeEffective(actor) { // CalcOffence.lua:4624, 4894
+		return 1
+	}
 	enemy := actor.enemy
 	var resist float64
 	if t == "Physical" {

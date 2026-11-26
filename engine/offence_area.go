@@ -211,10 +211,10 @@ func offenceDuration(actor *ModDB, s *activeSkill, out map[string]float64) {
 		return
 	}
 	d := base * out["DurationMod"]
-	// CalcOffence.lua:1493-1496: debuffDurationMult only with
-	// env.mode_effective.
-	if truthy(data.val("debuff")) && modeEffective(actor) {
-		d /= math.Max(0.25, calcMod(actor.enemy, cfg, "BuffExpireFaster")) // BuffExpirationSlowCap
+	if truthy(data.val("debuff")) {
+		if modeEffective(actor.enemy) { // CalcOffence.lua:1494
+			d /= math.Max(buffExpirationSlowCap, calcMod(actor.enemy, cfg, "BuffExpireFaster"))
+		}
 	}
 	out["Duration"] = math.Ceil(d*serverTickRate) / serverTickRate
 }
@@ -224,7 +224,8 @@ func offenceDuration(actor *ModDB, s *activeSkill, out map[string]float64) {
 func impaleDuration(actor *ModDB, s *activeSkill, out map[string]float64) {
 	const impaledDebuffBaseDuration = 8 // characterConstants impaled_debuff_base_duration_ms / 1000
 	out["ImpaleDurationMod"] = math.Max(calcMod(s.mods, s.cfg, "ImpaleDuration"), 0)
-	out["ImpaleDuration"] = math.Ceil(impaledDebuffBaseDuration*out["ImpaleDurationMod"]*serverTickRate*debuffDurationMult(actor, s.cfg)) / serverTickRate
+	debuffDurationMult := debuffDurationMult(actor.enemy, s.cfg)
+	out["ImpaleDuration"] = math.Ceil(impaledDebuffBaseDuration*out["ImpaleDurationMod"]*serverTickRate*debuffDurationMult) / serverTickRate
 }
 
 // enemyExplode is EnemyExplode's preDamageFunc (Data/Skills/other.lua): the

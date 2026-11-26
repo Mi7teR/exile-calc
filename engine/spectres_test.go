@@ -217,7 +217,7 @@ func TestDamageFixup(t *testing.T) {
 	mdb := NewModDB()
 	mdb.minionData = &gamedata.Minion{Name: "X", DamageFixup: 0.33}
 	eff := &skillEffect{id: "Melee", ge: c.data.Skills.Effects["Melee"], level: 1, actorLevel: 50}
-	ms := c.createActiveSkill(eff, nil, nil, [2]string{"None"}, nil)
+	ms := c.createActiveSkill(eff, nil, nil, [2]string{"None"}, [2]bool{}, nil)
 	ms.cfg = &Cfg{}
 	c.buildSkillMods(mdb, ms, &Result{})
 	attack := &Cfg{Flags: mfAttack}

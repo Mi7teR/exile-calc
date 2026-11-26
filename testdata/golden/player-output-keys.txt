@@ -1,5 +1,6 @@
-# Player output keys PoB sets that the engine once lacked (minion-rest cross-check, round 5),
-# without the warcry and minion-count keys minion-rest owns and Full DPS (Calculator.FullDPS).
+# Player output keys PoB sets that the engine once lacked (minion-rest cross-check, round 5), all
+# 323 but Full DPS, which stays in Calculator.FullDPS.
+ActiveMinionLimit
 AnyAegis
 AnyBypass
 AnyGuard
@@ -10,6 +11,7 @@ AverageBurstDamage
 AverageHitToMonsterLifePercentage
 AvgFistOfWarDamage
 AvgFistOfWarDamageEffect
+BattleMageCryCalculated
 BeidatEmpoweredCount
 BlindEffectMod
 BlockDuration
@@ -31,6 +33,7 @@ ColdDotEHP
 CombinedAvgToMonsterLife
 CorruptedBloodImmunity
 CreatePactOffensiveCalcSection
+CreateWarcryOffensiveCalcSection
 CritDamageRolls
 CurseEffectMod
 DamageRolls
@@ -65,6 +68,10 @@ EnergyShieldRechargeAppliesToEnergyShield
 EnergyShieldRechargeAppliesToLife
 EnergyShieldRecoupRecoveryAvg
 EnergyShieldRecoupRecoveryMax
+ExertedAttackAvgDmg
+ExertedAttackHitEffect
+ExertedAttackMaxHitEffect
+ExertedAttackUptimeRatioCalculated
 ExtraPoints
 FireBuildDegen
 FireDotEHP
@@ -93,9 +100,13 @@ GuardSkillActive
 HeraldBuffEffectMod
 HexDoomLimit
 HinderImmunity
+InfernalCryCalculated
 InherentRageLoss
 InherentRageLossDelay
 InterruptStunAvoidChance
+IntimidatingCryCalculated
+IntimidatingHitEffect
+IntimidatingMaxHitEffect
 KnockbackChance
 KnockbackChanceOnCrit
 KnockbackChanceOnHit
@@ -201,6 +212,10 @@ PreciseTechnique
 PvpAverageDamage
 PvpTotalDPS
 QuantityMultiplier
+RallyingAvgDmg
+RallyingCryCalculated
+RallyingHitEffect
+RallyingMaxHitEffect
 RawArmourDefense
 ReqDex
 ReqDexString
@@ -217,6 +232,7 @@ ScaledDamageEffect
 ScorchChance
 ScorchDuration
 ScorchEffectMod
+SeismicCryCalculated
 SelfBleedDuration
 SelfBleedEffect
 SelfBlindDuration
@@ -257,6 +273,8 @@ StoredUses
 StunAvoidChance
 StunDuration
 StunThreshold
+TheoreticalMaxOffensiveWarcryEffect
+TheoreticalOffensiveWarcryEffect
 TinctureEffect
 TinctureLimit
 TotalBuildDegen

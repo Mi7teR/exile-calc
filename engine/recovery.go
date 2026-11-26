@@ -5,16 +5,31 @@ import (
 	"strings"
 )
 
+// Data.lua:253-255 data.misc regeneration and recharge bases, divided in
+// float64 steps as Lua does: Go's exact constant arithmetic gives 1/3
+// for 2000/60/100, one bit below Lua's 0.33333333333333337, which can
+// round an ES recharge one lower. mana_regeneration_rate_per_minute_%
+// and energy_shield_recharge_rate_per_minute_%.
+//
+//nolint:gochecknoglobals,mnd // computed at run time, as Lua does
+var (
+	manaRegenBase            = luaDiv(105, 60, 100)
+	energyShieldRechargeBase = luaDiv(2000, 60, 100)
+)
+
+// luaDiv is a / b / c in float64, step by step.
+func luaDiv(a, b, c float64) float64 {
+	return a / b / c
+}
+
 // Data.lua data.misc values used by the defence outputs below.
 const (
 	suppressionChanceCap     = 100
 	suppressionEffect        = 40
 	dodgeChanceCap           = 75
-	manaRegenBase            = 105.0 / 60 / 100  // mana_regeneration_rate_per_minute_%
-	energyShieldRechargeBase = 2000.0 / 60 / 100 // energy_shield_recharge_rate_per_minute_%
-	energyShieldRechargeWait = 2                 // EnergyShieldRechargeDelay
-	damageReductionCap       = 90                // maximum_physical_damage_reduction_%
-	avoidChanceCap           = 75                // Data.lua data.misc.AvoidChanceCap
+	energyShieldRechargeWait = 2  // EnergyShieldRechargeDelay
+	damageReductionCap       = 90 // maximum_physical_damage_reduction_%
+	avoidChanceCap           = 75 // Data.lua data.misc.AvoidChanceCap
 	temporalChainsEffectCap  = 75
 )
 

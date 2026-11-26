@@ -250,6 +250,12 @@ type skillBuff struct {
 	hasStackLimit   bool
 	allowTotemBuff  bool
 	mods            []Mod
+	// warcry is the warcry power bonus and uptime the player's buff loop
+	// computed for a Warcry buff (CalcPerform.lua:2412-2422), which its
+	// env.minion part reuses (2438-2447), when warcrySet.
+	warcryBonus  []float64
+	warcryUptime float64
+	warcrySet    bool
 }
 
 type activeSkill struct {
@@ -276,6 +282,8 @@ type activeSkill struct {
 	// is the summoning skill of a minion's skill (activeSkill.summonSkill).
 	supportList []*skillEffect
 	summon      *activeSkill
+	// all1H is each hand's weaponData.countsAsAll1H, beside weapons.
+	all1H [2]bool
 	// weapon1Cfg and weapon2Cfg are the skill cfgs of main and off hand
 	// attacks (weapon flags).
 	weapon1Cfg, weapon2Cfg *Cfg
@@ -352,19 +360,59 @@ func mainSkill(skills []*activeSkill) *activeSkill {
 	return nil
 }
 
-// combatConditions ports the mode_combat part of doActorAttribsConditions:
-// conditions that follow from using the main skill.
-func combatConditions(db *ModDB, s *activeSkill) {
-	// mode_effective: exposure the player can apply.
-	for _, el := range []string{"Fire", "Cold", "Lightning"} {
-		if (s != nil && s.mods != nil && s.mods.SumCfg(s.cfg, "BASE", el+"ExposureChance") > 0) || db.Sum("BASE", el+"ExposureChance") > 0 {
+// combatConditions ports the mode_combat and mode_effective parts of
+// doActorAttribsConditions (CalcPerform.lua:246-296, 400-410) for the
+// actor db with main skill s (actor.mainSkill): conditions that follow
+// from using the main skill. pm is env.player.mainSkill, which the
+// ailment and exposure checks read for every actor: the player's main
+// skill, or for env.minion the summoning skill. The shrine buffs of the
+// mode_combat block are shrineBuffs.
+func combatConditions(db *ModDB, s, pm *activeSkill) {
+	if modeCombat(db) {
+		combatSkillConditions(db, s, pm)
+	}
+	if !modeEffective(db) {
+		return
+	}
+	// mode_effective (CalcPerform.lua:400-410): exposure the actor can
+	// apply, from env.player.mainSkill's mods or the actor's.
+	for _, el := range []string{"Fire", "Cold", "Lightning"} { //nolint:goconst // element names
+		if (pm != nil && pm.mods != nil && pm.mods.SumCfg(pm.cfg, "BASE", el+"ExposureChance") > 0) ||
+			db.Sum("BASE", el+"ExposureChance") > 0 {
 			db.conditions["CanApply"+el+"Exposure"] = true
 		}
 	}
-	if s == nil {
-		return
+}
+
+// combatSkillConditions is the mode_combat part of combatConditions
+// (CalcPerform.lua:246-296).
+func combatSkillConditions(db *ModDB, s, pm *activeSkill) {
+	if s != nil {
+		skillConditions(db.conditions, s)
 	}
-	cond, f := db.conditions, s.flags
+	var pmCfg *Cfg
+	if pm != nil {
+		pmCfg = pm.cfg
+	}
+	// CalcPerform.lua:288-296.
+	altAilments := db.Flag("CritAlwaysAltAilments") && !db.FlagCfg(pmCfg, "NeverCrit")
+	if db.Sum("BASE", "EnemyScorchChance") > 0 || altAilments || db.Flag("IgniteCanScorch") {
+		db.conditions["CanInflictScorch"] = true
+	}
+	if db.Sum("BASE", "EnemyBrittleChance") > 0 || altAilments {
+		db.conditions["CanInflictBrittle"] = true
+	}
+	if db.Sum("BASE", "EnemySapChance") > 0 || altAilments {
+		db.conditions["CanInflictSap"] = true
+	}
+}
+
+// skillConditions is CalcPerform.lua:247-287: the "recently" conditions
+// of using the actor's main skill s.
+//
+//nolint:gocognit // moved from combatConditions as it was
+func skillConditions(cond map[string]bool, s *activeSkill) {
+	f := s.flags
 	//nolint:nestif // pre-existing shape of the Lua port; only the skillData access changed
 	if !truthy(s.data.val("triggered")) && !f["trap"] && !f["mine"] && !f["totem"] {
 		if f["attack"] {

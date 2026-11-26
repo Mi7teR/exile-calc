@@ -157,11 +157,7 @@ func decay(actor *ModDB, s *activeSkill, out map[string]float64) {
 		mult = list.SumCfg(&dotCfg, "BASE", "DotMultiplier") + list.SumCfg(&dotCfg, "BASE", "ChaosDotMultiplier")
 	}
 	out["DecayDPS"] = base * (1 + inc/100) * more * (1 + mult/100) * effMult
-	// CalcOffence.lua:5772: 8 * debuffDurationMult.
-	out["DecayDuration"] = 8
-	if modeEffective(actor) {
-		out["DecayDuration"] = 8 / math.Max(buffExpirationSlowCap, calcMod(enemy, s.cfg, "BuffExpireFaster"))
-	}
+	out["DecayDuration"] = 8 * debuffDurationMult(enemy, s.cfg)
 }
 
 // cullAndReservation is the culling and reservation DPS part of the damage

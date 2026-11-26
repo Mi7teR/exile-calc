@@ -216,7 +216,8 @@ func (c *Calculator) mergeSkillInstanceMods(list *ModDB, e *skillEffect, extra [
 func (c *Calculator) buildSkillMods(db *ModDB, s *activeSkill, res *Result) {
 	ge := s.active.ge
 	flags, types := s.flags, s.types
-	flags["buffs"], flags["combat"], flags["effective"] = true, true, true
+	// CalcActiveSkill.lua:254-263: the mode flags.
+	flags["buffs"], flags["combat"], flags["effective"] = modeBuffs(db), modeCombat(db), modeEffective(db)
 	// Multipart skills: the selected part's flags.
 	if parts := ge.Parts; len(parts) > 1 {
 		s.part = min(len(parts), max(s.active.srcPart, 1))
@@ -244,8 +245,8 @@ func (c *Calculator) buildSkillMods(db *ModDB, s *activeSkill, res *Result) {
 	// Weapon flags (CalcActiveSkill.lua "Set weapon flags"): each hand's
 	// weapon type must be in the active skill's and its supports'
 	// weaponTypes; an empty main hand is unarmed ("None"); minion skills
-	// ignore weapon types. Shield attacks, forced source weapons,
-	// countsAsAll1H and "as though" weapon types are not ported.
+	// ignore weapon types. Shield attacks, forced source weapons and "as
+	// though" weapon types are not ported.
 	var w1Flags, w2Flags uint64
 	w1Attack, w2Attack := false, false
 	weaponTypes := [][]string{}
@@ -257,16 +258,23 @@ func (c *Calculator) buildSkillMods(db *ModDB, s *activeSkill, res *Result) {
 			weaponTypes = append(weaponTypes, e.ge.WeaponTypes)
 		}
 	}
-	handFlags := func(typ string) (uint64, bool, bool) {
+	// getWeaponFlags (CalcActiveSkill.lua:212-244): a countsAsAll1H weapon
+	// fits weapon types that hold a one handed melee type, and has all
+	// their flags.
+	handFlags := func(typ string, all1H bool) (uint64, bool, bool) {
 		if _, known := weaponTypeInfo[typ]; !known {
 			return 0, false, false
 		}
 		for _, l := range weaponTypes {
-			if !contains(l, typ) {
+			if !contains(l, typ) && !(all1H && slices.ContainsFunc(oneHandMeleeTypes, func(t string) bool { return contains(l, t) })) {
 				return 0, false, true
 			}
 		}
 		f, _ := weaponFlags(typ)
+		if all1H {
+			f = f&^modFlagByName[weaponTypeInfo[typ].flag] | modFlagByName["Axe"] | modFlagByName["Claw"] |
+				modFlagByName["Dagger"] | modFlagByName["Mace"] | modFlagByName["Sword"]
+		}
 		return f, true, true
 	}
 	attackLike := flags["attack"] || flags["dotFromAttack"]
@@ -285,7 +293,7 @@ func (c *Calculator) buildSkillMods(db *ModDB, s *activeSkill, res *Result) {
 	if main == "" {
 		main = "None"
 	}
-	f, ok, known := handFlags(main)
+	f, ok, known := handFlags(main, s.all1H[0])
 	if flags["shieldAttack"] {
 		ok, known = false, false
 	}
@@ -308,8 +316,8 @@ func (c *Calculator) buildSkillMods(db *ModDB, s *activeSkill, res *Result) {
 	}
 	if flags["shieldAttack"] {
 		// weapon2Flags = 0
-	} else if f2, ok2, known2 := handFlags(s.weapons[1]); ok2 && s.weapons[1] != "" {
-		if types[stDualWieldRequiresDifferentTypes] && s.weapons[0] == s.weapons[1] {
+	} else if f2, ok2, known2 := handFlags(s.weapons[1], s.all1H[1]); ok2 && s.weapons[1] != "" {
+		if types[stDualWieldRequiresDifferentTypes] && s.weapons[0] == s.weapons[1] && !s.all1H[0] && !s.all1H[1] {
 			s.disabled = true
 		} else if attackLike {
 			w2Flags, w2Attack = f2, true
@@ -391,8 +399,12 @@ func (c *Calculator) buildSkillMods(db *ModDB, s *activeSkill, res *Result) {
 			dist = in.Number
 		}
 	}
+	// skillDist = env.mode_effective and effectiveRange (CalcActiveSkill.lua:492).
+	if !modeEffective(db) {
+		dist = 0
+	}
 	s.cfg = &Cfg{
-		SkillDist: dist, HasSkillDist: true,
+		SkillDist: dist, HasSkillDist: modeEffective(db),
 		Flags: modFlags | w1Flags, KeywordFlags: kw, SkillName: strings.TrimPrefix(ge.Name, "Vaal "),
 		SkillID: s.active.id, BaseFlags: baseFlags, SkillTypes: types, SkillGem: s.active.gem,
 		SlotName: s.cfg.SlotName, SummonSkillName: summonName, SkillPart: s.part,

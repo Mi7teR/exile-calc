@@ -1,3 +1,5 @@
 `baseline.txt` is `make bench` output (`./engine`, count=10). BenchmarkCalc/BenchmarkCombat run with a warm parse cache (the process-wide modparser cache fills on the first iteration); cold parse speed is `go test ./modparser -run "^$" -bench ParseCorpusCold`.
 
 First-call latency (a fresh process: `engine.New`, the first and second `Calc`, `NewComparer` and the first `Comparer.Item`) is `go run ./cmd/coldstart -runs 11` from the repository root; `-build ID` picks a corpus build, and `-phase`, `-cpuprofile` and `-memprofile` profile one step (see the command's doc comment).
+
+The work/minion-rest branch (minion triggers, conditions and buffs, Party exports, trigger configs, map mods, buff modes, minion leech caps) has not updated `baseline.txt`. Against it, `make bench` shows +2.9% B/op and +2.4% allocs/op (geomean, p=0.000, n=10; CompareItem +2.2% to +3.8% B/op). That is a real change, not noise: those passes now run code the baseline did not have. Wall time moved by a similar 2-4% in review runs, within the machine's noise. Regenerate the baseline once the branches are merged.

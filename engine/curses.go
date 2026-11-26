@@ -27,6 +27,10 @@ type enemyCurse struct {
 	// after the player's curses within minionCurses.limit.
 	minion         bool
 	mods, buffMods []Mod
+	// curseBuffMods is a CurseBuff's mods scaled by curse effect (temp,
+	// CalcPerform.lua:2727-2728), minionBuffMods those for env.minion
+	// (curse.minionBuffModList, 2733-2738).
+	curseBuffMods, minionBuffMods []Mod
 }
 
 // cursePriorityOf is CalcPerform.lua determineCursePriority; s is nil for
@@ -68,8 +72,10 @@ func (c *Calculator) skillCurse(db *ModDB, s *activeSkill, b *skillBuff) *enemyC
 		db.enemyEnv.checks["balanceOfTerrorSelfCast"+strings.ReplaceAll(b.name, " ", "")] {
 		return nil
 	}
-	if !mark && enemy.Flag("Hexproof") && !db.Flag("CursesIgnoreHexproof") &&
-		!truthy(s.data.val("ignoreHexLimit")) && !truthy(s.data.val("ignoreHexproof")) {
+	// CalcPerform.lua:2696: a mark applies in every buff mode.
+	hexproof := enemy.Flag("Hexproof") && !db.Flag("CursesIgnoreHexproof") &&
+		!truthy(s.data.val("ignoreHexLimit")) && !truthy(s.data.val("ignoreHexproof"))
+	if !mark && (!modeEffective(db) || hexproof) {
 		return nil
 	}
 	cu := &enemyCurse{
@@ -84,6 +90,7 @@ func (c *Calculator) skillCurse(db *ModDB, s *activeSkill, b *skillBuff) *enemyC
 		inc += list.SumCfg(cfg, "INC", "AuraEffect")
 	}
 	more := list.MoreCfg(cfg, "CurseEffect")
+	moreMark := more
 	if !mark {
 		more *= enemy.More("CurseEffectOnSelf")
 	}
@@ -93,10 +100,19 @@ func (c *Calculator) skillCurse(db *ModDB, s *activeSkill, b *skillBuff) *enemyC
 	}
 	if b.typ == "Curse" {
 		cu.mods = scaleMods(b.mods, mult)
+		if e := db.partyExports; e != nil {
+			// CalcPerform.lua:2722-2724.
+			effect := (1 + inc/100) * moreMark
+			if mark {
+				effect = mult
+			}
+			e.curse[b.name] = &partyExport{isMark: mark, effectMult: effect, mods: b.mods}
+		}
 	} else {
 		// The curse grants a buff: scaled by curse effect, then buff effect.
 		buffMult := (1 + db.SumCfg(cfg, "INC", "BuffEffectOnSelf")/100) * db.MoreCfg(cfg, "BuffEffectOnSelf")
-		cu.buffMods = scaleMods(scaleMods(b.mods, mult), buffMult)
+		cu.curseBuffMods = scaleMods(b.mods, mult)
+		cu.buffMods = scaleMods(cu.curseBuffMods, buffMult)
 	}
 	return cu
 }
@@ -104,13 +120,16 @@ func (c *Calculator) skillCurse(db *ModDB, s *activeSkill, b *skillBuff) *enemyC
 // applyCurses ports "Assign curses to slots" of calcs.perform for the
 // player's, the minions' (minionCurses) and the party's curses
 // (allyCurses) and puts the slotted curses on the enemy.
-func (c *Calculator) applyCurses(db *ModDB, skills []*activeSkill, curses []*enemyCurse, res *Result) {
+func (c *Calculator) applyCurses(db *ModDB, skills []*activeSkill, curses []*enemyCurse, res *Result) []*enemyCurse {
 	limit := int(db.Sum("BASE", "EnemyCurseLimit"))
 	if db.Flag("CurseLimitIsMaximumPowerCharges") {
 		limit = int(db.Sum("BASE", "PowerChargesMax"))
 		res.Incomplete = append(res.Incomplete, "curse limit from maximum power charges uses the base maximum")
 	}
 	db.output["EnemyCurseLimit"] = float64(limit) // CalcPerform.lua:3250
+	if e := db.partyExports; e != nil {
+		e.curseLimit = float64(limit) // CalcPerform.lua:3252
+	}
 	allyCurses, allyLimit := db.party.partyCurses(db.enemy)
 	var own, minion []*enemyCurse
 	for _, cu := range curses {
@@ -150,6 +169,7 @@ func (c *Calculator) applyCurses(db *ModDB, skills []*activeSkill, curses []*ene
 			db.Add(m)
 		}
 	}
+	return slots
 }
 
 // slotCurses is one source of the first slot loop of "Assign curses to

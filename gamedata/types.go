@@ -323,6 +323,17 @@ type ConfigOption struct {
 	DefaultPlaceholderState any    `json:"defaultPlaceholderState,omitempty"`
 	// DefaultValue is list[defaultIndex].val for a list with a defaultIndex.
 	DefaultValue any `json:"defaultValue,omitempty"`
+	// MapAffix: the option's apply is mapAffixDropDownFunction
+	// (ConfigOptions.lua:116-131), which runs the chosen map affix's apply.
+	MapAffix bool `json:"mapAffix,omitempty"`
+}
+
+// MapAffix is one entry of Data/ModMap.lua's AffixData: its type (check,
+// list or count), its values by tier and the Lua source of its apply.
+type MapAffix struct {
+	Type   string `json:"type,omitempty"`
+	Values any    `json:"values,omitempty"`
+	Apply  string `json:"apply,omitempty"`
 }
 
 // Skills is the skill data of Modules/Data.lua: every granted effect

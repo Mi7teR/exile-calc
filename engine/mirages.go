@@ -49,13 +49,26 @@ func cloneSkill(s *activeSkill) *activeSkill {
 // actor's output, mods, conditions, multipliers and unsupported tag counts
 // are restored afterwards.
 func (c *Calculator) offenceOnCopy(db *ModDB, s *activeSkill, w1 hitSource, w2 *hitSource) map[string]float64 {
+	out, _ := c.offenceOnClone(db, s, w1, w2)
+	return out
+}
+
+// offenceOnClone is offenceOnCopy that also returns the copy of s as the
+// offence run left it (GlobalCache.cachedData[uuid].ActiveSkill).
+func (c *Calculator) offenceOnClone(
+	db *ModDB,
+	s *activeSkill,
+	w1 hitSource,
+	w2 *hitSource,
+) (map[string]float64, *activeSkill) {
 	output := maps.Clone(db.output)
 	mods := make(map[string][]Mod, len(db.mods))
 	for k, l := range db.mods {
 		mods[k] = append([]Mod(nil), l...)
 	}
 	conds, mults, tags := maps.Clone(db.conditions), maps.Clone(db.multipliers), maps.Clone(db.UnsupportedTags)
-	out := c.offence(db, cloneSkill(s), w1, w2)
+	cp := cloneSkill(s)
+	out := c.offence(db, cp, w1, w2)
 	restore := func(dst, src map[string]float64) {
 		clear(dst)
 		maps.Copy(dst, src)
@@ -68,7 +81,7 @@ func (c *Calculator) offenceOnCopy(db *ModDB, s *activeSkill, w1 hitSource, w2 *
 	maps.Copy(db.conditions, conds)
 	clear(db.UnsupportedTags)
 	maps.Copy(db.UnsupportedTags, tags)
-	return out
+	return out, cp
 }
 
 // setSkillCond sets a skill condition on all of a skill's cfgs.
@@ -237,7 +250,7 @@ func (c *Calculator) copyActiveSkill(db *ModDB, s *activeSkill, res *Result) *ac
 		return cloneSkill(s)
 	}
 	eff := *s.active
-	m := c.createActiveSkill(&eff, s.supportList, s.group, s.weapons, s.summon)
+	m := c.createActiveSkill(&eff, s.supportList, s.group, s.weapons, s.all1H, s.summon)
 	m.cfg, m.gem, m.main = &Cfg{SlotName: s.cfg.SlotName}, s.gem, s.main
 	c.buildSkillMods(db, m, res)
 	if m.mods != nil {

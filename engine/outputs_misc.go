@@ -196,7 +196,12 @@ func stun(db *ModDB, category string) {
 	if db.Flag("StunImmune") {
 		notAvoid = 0
 	}
-	if out["EnergyShield"] > out["totalTakenHit"] && !db.Flag("EnergyShieldProtectsMana") {
+	// env.modDB: the player's flag, also for a minion.
+	player := db
+	for player.owner != nil {
+		player = player.owner
+	}
+	if out["EnergyShield"] > out["totalTakenHit"] && !player.Flag("EnergyShieldProtectsMana") {
 		notAvoid *= 0.5
 	}
 	out["StunAvoidChance"] = 100 - notAvoid
