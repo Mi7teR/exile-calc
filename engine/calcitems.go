@@ -14,8 +14,9 @@ import (
 // equipmentBonusScale returns the scale of an equipped item's mods
 // (CalcSetup.lua): quivers with Widowhail or EffectOfBonusesFromQuiver on
 // passives, gloves and boots with EffectOfBonusesFromGloves/Boots (passives
-// and custom mods); 1 otherwise. PoB merges same mods before scaling; for
-// integer values the rounding is the same.
+// and custom mods); 1 otherwise. For these addItem merges the item's same
+// mods before scaling them, as PoB does (combinedList:MergeMod), so two
+// "Adds 13 to 27" and "Adds 23 to 39" lines round once.
 func (c *Calculator) equipmentBonusScale(db *ModDB, b *pobcode.Build, set *pobcode.ItemSet, res *Result) func(*pobcode.Item) float64 {
 	gloves := (1 + db.Sum("INC", "EffectOfBonusesFromGloves")/100) * db.More("EffectOfBonusesFromGloves")
 	boots := (1 + db.Sum("INC", "EffectOfBonusesFromBoots")/100) * db.More("EffectOfBonusesFromBoots")
@@ -390,7 +391,7 @@ func itemSource(item *pobcode.Item, it *itemtext.Item) string {
 
 // addItem adds an item's global mods, scaled (abyss jewels), and returns
 // the parsed item and all its mods.
-func (c *Calculator) addItem(db *ModDB, res *Result, item *pobcode.Item, scale float64, slot string) (*itemtext.Item, []modparser.Mod) {
+func (c *Calculator) addItem(db *ModDB, res *Result, item *pobcode.Item, scale float64, slot string, merge bool) (*itemtext.Item, []modparser.Mod) {
 	if item == nil {
 		return nil, nil
 	}
@@ -405,6 +406,7 @@ func (c *Calculator) addItem(db *ModDB, res *Result, item *pobcode.Item, scale f
 	}
 	isArmour := it.Base != nil && it.Base.Armour != nil
 	isWeapon := it.Base != nil && it.Base.Weapon != nil
+	var list []Mod
 	for _, m := range mods {
 		if isArmour && isLocalArmourMod(m, it.Base.Armour.BlockChance != 0) {
 			continue // local to the item: part of its own defence values
@@ -416,8 +418,15 @@ func (c *Calculator) addItem(db *ModDB, res *Result, item *pobcode.Item, scale f
 			if isWeapon {
 				sm = weaponHandLocal(sm, m, slotNumber(it, slot))
 			}
-			db.Add(scaleMod(sm, scale))
+			if merge {
+				list = mergeMod(list, sm)
+			} else {
+				list = append(list, sm)
+			}
 		}
+	}
+	for _, m := range list {
+		db.Add(scaleMod(m, scale))
 	}
 	// Item.lua: each Grand Spectrum counts for itself and for minions.
 	if it.Base != nil && it.Base.Type == "Jewel" && strings.Contains(it.Name, "Grand Spectrum") {
@@ -562,4 +571,19 @@ func (c *Calculator) peekItem(item *pobcode.Item) *itemtext.Item {
 		return nil
 	}
 	return it
+}
+
+// mergeMod is ModListClass:MergeMod: a BASE, INC or MORE mod with the same
+// parameters as one in list adds its value to it; any other mod is
+// appended.
+func mergeMod(list []Mod, m Mod) []Mod {
+	if v, ok := m.Value.(float64); ok && (m.Type == "BASE" || m.Type == "INC" || m.Type == "MORE") {
+		for i := range list {
+			if w, isNum := list[i].Value.(float64); isNum && sameParams(list[i], m) {
+				list[i].Value = w + v
+				return list
+			}
+		}
+	}
+	return append(list, m)
 }

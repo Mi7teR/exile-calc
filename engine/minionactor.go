@@ -30,6 +30,7 @@ func minionBaseMods(mdb *ModDB) {
 	mdb.NewMod("BlockChanceMax", "BASE", 75, "Base")
 	mdb.NewMod("SpellBlockChanceMax", "BASE", 75, "Base")
 	mdb.NewMod("ImpaleStacksMax", "BASE", 5, "Base")
+	mdb.NewMod("SoulEaterMax", "BASE", 45, "Base") // soul_eater_maximum_stacks
 	mdb.conditions["Buffed"], mdb.conditions["Combat"], mdb.conditions["Effective"] = true, true, true
 	chargeBaseMods(mdb)
 	initConditionMods(mdb)
@@ -119,7 +120,7 @@ func (c *Calculator) minionPlayerGear(db, mdb *ModDB, s *activeSkill, typ string
 		return
 	}
 	add := func(slot string, scale float64) {
-		c.addItem(mdb, res, b.Item(b.ActiveItems().SlotItem(slot)), scale, slot)
+		c.addItem(mdb, res, b.Item(b.ActiveItems().SlotItem(slot)), scale, slot, false)
 	}
 	baseType := func(slot string) string {
 		if it := db.items[slot]; it != nil && it.Base != nil {
@@ -186,7 +187,7 @@ func (c *Calculator) minionItems(db, mdb *ModDB, s *activeSkill, res *Result) ma
 		case b.ActiveItems() != nil:
 			id = b.ActiveItems().SlotItem(slot)
 		}
-		if it, mods := c.addItem(mdb, res, b.Item(id), 1, slot); it != nil {
+		if it, mods := c.addItem(mdb, res, b.Item(id), 1, slot, false); it != nil {
 			mdb.items[slot] = it
 			gear[slot] = mods
 		}

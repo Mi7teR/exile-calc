@@ -384,7 +384,8 @@ func stepItems(c *Calculator, st *calcState) error {
 				}
 				ringItems[slot.Name] = b.Item(slot.ItemID)
 			}
-			it, mods := c.addItem(db, res, b.Item(slot.ItemID), bonusScale(b.Item(slot.ItemID)), slot.Name)
+			scale := bonusScale(b.Item(slot.ItemID))
+			it, mods := c.addItem(db, res, b.Item(slot.ItemID), scale, slot.Name, scale != 1)
 			if it != nil {
 				gearMods[slot.Name] = mods
 				gear = append(gear, equipped{slot.Name, it})
@@ -435,7 +436,7 @@ func stepItems(c *Calculator, st *calcState) error {
 			if parent == nil || abyssalSockets(parent) < a.num {
 				continue
 			}
-			if it, _ := c.addItem(db, res, a.item, 1+jewelEffect[a.parent]/100, ""); it != nil {
+			if it, _ := c.addItem(db, res, a.item, 1+jewelEffect[a.parent]/100, "", false); it != nil {
 				db.items[a.slot] = it
 				abyssCounts(db, it, a.parent)
 			}
@@ -459,12 +460,18 @@ func stepJewelSockets(c *Calculator, st *calcState) error {
 	for _, s := range spec.Sockets {
 		if s.ItemID != 0 && allocated[s.NodeID] {
 			scale := 1.0
+			// CalcSetup.lua merges the item's mods before scaling them
+			// only in the corrupted-jewel-effect branch.
+			merge := false
 			if it := c.peekItem(b.Item(s.ItemID)); it != nil && it.Corrupted && it.Base != nil &&
 				it.Base.Type == "Jewel" && it.Base.SubType != "Charm" {
-				scale += corruptedEffect[it.Rarity]
+				if v, ok := corruptedEffect[it.Rarity]; ok {
+					scale += v
+					merge = true
+				}
 			}
 			scale += c.classStartJewelEffect(b.Item(s.ItemID), s.NodeID, allocated, spec.ClassID, st.clusterLinks, res)
-			if it, _ := c.addItem(db, res, b.Item(s.ItemID), scale, ""); it != nil {
+			if it, _ := c.addItem(db, res, b.Item(s.ItemID), scale, "", merge); it != nil {
 				db.items["Jewel "+strconv.Itoa(s.NodeID)] = it
 				abyssCounts(db, it, "")
 			}
@@ -726,7 +733,7 @@ func stepCurses(c *Calculator, st *calcState) error {
 func stepExtraAuras(c *Calculator, st *calcState) error {
 	db := st.db
 	impaleStacks(db)
-	extraAuras(db)
+	extraAuras(db, mainSkill(st.skills))
 	db.party.partyExtraAuras(db)
 	c.mergeKeystones(db, st.keystones, st.res)
 	return nil

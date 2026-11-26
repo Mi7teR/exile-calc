@@ -142,6 +142,12 @@ func (c *Calculator) hitAndSpeed(actor *ModDB, s *activeSkill, p *hitPass) {
 	if s.flags["totem"] {
 		out["TotemActionSpeed"] = 1 + actor.Sum("INC", "TotemActionSpeed")/100
 		out["Speed"] *= out["TotemActionSpeed"]
+		// Totems that fire once (Siege Ballista of Trarthus) hit once per
+		// placement and attack.
+		if truthy(data.val("totemFireOnce")) {
+			out["HitTime"] = 1/out["Speed"] + p.global["TotemPlacementTime"]
+			out["HitSpeed"] = 1 / out["HitTime"]
+		}
 	}
 	if p.hasCooldown {
 		out["Cooldown"] = p.cooldown

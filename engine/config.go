@@ -39,10 +39,21 @@ func (c *configApplies) get(opts []gamedata.ConfigOption) map[string]*luadata.Fu
 	return c.funcs
 }
 
+// bossResistPlaceholders are the options whose placeholder enemyIsBoss's
+// apply sets (ConfigOptions.lua SetPlaceholder) and whose apply adds enemy
+// mods.
+var bossResistPlaceholders = map[string]bool{
+	"enemyLightningResist": true, "enemyColdResist": true, "enemyFireResist": true, "enemyChaosResist": true,
+}
+
 // configValue is the value ConfigTab:BuildModList passes to apply, and
 // whether apply runs: the saved input, else the option's default state;
 // count-like options fall back to the placeholder and skip 0.
-func configValue(o gamedata.ConfigOption, set *pobcode.ConfigSet) (luadata.Value, bool) {
+//
+// enemyIsBoss's apply runs before the enemy resistance options and sets
+// their placeholders (Boss 40/25, Pinnacle and Uber 50/30, None clears
+// them), replacing the saved ones; e, when not nil, holds those values.
+func configValue(o gamedata.ConfigOption, set *pobcode.ConfigSet, e *enemyEnv) (luadata.Value, bool) {
 	var input, placeholder any
 	input = o.DefaultState
 	if o.DefaultValue != nil {
@@ -57,6 +68,12 @@ func configValue(o gamedata.ConfigOption, set *pobcode.ConfigSet) (luadata.Value
 			if p.Name == o.Var {
 				placeholder = inputValue(p)
 			}
+		}
+	}
+	if e != nil && bossResistPlaceholders[o.Var] {
+		placeholder = nil
+		if v, ok := e.holders[o.Var]; ok {
+			placeholder = v
 		}
 	}
 	switch o.Type {
@@ -115,7 +132,7 @@ func (c *Calculator) applyConfig(db *ModDB, res *Result, set *pobcode.ConfigSet)
 		if o.Apply == "" {
 			continue
 		}
-		val, ok := configValue(o, set)
+		val, ok := configValue(o, set, db.enemyEnv)
 		if !ok {
 			continue
 		}

@@ -258,6 +258,18 @@ func actorMisc(db *ModDB, main *activeSkill, silverFlask bool, silverFlaskInc fl
 	if db.Flag("HasShapersPresence") {
 		db.NewMod("BuffExpireFaster", "MORE", -20, "Shapers Presence")
 	}
+	// CalcPerform.lua doActorMisc: Soul Eater, 5% attack and cast speed per
+	// stack up to SoulEaterMax.
+	if db.Flag("Condition:CanHaveSoulEater") {
+		limit, ok := db.Override("SoulEaterMax")
+		if !ok {
+			limit = db.Sum("BASE", "SoulEaterMax")
+		}
+		for _, f := range []uint64{mfAttack, mfCast} {
+			db.Add(Mod{Name: "Speed", Type: "INC", Value: 5.0, Source: "Base", Flags: f,
+				Tags: []map[string]any{{"type": "Multiplier", "var": "SoulEaterStack", "limit": limit}}})
+		}
+	}
 }
 
 // selfAilment is the effect of Chill, Shock or Scorch on the actor;
@@ -376,6 +388,7 @@ func playerBaseMods(db *ModDB) {
 	db.NewMod("EnemyCurseLimit", "BASE", 1, "Base")
 	db.NewMod("SocketedCursesHexLimitValue", "BASE", 1, "Base")
 	db.NewMod("ImpaleStacksMax", "BASE", 5, "Base") // impaled_debuff_number_of_reflected_hits
+	db.NewMod("SoulEaterMax", "BASE", 45, "Base")   // soul_eater_maximum_stacks
 	// Offence base mods of calcs.initEnv (characterConstants).
 	when := func(v string, neg bool) map[string]any {
 		t := map[string]any{"type": "Condition", "var": v}

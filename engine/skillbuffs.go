@@ -549,18 +549,36 @@ func (c *Calculator) extraCurses(db *ModDB, curses []*enemyCurse, res *Result) [
 
 // extraAuras ports the ExtraAura loop of calcs.perform: aura mods granted
 // by other mods ("you and nearby allies have ...") apply to the player
-// scaled by buff and aura effect on self.
-func extraAuras(db *ModDB) {
+// scaled by buff and aura effect on self, and, while the main skill is a
+// totem, to its totems: an unscaled copy named Condition:Totem<X> for a
+// condition, Totem<name> otherwise (Speed, CritMultiplier and CritChance
+// excepted), e.g. Condition:TotemTailwind.
+func extraAuras(db *ModDB, main *activeSkill) {
 	scale := (1 + db.Sum("INC", "BuffEffectOnSelf", "AuraEffectOnSelf")/100) * db.More("BuffEffectOnSelf", "AuraEffectOnSelf")
+	totem := main != nil && main.flags["totem"]
 	for _, e := range db.List(nil, "ExtraAura") {
 		v, _ := e.Value.(map[string]any)
 		mm, ok := v["mod"].(map[string]any)
-		if !ok || truthy(v["onlyAllies"]) || (truthy(v["fromAllies"]) && db.Flag("AlliesAurasCannotAffectSelf")) {
+		if !ok {
 			continue
 		}
-		db.Add(scaleMod(modFromMap(mm, e.Mod.Source), scale))
-		if !truthy(v["notBuff"]) {
-			db.multipliers["BuffOnSelf"]++
+		if !truthy(v["onlyAllies"]) && !(truthy(v["fromAllies"]) && db.Flag("AlliesAurasCannotAffectSelf")) {
+			db.Add(scaleMod(modFromMap(mm, e.Mod.Source), scale))
+			if !truthy(v["notBuff"]) {
+				db.multipliers["BuffOnSelf"]++
+			}
+		}
+		if (truthy(v["fromAllies"]) || !db.Flag("SelfAurasCannotAffectAllies")) && totem {
+			m := modFromMap(mm, e.Mod.Source)
+			if m.Name == "Speed" || m.Name == "CritMultiplier" || m.Name == "CritChance" {
+				continue
+			}
+			if strings.Contains(m.Name, "Condition:") {
+				m.Name = strings.ReplaceAll(m.Name, "Condition:", "Condition:Totem")
+			} else {
+				m.Name = "Totem" + m.Name
+			}
+			db.Add(m)
 		}
 	}
 }

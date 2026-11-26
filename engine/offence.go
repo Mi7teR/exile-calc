@@ -163,6 +163,13 @@ func (c *Calculator) offence(actor *ModDB, s *activeSkill, w1 hitSource, w2 *hit
 		list.Add(Mod{Name: "ChaosMax", Type: "BASE", Value: add, Source: "Sacrifice Support"})
 	}
 	if s.flags["totem"] {
+		// CalcOffence.lua: totem (or ballista) placement speed.
+		base := list.SumCfg(s.cfg, "BASE", "TotemPlacementTime")
+		if s.flags["ballista"] {
+			base = list.SumCfg(s.cfg, "BASE", "BallistaPlacementTime")
+		}
+		out["TotemPlacementSpeed"] = 1 / base * calcMod(list, s.cfg, "TotemPlacementSpeed") * actor.output["ActionSpeedMod"]
+		out["TotemPlacementTime"] = 1 / out["TotemPlacementSpeed"]
 		out["TotemLife"] = c.totemLife(s)
 	}
 	preDamageFunc(actor, s, out)
@@ -287,6 +294,7 @@ func (c *Calculator) offence(actor *ModDB, s *activeSkill, w1 hitSource, w2 *hit
 		}
 		p.mainHandCrit = w1.critChance
 		p.shared = shared
+		p.global = out // globalOutput: TotemPlacementTime for fire-once totems
 		c.hitAndSpeed(actor, s, p)
 	}
 	combine("AccuracyHitChance", "AVERAGE")
