@@ -210,3 +210,24 @@ func TestPerSecondCostLuaTruthiness(t *testing.T) {
 		t.Errorf("ESPerSecondCost = %v, want 20 (10 mana as ES, 2 uses per second)", out["ESPerSecondCost"])
 	}
 }
+
+// TestFistOfWarZeroSpeed: CalcOffence.lua:3029 has no speed check, so at
+// 0 attacks per second the uptime is min(inf, 1) = 100% and the damage
+// effect is 1 + the multiplier.
+func TestFistOfWarZeroSpeed(t *testing.T) {
+	actor := NewModDB()
+	buffMode(actor, "EFFECTIVE")
+	s := &activeSkill{mods: actor.child(), data: &skillData{}, flags: map[string]bool{},
+		cfg: &Cfg{}, types: map[int]bool{stSlam: true}}
+	s.mods.NewMod("FistOfWarCooldown", "BASE", 4, "test")
+	s.mods.NewMod("FistOfWarDamageMultiplier", "BASE", 50, "test")
+	global := map[string]float64{"Speed": 0}
+	global["TheoreticalOffensiveWarcryEffect"], global["TheoreticalMaxOffensiveWarcryEffect"] = 1, 1
+	p := &hitPass{cfg: s.cfg, out: map[string]float64{}}
+	ruthlessAndFistOfWar(s, p, global)
+	if global["FistOfWarUptimeRatio"] != 100 || p.out["FistOfWarDamageEffect"] != 1.5 ||
+		global["TheoreticalOffensiveWarcryEffect"] != 1.5 {
+		t.Errorf("uptime %v, effect %v, theoretical %v; want 100, 1.5, 1.5", global["FistOfWarUptimeRatio"],
+			p.out["FistOfWarDamageEffect"], global["TheoreticalOffensiveWarcryEffect"])
+	}
+}

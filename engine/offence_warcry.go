@@ -237,7 +237,7 @@ func ruthlessAndFistOfWar(s *activeSkill, p *hitPass, global map[string]float64)
 	out["RuthlessBlowHitMultiplier"], out["RuthlessBlowAilmentMultiplier"] = hitMult, ailmentMult // CalcOffence.lua:3022-3023
 	cd := list.SumCfg(cfg, "BASE", "FistOfWarCooldown")
 	global["FistOfWarCooldown"] = cd // CalcOffence.lua:3027
-	if cd != 0 && s.types[stSlam] && !s.types[stVaal] && !s.types[stOtherThingUsesSkill] && global["Speed"] != 0 {
+	if cd != 0 && s.types[stSlam] && !s.types[stVaal] && !s.types[stOtherThingUsesSkill] {
 		mult := list.Sum("BASE", "FistOfWarDamageMultiplier") / 100
 		up := math.Min((1/global["Speed"])/cd, 1) * 100
 		// CalcOffence.lua:3030-3048.

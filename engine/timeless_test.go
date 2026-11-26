@@ -205,17 +205,67 @@ func TestTimelessCachePrune(t *testing.T) {
 	}
 }
 
-// TestTimelessCacheEnv: "off" turns the cache off, a path is used as is,
-// unset is the user cache directory.
+// TestTimelessCachePruneForeignFiles: in a shared directory the pruning
+// leaves alone every file it did not write, however old or large, even
+// when it looks like a table or a temporary file.
+func TestTimelessCachePruneForeignFiles(t *testing.T) {
+	dir := t.TempDir()
+	old := time.Now().Add(-3 * time.Hour)
+	write := func(name string, size int64) string {
+		p := filepath.Join(dir, name)
+		if err := os.WriteFile(p, nil, 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Truncate(p, size); err != nil { // sparse where the file system allows
+			t.Fatal(err)
+		}
+		if err := os.Chtimes(p, old, old); err != nil {
+			t.Fatal(err)
+		}
+		return p
+	}
+	foreign := []string{
+		write("other.tmp", 10),
+		write("download.bin.tmp", 10),
+		write("LethalPride-0000000000000001.bin.tmpx", 10),
+		write("data.bin", timelessCacheMaxBytes+1),
+		write("LethalPride-backup.bin", 10),
+		write("SomeTable-0000000000000001.bin", 10),
+		write("LethalPride-00000000000000zz.bin", 10),
+	}
+	stale := write("LethalPride-0000000000000002.bin.tmp77", 10)
+	cur := filepath.Join(dir, "LethalPride-0000000000000003.bin")
+	if err := os.WriteFile(cur, make([]byte, 10), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	pruneTimelessCache(cur, time.Now())
+	for _, p := range foreign {
+		if _, err := os.Stat(p); err != nil {
+			t.Errorf("foreign %s removed", filepath.Base(p))
+		}
+	}
+	if _, err := os.Stat(stale); err == nil {
+		t.Error("our stale temporary file kept")
+	}
+}
+
+// TestTimelessCacheEnv: "off" turns the cache off, a path gets the
+// poe-lib/timeless-decoded subdirectory unless it ends in it, unset is
+// the user cache directory.
 func TestTimelessCacheEnv(t *testing.T) {
 	t.Setenv(TimelessCacheEnv, "off")
 	if d := timelessCacheDir(); d != "" {
 		t.Errorf("off: cache dir %q", d)
 	}
 	dir := t.TempDir()
+	sub := filepath.Join(dir, "poe-lib", "timeless-decoded")
 	t.Setenv(TimelessCacheEnv, dir)
-	if d := timelessCacheDir(); d != dir {
-		t.Errorf("dir: cache dir %q, want %q", d, dir)
+	if d := timelessCacheDir(); d != sub {
+		t.Errorf("dir: cache dir %q, want %q", d, sub)
+	}
+	t.Setenv(TimelessCacheEnv, sub+string(filepath.Separator))
+	if d := timelessCacheDir(); d != sub {
+		t.Errorf("dir ending in the subdirectory: cache dir %q, want %q", d, sub)
 	}
 	t.Setenv(TimelessCacheEnv, "")
 	if d := timelessCacheDir(); !strings.HasSuffix(d, filepath.Join("poe-lib", "timeless-decoded")) {

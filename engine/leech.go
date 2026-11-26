@@ -41,8 +41,11 @@ func leechCaps(db *ModDB) {
 	out["MaxManaLeechRate"] = out["Mana"] * calcVal(db, "MaxManaLeechRate") / 100
 }
 
-// actorPartyMembers is actor.partyMembers: env.partyMembers, which a
-// minion reaches through its owner.
+// actorPartyMembers is actor.partyMembers. Deviation: PoB sets it only on
+// the player (CalcPerform.lua:1313, env.player.partyMembers), so a minion
+// with MaximumLifeLeechIsEqualToPartyMember would index nil and error in
+// CalcDefence.lua:1249; here a minion reaches env.partyMembers through
+// its owner.
 func actorPartyMembers(db *ModDB) *ModDB {
 	for d := db; d != nil; d = d.owner {
 		if d.partyMembers != nil {

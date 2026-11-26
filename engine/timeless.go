@@ -27,7 +27,8 @@ import (
 const TimelessDirEnv = "POE_LIB_TIMELESS_DIR"
 
 // TimelessCacheEnv overrides where decoded timeless tables are cached:
-// "off" turns the cache off, any other value is the cache directory.
+// "off" turns the cache off, any other value is a base directory that gets
+// a poe-lib/timeless-decoded subdirectory (unless it already ends in one).
 // Unset, the cache is <user cache dir>/poe-lib/timeless-decoded.
 const TimelessCacheEnv = "POE_LIB_TIMELESS_CACHE"
 
@@ -238,27 +239,75 @@ func readTimelessCache(path string) ([]byte, bool) {
 
 // timelessCacheDir is the cache directory by TimelessCacheEnv; "" when off.
 func timelessCacheDir() string {
+	sub := filepath.Join("poe-lib", "timeless-decoded")
 	switch v := os.Getenv(TimelessCacheEnv); v {
 	case "off":
 		return ""
 	case "":
 		if cache, err := os.UserCacheDir(); err == nil {
-			return filepath.Join(cache, "poe-lib", "timeless-decoded")
+			return filepath.Join(cache, sub)
 		}
 		return ""
 	default:
-		return v
+		// Pruning only touches our own files, but a dedicated directory
+		// keeps them apart from whatever else a shared directory holds.
+		if v = filepath.Clean(v); strings.HasSuffix(v, string(filepath.Separator)+sub) || v == sub {
+			return v
+		}
+		return filepath.Join(v, sub)
 	}
 }
 
+// timelessCacheName splits a cache directory entry written by
+// writeTimelessCache into its table name and whether it is a temporary
+// file: <table>-<16 hex>.bin, or the <table>-<16 hex>.bin.tmp<digits> it
+// was renamed from. The last result is false for any other file, which
+// the pruning leaves alone.
+func timelessCacheName(n string) (string, bool, bool) {
+	stem, rest, found := strings.Cut(n, ".bin")
+	if !found {
+		return "", false, false
+	}
+	tmp := rest != ""
+	if tmp {
+		digits, isTmp := strings.CutPrefix(rest, ".tmp")
+		if !isTmp || digits == "" || strings.Trim(digits, "0123456789") != "" {
+			return "", false, false
+		}
+	}
+	table, hash, found := strings.Cut(stem, "-")
+	if !found || len(hash) != 16 || strings.Trim(hash, "0123456789abcdef") != "" || !timelessCacheTable(table) {
+		return "", false, false
+	}
+	return table, tmp, true
+}
+
+// timelessCacheTable reports whether name is one of the tables this
+// package decodes (timelessFiles, abyssFiles and Glorious Vanity).
+func timelessCacheTable(name string) bool {
+	if name == "GloriousVanity" {
+		return true
+	}
+	for _, m := range []map[int]string{timelessFiles, abyssFiles} {
+		for _, v := range m {
+			if v == name {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 // pruneTimelessCache runs after path was written: it removes the other
-// versions of the same table (<name>-*.bin), temporary files older than
-// timelessTmpMaxAge, and then the oldest tables until the directory fits
-// timelessCacheMaxBytes. Errors are ignored; the cache is best effort.
+// versions of the same table, temporary files older than
+// timelessTmpMaxAge, and then the oldest tables until our files fit
+// timelessCacheMaxBytes. Only files named as writeTimelessCache names them
+// (timelessCacheName) are touched. Errors are ignored; the cache is best
+// effort.
 func pruneTimelessCache(path string, now time.Time) {
 	dir := filepath.Dir(path)
 	base := filepath.Base(path)
-	name, _, _ := strings.Cut(base, "-")
+	name, _, _ := timelessCacheName(base)
 	ents, err := os.ReadDir(dir)
 	if err != nil {
 		return
@@ -276,15 +325,16 @@ func pruneTimelessCache(path string, now time.Time) {
 			continue
 		}
 		n, p := e.Name(), filepath.Join(dir, e.Name())
+		table, tmp, ours := timelessCacheName(n)
 		switch {
-		case strings.Contains(n, ".tmp"):
+		case !ours:
+			continue
+		case tmp:
 			if now.Sub(info.ModTime()) > timelessTmpMaxAge {
 				_ = os.Remove(p)
 			}
 			continue
-		case !strings.HasSuffix(n, ".bin"):
-			continue
-		case n != base && strings.HasPrefix(n, name+"-"):
+		case n != base && table == name:
 			_ = os.Remove(p)
 			continue
 		}

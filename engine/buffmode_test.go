@@ -62,18 +62,21 @@ func TestCalcsBuffModeExports(t *testing.T) {
 
 // A CALCS pass in a non-EFFECTIVE buff mode (the party export's) clears
 // mode_effective on the player and the enemy, so the mode_effective guards
-// hold: no curse lands on the enemy (CalcPerform.lua:2696) while the
-// buffs and combat modes stay on.
+// hold while the buffs and combat modes stay on:
+//   - curses: none lands on the enemy (CalcPerform.lua:2696)
+//   - offence: no impale chance (CalcOffence.lua:4312)
+//   - defence: no lucky block, EffectiveBlockChance is BlockChance
+//     (CalcDefence.lua:760-772)
 func TestCalcsPassModeEffectiveGuards(t *testing.T) {
 	c := newCalc(t)
-	run := func(mode string) *Result {
-		res, err := c.calc(corpusBuild(t, "OhQ2HoOzO2Z0"), calcOpts{buffMode: mode})
+	run := func(id, mode string) *Result {
+		res, err := c.calc(corpusBuild(t, id), calcOpts{buffMode: mode})
 		if err != nil {
 			t.Fatal(err)
 		}
 		return res
 	}
-	eff, combat := run("EFFECTIVE"), run("COMBAT")
+	eff, combat := run("OhQ2HoOzO2Z0", "EFFECTIVE"), run("OhQ2HoOzO2Z0", "COMBAT")
 	if !modeEffective(eff.DB) || !eff.DB.enemy.conditions["Cursed"] {
 		t.Fatalf("EFFECTIVE: effective %v, enemy cursed %v", modeEffective(eff.DB), eff.DB.enemy.conditions["Cursed"])
 	}
@@ -84,5 +87,20 @@ func TestCalcsPassModeEffectiveGuards(t *testing.T) {
 	}
 	if db.enemy.conditions["Cursed"] {
 		t.Error("COMBAT: curse applied without mode_effective")
+	}
+
+	// HBcW_8Hvft-z impales on every hit.
+	eff, combat = run("HBcW_8Hvft-z", "EFFECTIVE"), run("HBcW_8Hvft-z", "COMBAT")
+	if eff.Stats["ImpaleChance"] != 100 || combat.Stats["ImpaleChance"] != 0 {
+		t.Errorf("ImpaleChance: EFFECTIVE %v, COMBAT %v; want 100, 0",
+			eff.Stats["ImpaleChance"], combat.Stats["ImpaleChance"])
+	}
+
+	// 1U1EWET8OeON has lucky block: 76% blocks as 94.24%.
+	eff, combat = run("1U1EWET8OeON", "EFFECTIVE"), run("1U1EWET8OeON", "COMBAT")
+	block := combat.Stats["BlockChance"]
+	if eff.Stats["EffectiveBlockChance"] != 94.24 || block != 76 || combat.Stats["EffectiveBlockChance"] != block {
+		t.Errorf("EffectiveBlockChance: EFFECTIVE %v, COMBAT %v (BlockChance %v); want 94.24, 76, 76",
+			eff.Stats["EffectiveBlockChance"], combat.Stats["EffectiveBlockChance"], block)
 	}
 }

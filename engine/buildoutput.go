@@ -102,9 +102,9 @@ func (c *Calculator) costWarnings(base *Result, keep func(*activeSkill) bool, li
 				return err
 			}
 		}
-		if r.main != nil {
-			checkCosts(base, r, s.active.ge.Name, lists)
-		}
+		// Calcs.lua:424: buildActiveSkill always caches the skill's env,
+		// main skill or not, so every kept skill is checked.
+		checkCosts(base, r, s.active.ge.Name, lists)
 	}
 	return nil
 }
@@ -113,7 +113,6 @@ func (c *Calculator) costWarnings(base *Result, keep func(*activeSkill) bool, li
 // skill name, whose Calc as the main skill is r.
 func checkCosts(base, r *Result, name string, lists CostWarnings) {
 	out := base.Stats
-	// Calcs.lua:425: a Flag, nil (no key) when false.
 	// Calcs.lua:425: output.EnergyShieldProtectsMana = env.modDB:Flag(...),
 	// assigned for every calculated skill; FlagInternal returns true or
 	// nil, so the key exists only while the flag is set.
@@ -162,6 +161,10 @@ func cannotPay(out map[string]float64, r *Result, pool, costName string, protect
 	// Calcs.lua:431-434: a skill that also reserves this pool warns only
 	// when the pool before its reservation cannot pay either.
 	raw := strings.TrimSuffix(pool, "Unreserved")
+	// Calcs.lua:432: no main skill in the cached env is no reservation.
+	if r.main == nil {
+		return true
+	}
 	pct, reserves := num(r.main.data.val(raw + "ReservedPercent"))
 	return !reserves || total+math.Ceil(out[raw]*pct/100) < cost
 }
