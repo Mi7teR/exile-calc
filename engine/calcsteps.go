@@ -64,10 +64,11 @@ type calcStep struct {
 // calcSteps is Calc's pipeline. The order is PoB's CalcSetup.lua initEnv
 // order followed by CalcPerform.lua calcs.perform order: bandit (663),
 // pantheon (674), enemy Accuracy (689) and the config tab mods (692) come
-// before the tree nodes (786) and items (811). Where the port orders
-// differently, that is noted on the step ("Port ordering"; not an
-// exhaustive audit). MORE mods round per layer, so moving a step changes
-// numbers. TestCalcStepOrder pins the names.
+// before the tree and the items. Tree mods are added before the items so
+// the item step can read them, as PoB's item loop reads initialNodeModDB;
+// mergeTree then moves them behind the item mods, matching PoB's final
+// order (items 1426, tree 1463). MORE mods round per layer, so moving a
+// step changes numbers. TestCalcStepOrder pins the names.
 var calcSteps = []calcStep{
 	{"initEnv", stepInitEnv},
 	{"baseMods", stepBaseMods},

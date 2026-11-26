@@ -102,8 +102,10 @@ for _, stat := range []string{"Life", "FireResist", "ColdResist", "LightningResi
 `Delta` holds only the stats that changed, unrounded; `FullDPS` is there
 when the build has skills in Full DPS. `r.Unparsed` and `r.Incomplete` list
 the item's mod lines the engine did not understand and the parts it left
-out (`After` and `Delta` may then be incomplete). A two-hander in `"Weapon 1"` empties
-`"Weapon 2"` (`r.Replaced` says so). `Item` is safe to call from several
+out (`After` and `Delta` may then be incomplete). A two-hander in `"Weapon 1"`, or a bow
+unless `"Weapon 2"` holds a quiver, empties `"Weapon 2"` (`r.Replaced` says so).
+When the build uses Full DPS, each `Item` call runs one Calc per Full DPS
+skill, so it is slower for builds with many of them. `Item` is safe to call from several
 goroutines; the build must not be changed while the Comparer is in use.
 
 ### Combat DPS against a boss and a pack

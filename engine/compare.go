@@ -81,7 +81,8 @@ func (cp *Comparer) stats(res *Result, full *FullDPSResult) map[string]float64 {
 }
 
 // Item computes the build with itemText in slot and returns the stats
-// before and after. itemText is an item as the game copies it (Ctrl+C,
+// before and after. When the build uses Full DPS, it runs one Calc per
+// Full DPS skill. itemText is an item as the game copies it (Ctrl+C,
 // Ctrl+Alt+C) or as PoB exports it. slot is a PoB slot name: "Weapon 1",
 // "Weapon 2", "Helmet", "Body Armour", "Gloves", "Boots", "Amulet",
 // "Ring 1".."Ring 3", "Belt", "Flask 1".."Flask 5", "Graft 1", "Graft 2",
