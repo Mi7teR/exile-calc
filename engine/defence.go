@@ -202,7 +202,8 @@ func (c *Calculator) defence(db *ModDB, gearMods map[string][]modparser.Mod, key
 		}
 		if wardBase > 0 {
 			if esToWard {
-				ward += float64(wardBase * (1 + db.SumCfg(cfg, "INC", "Ward", "Defences", "EnergyShield")/100) * db.MoreCfg(cfg, "Ward", "Defences"))
+				inc := db.SumCfg(cfg, "INC", "Ward", "Defences", "EnergyShield")
+				ward += float64(wardBase * (1 + inc/100) * db.MoreCfg(cfg, "Ward", "Defences"))
 			} else {
 				ward += float64(wardBase * calcMod(db, cfg, "Ward", "Defences"))
 			}
@@ -228,7 +229,8 @@ func (c *Calculator) defence(db *ModDB, gearMods map[string][]modparser.Mod, key
 	}
 	if b := db.Sum("BASE", "Ward"); b > 0 {
 		if esToWard {
-			ward += float64(b * (1 + db.Sum("INC", "Ward", "Defences", "EnergyShield")/100) * db.More("Ward", "Defences"))
+			inc := db.Sum("INC", "Ward", "Defences", "EnergyShield")
+			ward += float64(b * (1 + inc/100) * db.More("Ward", "Defences"))
 		} else {
 			ward += float64(b * calcMod(db, nil, "Ward", "Defences"))
 		}
@@ -251,7 +253,8 @@ func (c *Calculator) defence(db *ModDB, gearMods map[string][]modparser.Mod, key
 		}
 	}
 	if conv := db.Sum("BASE", "ManaConvertToArmour"); conv > 0 {
-		arm += float64(2 * db.Sum("BASE", "Mana") * conv / 100 * calcMod(db, nil, "Mana", "Armour", "ArmourAndEvasion", "Defences"))
+		arm += float64(2 * db.Sum("BASE", "Mana") * conv / 100 *
+			calcMod(db, nil, "Mana", "Armour", "ArmourAndEvasion", "Defences"))
 	}
 	if conv := db.Sum("BASE", "ManaGainAsEnergyShield"); conv > 0 {
 		es += float64(db.Sum("BASE", "Mana") * conv / 100 * calcMod(db, nil, "Mana", "EnergyShield", "Defences"))
@@ -261,7 +264,8 @@ func (c *Calculator) defence(db *ModDB, gearMods map[string][]modparser.Mod, key
 		if ci {
 			arm++
 		} else {
-			arm += float64(db.Sum("BASE", "Life") * conv / 100 * calcMod(db, nil, "Life", "Armour", "ArmourAndEvasion", "Defences"))
+			arm += float64(db.Sum("BASE", "Life") * conv / 100 *
+				calcMod(db, nil, "Life", "Armour", "ArmourAndEvasion", "Defences"))
 		}
 	}
 	if conv := db.Sum("BASE", "LifeConvertToEnergyShield", "LifeGainAsEnergyShield"); conv > 0 {
