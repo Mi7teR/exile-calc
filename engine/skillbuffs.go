@@ -610,8 +610,8 @@ func scaleMods(l []Mod, scale float64) []Mod {
 // minion skill buffs (CalcPerform.lua:2811): the auras and ally buffs of a
 // skill's minion's own skills (the Elemental Relic's Anger, Hatred and
 // Wrath), their debuffs on the enemy, and their curses, returned as
-// minionCurses. The minion's ModDB is a bare one (bareMinionSkills): its
-// own aura and curse effect mods are not read.
+// minionCurses. The minion skills read the minion's own mods
+// (castingMinionSkills).
 func (c *Calculator) minionAurasOnPlayer(db *ModDB, s *activeSkill, add, debuff func([]Mod, string), res *Result) []*enemyCurse {
 	if s.summon != nil || db.enemyEnv == nil {
 		return nil
@@ -621,7 +621,7 @@ func (c *Calculator) minionAurasOnPlayer(db *ModDB, s *activeSkill, add, debuff 
 		return nil
 	}
 	var curses []*enemyCurse
-	casting, mskills := c.bareMinionSkills(db, s, m, res)
+	casting, mskills := c.castingMinionSkills(db, s, m, res)
 	for _, ms := range mskills {
 		if ms.disabled {
 			continue

@@ -54,9 +54,9 @@ func calcResistForType(enemy *ModDB, cfg *Cfg, t string, configMax float64) floa
 }
 
 // enemyResist is calcs.offence's calcResistForType: the enemy's resist of
-// type t, or the player's own with "resist equal to yours". PoB reads
-// env.modDB and env.player.output (CalcOffence.lua:498), so a minion's
-// hits use the player's flag and resistance too.
+// type t, or the player's (or a party member's) own with "resist equal to
+// yours". PoB reads env.modDB and env.player.output (CalcOffence.lua:498),
+// so a minion's hits use the player's flag and resistance too.
 func enemyResist(actor *ModDB, cfg *Cfg, t string) float64 {
 	enemy := actor.enemy
 	cm := 0.0
@@ -67,8 +67,15 @@ func enemyResist(actor *ModDB, cfg *Cfg, t string) float64 {
 	for player.owner != nil {
 		player = player.owner.root()
 	}
-	if _, ok := enemy.OverrideCfg(cfg, t+"Resist"); !ok && player.Flag("Enemy"+t+"ResistEqualToYours") {
-		return math.Max(math.Min(player.output[t+"Resist"], enemyMaxResistFor(cm)), resistFloor)
+	if _, ok := enemy.OverrideCfg(cfg, t+"Resist"); !ok {
+		if player.Flag("Enemy" + t + "ResistEqualToYours") {
+			return math.Max(math.Min(player.output[t+"Resist"], enemyMaxResistFor(cm)), resistFloor)
+		}
+		// CalcOffence.lua:500: a party member's "resistance equal to yours"
+		// (Party tab), with that member's resistance.
+		if pm := player.partyMembers; pm != nil && pm.Flag("Enemy"+t+"ResistEqualToYours") {
+			return math.Max(math.Min(pm.output[t+"Resist"], enemyMaxResistFor(cm)), resistFloor)
+		}
 	}
 	return calcResistForType(enemy, cfg, t, cm)
 }

@@ -688,8 +688,8 @@ func minionSkillIndex(s *activeSkill, n int) int {
 
 // minionSkillBuffs is the env.minion side of calcs.perform's loop over the
 // minions' skills: their enabled Buff and Aura buffs that reach the main
-// minion. Other minions' skills are built on a bare minion ModDB, as PoB
-// never initialises those. The player side (allies' auras) is not ported.
+// minion. Other minions' skills read their own minion's mods
+// (castingMinionSkills).
 func (c *Calculator) minionSkillBuffs(db, mdb *ModDB, skills []*activeSkill, main *activeSkill, mainSkills []*activeSkill, charLevel int, res *Result) map[string][]Mod {
 	out := map[string][]Mod{}
 	for _, s := range skills {
@@ -703,7 +703,7 @@ func (c *Calculator) minionSkillBuffs(db, mdb *ModDB, skills []*activeSkill, mai
 			if m == nil {
 				continue
 			}
-			casting, list = c.bareMinionSkills(db, s, m, res)
+			casting, list = c.castingMinionSkills(db, s, m, res)
 		}
 		for _, ms := range list {
 			if !truthy(ms.data.val("enable")) {
@@ -755,19 +755,48 @@ func (c *Calculator) minionSkillBuffs(db, mdb *ModDB, skills []*activeSkill, mai
 	return out
 }
 
-// bareMinionSkills is a non-main minion's skills, created on a bare minion
-// ModDB (its own mods are not built), cached per summoning skill for the
-// calculation.
-func (c *Calculator) bareMinionSkills(db *ModDB, s *activeSkill, m *skillMinion, res *Result) (*ModDB, []*activeSkill) {
+// castingMinionSkills is a minion's skills as calcs.perform's minion
+// skill loop sees them (activeSkill.minion.activeSkillList), cached per
+// summoning skill for the calculation. Their mod lists read the minion's
+// own ModDB: its base and monster data mods (initMinionModDB) and the
+// summoning skill's MinionModifier mods.
+//
+// For the main skill's minion (env.minion) that is PoB: initMinionModDB
+// and addMinionModifiers (CalcPerform.lua:1322, 1991) fill the ModDB its
+// skills were created on (CalcPerform.lua:1298-1302). PoB never fills the
+// other minions' ModDB, so their own CurseEffect, AuraEffect and
+// DebuffEffect mods do nothing there; in the game they apply, so the
+// engine builds the other minions the same way (user decision, recorded
+// in testdata/golden/quirks.json). The game also applies the player's
+// "minions have ..." mods and the summoning gem's supports to every
+// minion, which is what the skill's MinionModifier list holds.
+//
+// The MinionModifier mods are those of the player before the buffs
+// (CalcPerform.lua:1991): s.minionModifiers for the main skill, read then,
+// and for the others the list at the first call, which is the buff loop
+// before the buffs are added.
+func (c *Calculator) castingMinionSkills(
+	db *ModDB, s *activeSkill, m *skillMinion, res *Result,
+) (*ModDB, []*activeSkill) {
 	if db.minionSkillCache == nil {
 		db.minionSkillCache = map[*activeSkill][]*activeSkill{}
 	}
 	if l, ok := db.minionSkillCache[s]; ok && len(l) > 0 {
 		return l[0].mods.root(), l
 	}
-	casting := NewModDB()
-	casting.enemy, casting.owner, casting.build, casting.enemyEnv = db.enemy, db, db.build, db.enemyEnv
-	casting.minionData = m.data // minion.modDB.actor = activeSkill.minion
+	// A throwaway Result: the minion's items are parsed again for the
+	// main minion, and their notes belong to that pass.
+	casting, _ := c.initMinionDB(db, s, m, &Result{})
+	if casting == nil {
+		casting = NewModDB()
+		casting.enemy, casting.owner, casting.minionData = db.enemy, db, m.data
+	}
+	casting.build, casting.enemyEnv = db.build, db.enemyEnv
+	mods := s.minionModifiers
+	if !s.main {
+		mods = s.mods.List(s.cfg, "MinionModifier")
+	}
+	addMinionModifiers(casting, mods, m.typ)
 	l := c.createMinionSkills(casting, s, m, [2]string{m.data.WeaponType1}, res)
 	db.minionSkillCache[s] = l
 	return casting, l

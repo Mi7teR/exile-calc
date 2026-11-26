@@ -420,13 +420,15 @@ func (c *Calculator) buildSkillMods(db *ModDB, s *activeSkill, res *Result) {
 		list.Add(Mod{Name: "Speed", Type: "MORE", Value: 100 * md.DamageFixup, Flags: mfAttack, Source: "Damage Fixup"})
 	}
 	if ge.SpectreMinionList {
+		var spectres []string
 		if b := db.theBuild(); b != nil {
 			for _, id := range b.SpectreList {
 				if c.data.Minions[id] != nil {
-					s.spectres = append(s.spectres, id)
+					spectres = append(spectres, id)
 				}
 			}
 		}
+		s.spectres = spectres // a fresh list on every build of the skill
 	}
 	if list.FlagCfg(s.cfg, "DisableSkill") && !list.FlagCfg(s.cfg, "EnableSkill") {
 		s.disabled = true

@@ -51,14 +51,11 @@ func contains(l []string, s string) bool {
 // minionOf picks the skill's minion (the gem's skillMinion, else the first)
 // and its level.
 func (c *Calculator) minionOf(s *activeSkill, charLevel, enemyLevel int) *skillMinion {
-	list, supportLevel := minionList(s)
-	if len(list) == 0 {
+	typ := minionType(s)
+	if typ == "" {
 		return nil
 	}
-	typ := list[0]
-	if s.gem != nil && contains(list, s.gem.SkillMinion) {
-		typ = s.gem.SkillMinion
-	}
+	_, supportLevel := minionList(s)
 	data := c.data.Minions[typ]
 	if data == nil {
 		return nil
