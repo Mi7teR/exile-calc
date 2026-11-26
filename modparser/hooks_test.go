@@ -182,6 +182,22 @@ func TestHooks(t *testing.T) {
 		// "your hits ignore enemy monster (%a+) resistances? if all equipped rings are (%a+) rings"
 		"Your Hits ignore Enemy Monster Cold Resistances if all Equipped Rings are Cryonic Rings": `[{"@list":[{"threshold":2,
 			"type":"MultiplierThreshold","var":"CryonicRingEquipped"}],"flags":0,"keywordFlags":0,"name":"IgnoreColdResistance","type":"FLAG","value":true}]`,
+
+		// hooks_eyejewels.go
+		// "... per murderous eye jewel affecting you, up to a maximum of ...": globalLimit and hand condition
+		"+10% to Off Hand Critical Strike Multiplier per Murderous Eye Jewel affecting you, up to a maximum of +100%": `[{"@list":[{"globalLimit":100,
+			"globalLimitKey":"TecrodGazeOffHand","type":"Multiplier","var":"MurderousEyeJewel"},{"type":"Condition","var":"OffHandAttack"}],
+			"flags":0,"keywordFlags":0,"name":"CritMultiplier","type":"BASE","value":10}]`,
+		// "minions have ... per ghastly eye jewel ...": the multiplier is read from the parent
+		"Minions have +6% to Damage over Time Multiplier per Ghastly Eye Jewel affecting you, up to a maximum of +30%": `[{"flags":0,"keywordFlags":0,
+			"name":"MinionModifier","type":"LIST","value":{"mod":{"@list":[{"actor":"parent","globalLimit":30,"globalLimitKey":"AmanamuGaze",
+			"type":"Multiplier","var":"GhastlyEyeJewel"}],"flags":0,"keywordFlags":0,"name":"DotMultiplier","type":"BASE","value":6}}}]`,
+		// "while you have at least (%d+) murderous eye jewels socketed: ..."
+		"While you have at least 3 Murderous Eye Jewels socketed: Intimidate you inflict applies an extra +15% increased Attack Damage taken Intimidate you inflict causes targets to deal 10% less Damage": `[
+			{"@list":[{"threshold":3,"type":"MultiplierThreshold","var":"MurderousEyeJewel"}],"flags":0,"keywordFlags":0,"name":"EnemyModifier","type":"LIST",
+			"value":{"mod":{"@list":[{"type":"Condition","var":"Intimidated"}],"flags":1,"keywordFlags":0,"name":"DamageTaken","type":"INC","value":15}}},
+			{"@list":[{"threshold":3,"type":"MultiplierThreshold","var":"MurderousEyeJewel"}],"flags":0,"keywordFlags":0,"name":"EnemyModifier","type":"LIST",
+			"value":{"mod":{"@list":[{"type":"Condition","var":"Intimidated"}],"flags":0,"keywordFlags":0,"name":"Damage","type":"MORE","value":-10}}}]`,
 	}
 	p, err := PoE1()
 	if err != nil {
