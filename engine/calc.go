@@ -29,13 +29,21 @@ type Calculator struct {
 }
 
 func New() (*Calculator, error) {
+	// The two loads are independent: the mod tables load while the game
+	// data decodes.
+	var (
+		p    *modparser.Parser
+		pErr error
+		wg   sync.WaitGroup
+	)
+	wg.Go(func() { p, pErr = modparser.PoE1() })
 	d, err := gamedata.PoE1()
+	wg.Wait()
 	if err != nil {
 		return nil, err
 	}
-	p, err := modparser.PoE1()
-	if err != nil {
-		return nil, err
+	if pErr != nil {
+		return nil, pErr
 	}
 	return &Calculator{data: d, parser: p, items: itemtext.New(d), luts: &timelessLUTs{dir: defaultTimelessDir()}, gemIdx: newGemIndex(d)}, nil
 }

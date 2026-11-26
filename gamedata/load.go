@@ -6,6 +6,7 @@ import (
 	"embed"
 	"encoding/json"
 	"fmt"
+	"sort"
 	"sync"
 )
 
@@ -58,21 +59,27 @@ func load(fsys embed.FS, dir string) (*Data, error) {
 	if err := json.Unmarshal(raw, &d.Version); err != nil {
 		return nil, fmt.Errorf("gamedata: version.json: %w", err)
 	}
-	for name, dst := range map[string]any{
+	files := map[string]any{
 		"bases": &d.Bases, "mods": &d.Mods, "gems": &d.Gems, "uniques": &d.Uniques, "tree": &d.Tree,
 		"clusterjewels": &d.Cluster, "timeless": &d.Timeless, "config": &d.Config, "skills": &d.Skills,
 		"pantheons": &d.Pantheons, "monster": &d.Monster, "minions": &d.Minions,
-	} {
-		gz, err := fsys.ReadFile(dir + "/" + name + ".json.gz")
+	}
+	// Each file decodes into its own field, so the files decode in
+	// parallel; the first error in name order is returned.
+	names := make([]string, 0, len(files))
+	for name := range files {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	errs := make([]error, len(names))
+	var wg sync.WaitGroup
+	for i, name := range names {
+		wg.Go(func() { errs[i] = decodeFile(fsys, dir, name, files[name]) })
+	}
+	wg.Wait()
+	for _, err := range errs {
 		if err != nil {
 			return nil, err
-		}
-		zr, err := gzip.NewReader(bytes.NewReader(gz))
-		if err != nil {
-			return nil, fmt.Errorf("gamedata: %s: %w", name, err)
-		}
-		if err := json.NewDecoder(zr).Decode(dst); err != nil {
-			return nil, fmt.Errorf("gamedata: %s: %w", name, err)
 		}
 	}
 	d.uniqueByName = make(map[string]*Unique, len(d.Uniques))
@@ -82,4 +89,20 @@ func load(fsys embed.FS, dir string) (*Data, error) {
 		}
 	}
 	return d, nil
+}
+
+// decodeFile decodes dir/name.json.gz into dst.
+func decodeFile(fsys embed.FS, dir, name string, dst any) error {
+	gz, err := fsys.ReadFile(dir + "/" + name + ".json.gz")
+	if err != nil {
+		return err
+	}
+	zr, err := gzip.NewReader(bytes.NewReader(gz))
+	if err != nil {
+		return fmt.Errorf("gamedata: %s: %w", name, err)
+	}
+	if derr := json.NewDecoder(zr).Decode(dst); derr != nil {
+		return fmt.Errorf("gamedata: %s: %w", name, derr)
+	}
+	return nil
 }
