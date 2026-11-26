@@ -815,6 +815,7 @@ func stepSkillCounts(c *Calculator, st *calcState) error {
 	totemCounts(db, skills)
 	c.minionCounts(db, skills)
 	warcryExertMods(db, skills)
+	triggeredOnDeath(skills)
 	heraldAuraCounts(db, skills)
 	manaAppliesToShock(db)
 	return nil

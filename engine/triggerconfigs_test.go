@@ -144,15 +144,76 @@ func TestArcanistBrandTrigger(t *testing.T) {
 	}
 }
 
-// CalcTriggers.lua:1362-1366: the Cast on Death config returns nothing, so
-// triggered is cleared again after it set it.
+// CalcTriggers.lua:1362-1366 (user decision): a Cast on Death skill stays
+// triggered, without a trigger rate; PoB clears triggered again. The
+// perform part (CalcPerform.lua:1475-1483) triggers it and adds its
+// TriggeredDamage.
 func TestCastOnDeathTrigger(t *testing.T) {
 	s := triggerTestSkill("Fireball")
 	s.effects = append(s.effects, triggerSupport("Cast on Death", 0))
+	s.main = true
+	s.data.set("triggeredOnDeath", true)
+	s.mods.NewMod("TriggeredDamage", "MORE", 30, "Gem")
+	triggeredOnDeath([]*activeSkill{s})
+	if !truthy(s.data.val("triggered")) || s.mods.More("Damage") != 1.3 {
+		t.Fatalf("perform: triggered %v Damage more %v", s.data.val("triggered"), s.mods.More("Damage"))
+	}
 	db := NewModDB()
 	(&Calculator{}).triggers(db, s, hitSource{}, nil)
-	if truthy(s.data.val("triggered")) || !s.flags["globalTrigger"] {
-		t.Errorf("triggered %v globalTrigger %v", s.data.val("triggered"), s.flags["globalTrigger"])
+	if !truthy(s.data.val("triggered")) || !s.flags["globalTrigger"] || s.data.val("triggerRate") != nil {
+		t.Errorf("triggered %v globalTrigger %v rate %v", s.data.val("triggered"), s.flags["globalTrigger"],
+			s.data.val("triggerRate"))
+	}
+}
+
+// CalcTriggers.lua:172 (user decision): Focus divides the triggered
+// skill's own cooldown by its cooldown recovery too.
+func TestFocusTriggeredCooldown(t *testing.T) {
+	c := newCalc(t)
+	s := triggerTestSkill("Arc")
+	s.effects = append(s.effects, triggerSupport("Focus", 0.25))
+	s.data.cooldown = optF{2, true}
+	s.mods.NewMod("CooldownRecovery", "INC", 100, "Tree")
+	db := NewModDB()
+	c.triggers(db, s, hitSource{}, nil)
+	if got, want := db.output["TriggerRateCap"], tickRate(1); math.Abs(got-want) > 1e-12 {
+		t.Errorf("TriggerRateCap %v, want %v", got, want)
+	}
+}
+
+// CalcTriggers.lua:816 (user decision): a skill that ignores the tick rate
+// and is its trigger's only triggered skill uses the charge-based rate.
+func TestTriggeredAloneChargeRate(t *testing.T) {
+	c := &Calculator{}
+	src := triggerTestSkill("Source")
+	s := triggerTestSkill("Spell")
+	s.data.set("ignoresTickRate", true)
+	s.data.cooldown = optF{0.5, true}
+	s.main = true
+	db := NewModDB()
+	db.activeSkills = []*activeSkill{src, s}
+	cfg := &triggerConfig{source: src, sourceOut: map[string]float64{}, trigRate: 5, hasTrigRate: true,
+		triggeredSkillCond: func(main, x *activeSkill) bool { return x == main }}
+	c.defaultTrigger(db, s, nil, cfg, hitSource{}, nil)
+	// min(rate cap 2, source rate 5): the simulation would give less.
+	if got := db.output["SkillTriggerRate"]; got != 2 {
+		t.Errorf("SkillTriggerRate %v, want 2", got)
+	}
+}
+
+// CalcTriggers.lua:1490-1497 (user decision): Avenging Flame's source is
+// the totem with the most life, compared with the current source's life.
+func TestAvengingFlameComparer(t *testing.T) {
+	cfg := triggerConfigs["avenging flame"](NewModDB(), triggerTestSkill("Avenging Flame"))
+	if !cfg.comparer(map[string]float64{"TotemLife": 900}, false, 0) {
+		t.Fatal("first totem not taken")
+	}
+	cfg.source, cfg.sourceOut, cfg.trigRate = triggerTestSkill("Big"), map[string]float64{"TotemLife": 5000}, 1.2
+	if cfg.comparer(map[string]float64{"TotemLife": 900}, true, cfg.trigRate) {
+		t.Error("a smaller totem beat the larger one (PoB compared life with the rate)")
+	}
+	if !cfg.comparer(map[string]float64{"TotemLife": 6000}, true, cfg.trigRate) {
+		t.Error("a larger totem did not win")
 	}
 }
 
@@ -202,5 +263,56 @@ func TestTriggerSourceFilters(t *testing.T) {
 		if want := slot == "Weapon 1"; found != want || truthy(main.data.val("triggered")) != want {
 			t.Errorf("%s: source found %v, want %v", slot, found, want)
 		}
+	}
+}
+
+// CalcTriggers.lua:1086-1093 (user decision): the trigger craft rate is
+// the real source's: a totem source's cast rate, else the source's own
+// rate, never a summon skill's that the search only met.
+func TestCraftSourceRate(t *testing.T) {
+	c := newCalc(t)
+	b := corpusBuild(t, "CtYuJcwd9baO")
+	res, err := c.Calc(b)
+	if err != nil {
+		t.Fatal(err)
+	}
+	db := res.DB
+	w1, w2 := playerWeapons(db, db.gearMods, b.ActiveSpec().ClassID)
+	main := triggerTestSkill("Crafted Spell")
+	main.data.set("triggeredByCraft", true)
+	// The summon skills last: PoB's search would let them set the rate
+	// after a faster source was found.
+	var summons, others []*activeSkill
+	for _, s := range db.activeSkills {
+		if s.flags["totem"] || s.flags["ballista"] {
+			summons = append(summons, s)
+		} else {
+			others = append(others, s)
+		}
+	}
+	if len(summons) == 0 || len(others) == 0 {
+		t.Fatalf("summons %d others %d", len(summons), len(others))
+	}
+	others = append(others, summons...)
+	db.activeSkills = others
+	cfg := &triggerConfig{craft: true}
+	c.craftSource(db, main, cfg, w1, w2)
+	if cfg.source == nil {
+		t.Fatal("no source")
+	}
+	s := cfg.source
+	want, ok := cfg.sourceOut["HitSpeed"]
+	if !ok {
+		want = cfg.sourceOut["Speed"]
+	}
+	if s.flags["totem"] || s.flags["golem"] || s.flags["banner"] || s.flags["ballista"] {
+		cd := 0.0
+		if lv := s.active.ge.Levels[s.active.level]; lv != nil {
+			cd = lv.Cooldown
+		}
+		want = 1 / (s.active.ge.CastTime + cd)
+	}
+	if cfg.trigRate != want {
+		t.Errorf("source %s: rate %v, want %v", s.active.ge.Name, cfg.trigRate, want)
 	}
 }

@@ -64,6 +64,9 @@ type triggerConfig struct {
 	// craft is the "trigger craft" config: its source search
 	// (craftSource) runs before the handler.
 	craft bool
+	// keepTriggered is the Cast on Death config: no handler runs and the
+	// skill stays triggered.
+	keepTriggered bool
 	// ignoreSourceRate: the source rate is the trigger rate cap.
 	ignoreSourceRate bool
 	// selfSource is a global trigger with config.source = mainSkill
@@ -192,15 +195,21 @@ var triggerConfigs = map[string]func(db *ModDB, main *activeSkill) *triggerConfi
 		return (&triggerConfig{selfSource: true}).withChance(main.data.val("chanceToTriggerOnWardBreak"))
 	},
 	"avenging flame": func(*ModDB, *activeSkill) *triggerConfig {
-		// CalcTriggers.lua:1490-1497: PoB's comparer gets the current
-		// source's rate (findTriggerSkill passes triggerRate), not its
-		// totem life, as currentTotemLife.
-		return &triggerConfig{ignoreSourceRate: true,
-			triggerSkillCond: func(main, s *activeSkill) bool { return s.flags["totem"] && slotMatch(main, s) },
-			comparer: func(o map[string]float64, hasSource bool, currentTotemLife float64) bool {
-				life, ok := o["TotemLife"]
-				return (!hasSource && ok) || (ok && life > currentTotemLife)
-			}}
+		// CalcTriggers.lua:1490-1497, with one difference (user decision):
+		// PoB's comparer gets the current source's rate as
+		// currentTotemLife (findTriggerSkill passes triggerRate, 97), so a
+		// totem wins when its life exceeds that rate. In the game each
+		// totem triggers its own Avenging Flame, which deals damage from
+		// that totem's life, and the trigger rate is the rate cap
+		// (ignoreSourceRate), so here totem life is compared with the
+		// current source's totem life: the source is the largest totem.
+		cfg := &triggerConfig{ignoreSourceRate: true,
+			triggerSkillCond: func(main, s *activeSkill) bool { return s.flags["totem"] && slotMatch(main, s) }}
+		cfg.comparer = func(o map[string]float64, hasSource bool, _ float64) bool {
+			life, ok := o["TotemLife"]
+			return (!hasSource && ok) || (ok && life > cfg.sourceOut["TotemLife"])
+		}
+		return cfg
 	},
 	"spellslinger": func(_ *ModDB, main *activeSkill) *triggerConfig {
 		// CalcTriggers.lua:1221-1224: the Spellslinger skill itself has no
@@ -514,12 +523,15 @@ var triggerConfigs = map[string]func(db *ModDB, main *activeSkill) *triggerConfi
 				return truthy(s.data.val("triggeredByBrand")) && slotMatch(main, s)
 			}}
 	},
-	// CalcTriggers.lua:1362-1366: the config returns nothing, so the next
-	// name is tried and, with no other config, triggered is cleared again.
+	// CalcTriggers.lua:1362-1366, with one difference (user decision): the
+	// Lua config returns nothing, so calcs.triggers tries the next name and,
+	// with no other config, clears skillData.triggered again (1634). In the
+	// game the skill is triggered (on death), so here the config stops the
+	// lookup and keeps it triggered, without a trigger rate.
 	"cast on death": func(_ *ModDB, main *activeSkill) *triggerConfig {
 		main.flags["globalTrigger"] = true
 		main.data.set("triggered", true)
-		return nil
+		return &triggerConfig{keepTriggered: true}
 	},
 	// CalcTriggers.lua:1367-1374.
 	"combust": func(*ModDB, *activeSkill) *triggerConfig {
@@ -885,6 +897,9 @@ func (c *Calculator) triggers(db *ModDB, main *activeSkill, w1 hitSource, w2 *hi
 		main.data.del("triggered")
 		return
 	}
+	if cfg.keepTriggered {
+		return
+	}
 	cfg.preTriggered, cfg.hasPreTriggered = preTriggered, hasPreTriggered
 	// config.triggerChance = config.triggerChance or srcInstance.triggerChance.
 	if !cfg.hasTriggerChance && main.active.srcHasTriggerChance {
@@ -924,9 +939,14 @@ func (c *Calculator) findTriggerSkill(db *ModDB, s *activeSkill, cfg *triggerCon
 
 // craftSource is the source search of configTable["trigger craft"]
 // (CalcTriggers.lua:1079-1099): the fastest damaging skill not from an
-// item and not triggered itself. A totem, golem, banner or ballista skill
-// met in the search sets the rate to its cast rate (with its cooldown),
-// whether or not it is the source.
+// item and not triggered itself. A totem, golem, banner or ballista
+// source triggers at its cast rate (with its cooldown).
+//
+// One difference (user decision): in PoB (1086-1093) any such skill met
+// in the search sets the rate, whether or not it became the source, so a
+// later non-summon source keeps it or is compared against it. Here only
+// the skill that is the source sets it: the game triggers at the real
+// source's rate.
 func (c *Calculator) craftSource(db *ModDB, main *activeSkill, cfg *triggerConfig, w1 hitSource, w2 *hitSource) {
 	for _, s := range db.activeSkills {
 		if !s.types[stDamage] && !s.types[stAttack] && !s.types[stSpell] || s.flags["aura"] || s == main ||
@@ -935,7 +955,7 @@ func (c *Calculator) craftSource(db *ModDB, main *activeSkill, cfg *triggerConfi
 		}
 		c.findTriggerSkill(db, s, cfg, w1, w2)
 		summons := s.flags["totem"] || s.flags["golem"] || s.flags["banner"] || s.flags["ballista"]
-		if summons && !s.active.ge.NoCastTime {
+		if summons && !s.active.ge.NoCastTime && cfg.source == s {
 			cd := 0.0
 			if lv := s.active.ge.Levels[s.active.level]; lv != nil {
 				cd = lv.Cooldown
@@ -970,9 +990,10 @@ func (c *Calculator) focusTrigger(db *ModDB, main *activeSkill, by *skillEffect)
 			focusCD = lv.Cooldown / icdrFocus
 		}
 	}
-	// The triggered skill's own cooldown is not divided by its cooldown
-	// recovery here (CalcTriggers.lua:172), as PoB has it.
-	action := math.Max(triggeredCD, triggerCD/icdrSkill)
+	// One difference (user decision): PoB (CalcTriggers.lua:172) does not
+	// divide the triggered skill's own cooldown by its cooldown recovery,
+	// only the trigger's; in the game cooldown recovery applies to both.
+	action := math.Max(triggeredCD/icdrSkill, triggerCD/icdrSkill)
 	rounded := math.Ceil(action*serverTickRate) / serverTickRate
 	out["TriggerRateCap"] = math.Inf(1)
 	if rounded != 0 {
@@ -983,6 +1004,24 @@ func (c *Calculator) focusTrigger(db *ModDB, main *activeSkill, by *skillEffect)
 	main.infoTrigger = "Focus"
 	main.data.set("triggerRate", out["SkillTriggerRate"])
 	main.flags["globalTrigger"] = true
+}
+
+// triggeredOnDeath is the Cast on Death part of calcs.perform's skill loop
+// (CalcPerform.lua:1475-1483): a player skill triggered on death is
+// triggered, and its TriggeredDamage, with env.player.mainSkill's cfg,
+// applies as Damage.
+func triggeredOnDeath(skills []*activeSkill) {
+	pm := mainSkill(skills)
+	if pm == nil {
+		return
+	}
+	for _, s := range skills {
+		if !truthy(s.data.val("triggeredOnDeath")) || s.flags["minion"] {
+			continue
+		}
+		s.data.set("triggered", true)
+		addTriggerIncMoreMods(s, pm)
+	}
 }
 
 // addTriggerIncMoreMods is CalcTriggers.lua:24-31: TriggeredDamage, with
@@ -1262,10 +1301,12 @@ func (c *Calculator) defaultTrigger(
 	// effective rate.
 	case out["EffectiveSourceRate"] == 0 || pm.flags["skipEffectiveRate"]:
 		skillRate = 0
-	// CalcTriggers.lua:816: the check that the triggered skills are the
-	// skill alone compares a new table, so it is never true: with a
-	// triggeredSkillCond this branch is never taken, as PoB has it.
-	case ignoresTick && cfg.triggeredSkillCond == nil:
+	// CalcTriggers.lua:816, with one difference (user decision): PoB's
+	// check that the triggered skills are the skill alone compares
+	// triggeredSkills[1] with a newly built table, so it is never true and
+	// a trigger with a triggeredSkillCond never uses the charge-based rate.
+	// Here the check works: the only triggered skill is the skill itself.
+	case ignoresTick && (cfg.triggeredSkillCond == nil || len(triggered) == 1 && triggered[0].skill == main):
 		overlaps := cfg.overlaps
 		if overlaps == 0 {
 			overlaps = 1
