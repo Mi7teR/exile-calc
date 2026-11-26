@@ -26,6 +26,12 @@ func TestTranslateLuaPattern(t *testing.T) {
 		{`^+(%d+) to`, "+25 to", []string{"+25 to", "25"}},
 		{`^+(%d+) to`, "25 to", nil},
 		{`(a)+b`, "a+b", []string{"a+b", "a"}},
+		// An escaped character is one item, even "(" or ")".
+		{`^%(+x`, "((x", []string{"((x"}},
+		{`^a%)*b`, "a))b", []string{"a))b"}},
+		// A quantifier cannot be quantified: "%d++" is %d+ then a plain "+".
+		{`^(%d++)`, "12+", []string{"12+", "12+"}},
+		{`^(%d++)`, "12", nil},
 	}
 	for _, c := range cases {
 		re, err := translateLuaPattern(c.pat)

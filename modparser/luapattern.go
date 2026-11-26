@@ -88,20 +88,36 @@ func luaClass(n byte) (string, bool) {
 	return "[" + body + "]", true
 }
 
-// quantifiable reports whether the "-" at p[i] follows a single-character
-// item (a char, a class, a set or ".") rather than a capture or nothing.
+// quantifiable reports whether the quantifier ("-", "*", "+", "?") at p[i]
+// follows a single-character item (a char, an escape, a class, a set or
+// ".") rather than a capture, an anchor, another quantifier or nothing.
 func quantifiable(p string, i int) bool {
+	if i == 0 {
+		return false
+	}
 	prev := p[i-1]
-	if prev == '(' || prev == '|' {
+	if escapedAt(p, i-1) {
+		return true // %d, %(, %%, ...: one single-char item
+	}
+	switch prev {
+	case '(', ')', '|', '^':
 		return false
+	case '*', '+', '?', '-':
+		// A quantifier cannot be quantified ("%d++" is %d+ and a plain
+		// "+"); a plain-character one can.
+		return !quantifiable(p, i-1)
 	}
-	if prev == ')' {
-		return false
+	return true
+}
+
+// escapedAt reports whether p[j] follows an unpaired "%" (an odd run of
+// them), i.e. is the second byte of an escape or class.
+func escapedAt(p string, j int) bool {
+	n := 0
+	for k := j - 1; k >= 0 && p[k] == '%'; k-- {
+		n++
 	}
-	if i >= 2 && p[i-2] == '%' {
-		return true
-	}
-	return prev != '^'
+	return n%2 == 1
 }
 
 // luaSet translates a set starting at p[i] == '['; it returns the index of
