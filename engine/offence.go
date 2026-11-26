@@ -366,6 +366,7 @@ func (c *Calculator) offence(actor *ModDB, s *activeSkill, w1 hitSource, w2 *hit
 		bleed(actor, s, p, out, dpsMult)
 		poison(actor, s, p, out, dpsMult, quantity)
 		ignite(actor, s, p, out, dpsMult)
+		nonDamagingAilments(actor, s, p)
 		impale(actor, s, p, out)
 	}
 	combineAilments(s, out, passes)
@@ -373,7 +374,7 @@ func (c *Calculator) offence(actor *ModDB, s *activeSkill, w1 hitSource, w2 *hit
 	if isAttack {
 		out["AverageHit"] = passes[0].out["AverageHit"]
 		for k, v := range passes[0].out {
-			if _, ok := out[k]; !ok {
+			if _, ok := out[k]; !ok && !passOnlyStats[k] {
 				out[k] = v
 			}
 		}

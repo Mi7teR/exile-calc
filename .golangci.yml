@@ -491,6 +491,11 @@ linters:
       - path: 'engine/(calc(items|tree)|offence_(area|crit|hit|speed|warcry|dps)|skill(setup|mods|buffs)|ailments_dot|ehp_(pools|maxhit)|misc_(counts|enemy)|moddb_eval)\.go'
         linters: [ mnd, funlen, gocognit, gocyclo, cyclop, nestif, goconst, gochecknoglobals, exhaustive, intrange,
                    modernize, revive ]
+      # why: these files port one calcs section each in order (the non-damaging ailments, knockback and stun of
+      # calcs.offence; the attribute requirements of calcs.perform): PoB's literal numbers and stat names stay
+      # inline, and PoB's fixed stat tables are package-level like its own.
+      - path: 'engine/(ailments_nondmg|requirements)\.go'
+        linters: [ mnd, goconst, gochecknoglobals, funlen, gocognit ]
       # why: party.go ports PartyTab.lua ParseBuffs and the party branches of calcs.perform line by line: PoB's
       # buff-type and mod-type strings stay inline, the flag tables are Data/Global.lua ModFlag/KeywordFlag (hex
       # literals, package-level like PoB's), and the parser keeps ParseBuffs' single state machine. curses.go's

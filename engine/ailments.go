@@ -9,9 +9,11 @@ import (
 
 // The ailment, skill damage over time and combined DPS parts of
 // calcs.offence (Modules/CalcOffence.lua): ailment chances, bleed, poison,
-// ignite, impale, skill DoT, culling and combined DPS. Not ported yet:
-// decay, non-damaging ailment effects, knockback, preDotFunc, the legacy
-// Perfect Agony (CritMultiplierAppliesToDegen) and ailmentMode CRIT.
+// ignite, impale, skill DoT, culling and combined DPS (decay is in
+// offence_dps.go, the non-damaging ailments, knockback and stun in
+// ailments_nondmg.go). Not ported yet: preDotFunc, the legacy Perfect
+// Agony (CritMultiplierAppliesToDegen) and ailmentMode CRIT for the
+// damaging ailments.
 
 // Data/Global.lua ModFlag and KeywordFlag bits for ailments.
 const (
@@ -98,6 +100,7 @@ func ailmentChances(actor *ModDB, s *activeSkill, p *hitPass) {
 	if hit && modeEffective(actor) {
 		out["ImpaleChanceOnCrit"] = math.Min(100, list.SumCfg(cfg, "BASE", "ImpaleChance"))
 	}
+	out["KnockbackChanceOnCrit"] = knockbackChance(s, cfg) // CalcOffence.lua:4256-4260
 	withCrit(false)
 	out["BleedChanceOnHit"] = chance(attack && !list.FlagCfg(cfg, "CannotBleed"), "BleedChance", "SelfBleedChance")
 	out["PoisonChanceOnHit"] = chance(hit && !list.FlagCfg(cfg, "CannotPoison"), "PoisonChance", "SelfPoisonChance")
@@ -117,6 +120,17 @@ func ailmentChances(actor *ModDB, s *activeSkill, p *hitPass) {
 			ch = 100
 		}
 		ch *= avoid
+		// CalcOffence.lua:4288-4292: Warden's Oath of Summer scorches
+		// with the ignite chance (on the skill's mod list, so each pass
+		// adds it again).
+		player := actor
+		if actor.player != nil {
+			player = actor.player
+		}
+		if a == "Ignite" && player.Flag("IgniteCanScorch") {
+			out["ScorchChance"] = math.Min(100, ch) //nolint:mnd // a chance cap
+			list.NewMod("EnemyScorchChance", "BASE", ch, "Ignite Chance")
+		}
 		if hit && !list.FlagCfg(cfg, "Cannot"+a) && avoid != 0 {
 			out[a+"ChanceOnHit"] = math.Min(100, ch)
 			if list.FlagCfg(cfg, "CritsDontAlways"+a) || (altAilment[a] && !list.FlagCfg(cfg, "CritAlwaysAltAilments")) {
@@ -127,7 +141,19 @@ func ailmentChances(actor *ModDB, s *activeSkill, p *hitPass) {
 		} else {
 			out[a+"ChanceOnHit"], out[a+"ChanceOnCrit"] = 0, 0
 		}
+		// CalcOffence.lua:4300-4305.
+		if a == "Scorch" && player.Flag("IgniteCanScorch") && avoid != 0 {
+			out["ScorchChanceOnCrit"] = 100
+		}
+		onCrit := out[a+"ChanceOnCrit"]
+		if list.FlagCfg(cfg, "NeverCrit") {
+			onCrit = 0
+		}
+		if out[a+"ChanceOnHit"]+onCrit > 0 {
+			s.flags["inflict"+a] = true
+		}
 	}
+	out["KnockbackChanceOnHit"] = knockbackChance(s, cfg) // CalcOffence.lua:4307-4311
 	out["ImpaleChance"] = math.Min(100, list.SumCfg(cfg, "BASE", "ImpaleChance"))
 	// CalcOffence.lua:4312: impale, and 4322-4331: the enemy's ailment
 	// avoidance, only with env.mode_effective.
@@ -324,6 +350,12 @@ func combineAilments(s *activeSkill, out map[string]float64, passes []*hitPass) 
 		combineAilment(out, passes, "IgniteDamage", "IgniteChance", false, double)
 		sum("IgniteStacksMax")
 		sum("TotalIgniteDPS")
+	}
+	// CalcOffence.lua:5722-5737: the non-damaging ailments.
+	for _, st := range []string{"ChillEffectMod", "ChillDuration", "ShockChance", "ShockDuration", "ShockEffectMod",
+		"FreezeChance", "FreezeDurationMod", "ScorchChance", "ScorchEffectMod", "ScorchDuration", "BrittleChance",
+		"BrittleEffectMod", "BrittleDuration", "SapChance", "SapEffectMod", "SapDuration"} {
+		avg(st)
 	}
 	avg("ImpaleChance")
 	avg("ImpaleStoredDamage")
