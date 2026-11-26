@@ -499,6 +499,11 @@ var hooks = map[string]Hook{
 		return []any{withTags(newMod("GemProperty", "LIST", map[string]any{"keyword": typ, "key": argS(a, 2), "value": arg(a, 0)}, 0, 0),
 			map[string]any{"type": "SocketedIn", "slotName": "{SlotName}"})}
 	},
+	// ["([%+%-]%d+) to level of socketed active skill gems per (%d+) player levels"] and
+	// ["([%+%-]%d+) to level of socketed skill gems per (%d+) player levels"] = function(num, _, div) return {
+	//   mod("GemProperty", "LIST", { keyword = "grants_active_skill", key = "level", value = num }, { type = "SocketedIn", slotName = "{SlotName}" }, { type = "Multiplier", var = "Level", div = tonumber(div) }) } end,
+	"specialModList[^([%+%-]%d+) to level of socketed active skill gems per (%d+) player levels$]": socketedLevelPerPlayerLevels,
+	"specialModList[^([%+%-]%d+) to level of socketed skill gems per (%d+) player levels$]":        socketedLevelPerPlayerLevels,
 	// ["([%a%s]+) reserves no mana"], ["([%a%s]+) has no reservation"] and
 	// ["([%a%s]+) has no reservation if cast as an aura"] = function(_, name) return {
 	//   mod("SkillData", "LIST", { key = "manaReservationFlat", value = 0 }, { type = "SkillId", skillId = gemIdLookup[name] },
@@ -1672,4 +1677,13 @@ func presenceExposure(a []any, cond string) any {
 		withTags(newMod("EnemyModifier", "LIST", map[string]any{"mod": withTags(newMod(firstToUpper(argS(a, 3))+"Exposure", "BASE", -n, 0, 0),
 			map[string]any{"type": "Condition", "var": cond})}, 0, 0), effective),
 	}
+}
+
+// socketedLevelPerPlayerLevels is the Lua body of the "to level of socketed
+// (active) skill gems per N player levels" lines (The Poet's Pen).
+func socketedLevelPerPlayerLevels(p *Parser, a []any) any {
+	div, _ := toNumber(argS(a, 2)).(float64)
+	return []any{withTags(newMod("GemProperty", "LIST", map[string]any{"keyword": "grants_active_skill", "key": "level", "value": arg(a, 0)}, 0, 0),
+		map[string]any{"type": "SocketedIn", "slotName": "{SlotName}"},
+		map[string]any{"type": "Multiplier", "var": "Level", "div": div})}
 }

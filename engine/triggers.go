@@ -82,6 +82,18 @@ var triggerConfigs = map[string]func(db *ModDB, main *activeSkill) *triggerConfi
 					main.group.Slot == s.group.Slot && s.types[stSpell]
 			}}
 	},
+	// CalcTriggers.lua configTable["poet's pen"]: a socketed spell triggered
+	// by wand attacks.
+	"poet's pen": func(*ModDB, *activeSkill) *triggerConfig {
+		return &triggerConfig{triggerOnUse: true,
+			triggerSkillCond: func(main, s *activeSkill) bool {
+				return (s.types[stDamage] || s.types[stAttack]) && s.cfg.Flags&modFlagByName["Wand"] > 0
+			},
+			triggeredSkillCond: func(main, s *activeSkill) bool {
+				return truthy(s.data.val("triggeredByUnique")) && main.group != nil && s.group != nil &&
+					main.group.Slot == s.group.Slot && s.types[stSpell]
+			}}
+	},
 	"the covetous dark": func(*ModDB, *activeSkill) *triggerConfig {
 		return &triggerConfig{
 			triggerSkillCond:   func(_, s *activeSkill) bool { return s.types[stMelee] },
