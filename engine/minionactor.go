@@ -475,6 +475,11 @@ var minionResultStats = []string{
 	"Life", "EnergyShield", "Armour", "Evasion", "Str", "Dex", "Int",
 	"FireResist", "ColdResist", "LightningResist", "ChaosResist",
 	"BlockChance", "SpellBlockChance",
+	// Avoidance (calcs.defence: block, evade, spell suppression, dodge).
+	"EffectiveBlockChance", "ProjectileBlockChance", "EffectiveSpellBlockChance", "SpellProjectileBlockChance",
+	"EvadeChance", "MeleeEvadeChance", "ProjectileEvadeChance",
+	"SpellSuppressionChance", "EffectiveSpellSuppressionChance", "SpellSuppressionEffect",
+	"AttackDodgeChance", "SpellDodgeChance", "EffectiveAttackDodgeChance", "EffectiveSpellDodgeChance",
 	// The leech caps (minionLeechCaps).
 	"MaxLifeLeechInstance", "MaxLifeLeechRatePercent", "MaxLifeLeechRate", "MaxEnergyShieldLeechInstance",
 	"MaxEnergyShieldLeechRate", "MaxManaLeechInstance", "MaxManaLeechRate",
@@ -661,6 +666,9 @@ func (c *Calculator) minionDefence(db *ModDB, mc *minionCalc) {
 	}
 	c.resistances(mdb)
 	c.defence(mdb, mc.gear, map[string]bool{})
+	// The rest of calcs.defence(env, env.minion) (CalcPerform.lua:3840):
+	// spell suppression, dodge and the recovery parts.
+	avoidanceAndRecovery(mdb)
 	minionLeechCaps(mdb)
 	for _, k := range minionResultStats {
 		mc.res.Stats[k] = mdb.output[k]

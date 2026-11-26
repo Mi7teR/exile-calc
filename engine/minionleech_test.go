@@ -1,6 +1,10 @@
 package engine
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/Mi7teR/poe-lib/pobcode"
+)
 
 // CalcSetup.lua:62-70 and CalcDefence.lua:1243-1272 for env.minion: the
 // base caps, and the parent's maximum life leech rate with
@@ -30,10 +34,8 @@ func TestMinionLeechCaps(t *testing.T) {
 }
 
 // CalcPerform.lua:3837-3839: with MinionsGainYourSpellSuppressionChance
-// the minion gets the player's spell suppression chance as a mod before
-// its calcs.defence. (The minion's defence does not run the avoidance part
-// of calcs.defence on this branch, so its SpellSuppressionChance output is
-// not computed; the mod is what is checked.)
+// the minion gets the player's spell suppression chance before its
+// calcs.defence.
 func TestMinionSpellSuppressionFromPlayer(t *testing.T) {
 	c := newCalc(t)
 	for _, share := range []bool{false, true} {
@@ -52,8 +54,43 @@ func TestMinionSpellSuppressionFromPlayer(t *testing.T) {
 		if share {
 			want = 40
 		}
-		if got := mdb.Sum("BASE", "SpellSuppressionChance"); got != want {
+		if got := mdb.output["SpellSuppressionChance"]; got != want {
 			t.Errorf("share %v: SpellSuppressionChance %v, want %v", share, got, want)
+		}
+	}
+}
+
+// The real mod line, "Your Minions gain your chance to Suppress Spell
+// Damage" (ModParser.lua:4518), as a Config tab custom modifier: the
+// player's spell suppression reaches the main minion's defence.
+func TestMinionSpellSuppressionModLine(t *testing.T) {
+	c := newCalc(t)
+	for _, share := range []bool{false, true} {
+		b := corpusBuild(t, "0BL0JzvGlFo_")
+		text := "+30% chance to Suppress Spell Damage"
+		if share {
+			text += "\nYour Minions gain your chance to Suppress Spell Damage"
+		}
+		cfg := b.ActiveConfig()
+		cfg.CustomMods = append(cfg.CustomMods, pobcode.CustomModBlock{Enabled: true, Text: text})
+		res, err := c.Calc(b)
+		if err != nil {
+			t.Fatal(err)
+		}
+		player := res.Stats["SpellSuppressionChance"]
+		mins, err := c.CalcMinions(b)
+		if err != nil || len(mins) == 0 {
+			t.Fatalf("minions %v %v", mins, err)
+		}
+		want := 0.0
+		if share {
+			want = player
+		}
+		if player < 30 {
+			t.Fatalf("player suppression %v", player)
+		}
+		if got := mins[0].Stats["SpellSuppressionChance"]; got != want {
+			t.Errorf("share %v: %s suppression %v, want %v", share, mins[0].Minion, got, want)
 		}
 	}
 }
