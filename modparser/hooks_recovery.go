@@ -17,16 +17,24 @@ func burstRegen(name, stat string, a []any) []any {
 
 // nearbyCorpses is { type = "Multiplier", var = "NearbyCorpse", limit = tonumber(limit), limitTotal = true }.
 func nearbyCorpses(a []any) map[string]any {
-	return map[string]any{"type": "Multiplier", "var": "NearbyCorpse", "limit": toNumber(argS(a, cap2)), "limitTotal": true}
+	return map[string]any{
+		"type":       "Multiplier",
+		"var":        "NearbyCorpse",
+		"limit":      toNumber(argS(a, cap2)),
+		"limitTotal": true,
+	}
 }
 
-func init() {
+func init() { //nolint:funlen // one registration table of ported Lua functions
 	registerSpecial(map[string]Hook{
 		// ModParser.lua:2227 ["(%d+) rage regenerated for every (%d+) mana regeneration per second"] = function(num, _, div) return {
 		//   mod("RageRegen", "BASE", num, {type = "PerStat", stat = "ManaRegen", div = tonumber(div) }), flag("Condition:CanGainRage") } end
 		"(%d+) rage regenerated for every (%d+) mana regeneration per second": func(_ *Parser, a []any) any {
 			return []any{
-				withTags(newMod("RageRegen", "BASE", argF(a, argNum), 0, 0), perStat("ManaRegen", toNumber(argS(a, cap2)))),
+				withTags(
+					newMod("RageRegen", "BASE", argF(a, argNum), 0, 0),
+					perStat("ManaRegen", toNumber(argS(a, cap2))),
+				),
 				flagMod("Condition:CanGainRage"),
 			}
 		},
@@ -35,7 +43,10 @@ func init() {
 		"regenerate (%d+) rage per second for every (%d+) life recovery per second from regeneration": func(_ *Parser, a []any) any {
 			n := argF(a, argNum)
 			return []any{
-				withTags(newMod("RageRegen", "BASE", n, 0, 0), map[string]any{"type": "PercentStat", "stat": "LifeRegen", "percent": n / argF(a, cap2) * 100}),
+				withTags(
+					newMod("RageRegen", "BASE", n, 0, 0),
+					map[string]any{"type": "PercentStat", "stat": "LifeRegen", "percent": n / argF(a, cap2) * 100},
+				),
 				flagMod("Condition:CanGainRage"),
 			}
 		},
@@ -51,7 +62,12 @@ func init() {
 		// ModParser.lua:2157 ["(%d+)%% increased life recovery rate per (%d+)%% missing unreserved life"] = function(num, _, div) return {
 		//   mod("LifeRecoveryRate", "INC", num, { type = "PerStat", stat = "MissingUnreservedLifePercent", div = tonumber(div) }) } end
 		"(%d+)%% increased life recovery rate per (%d+)%% missing unreserved life": func(_ *Parser, a []any) any {
-			return []any{withTags(newMod("LifeRecoveryRate", "INC", argF(a, argNum), 0, 0), perStat("MissingUnreservedLifePercent", toNumber(argS(a, cap2))))}
+			return []any{
+				withTags(
+					newMod("LifeRecoveryRate", "INC", argF(a, argNum), 0, 0),
+					perStat("MissingUnreservedLifePercent", toNumber(argS(a, cap2))),
+				),
+			}
 		},
 		// ModParser.lua:4887 ["([%d%.]+)%% of physical damage prevented from hits in the past (%d+) seconds is regenerated as life per second"] =
 		//   function(num, _, duration) return { mod("PhysicalDamageMitigatedLifePseudoRecoup", "BASE", num * duration),
@@ -81,13 +97,27 @@ func init() {
 		// ModParser.lua:2993 ["regenerate (%d+)%% of energy shield over 2 seconds when you consume a corpse"] = function(num) return {
 		//   mod("EnergyShieldRegenPercent", "BASE", num / 2, { type = "Condition", var = "ConsumedCorpseInPast2Sec" }) } end
 		"regenerate (%d+)%% of energy shield over 2 seconds when you consume a corpse": func(_ *Parser, a []any) any {
-			return []any{withTags(newMod("EnergyShieldRegenPercent", "BASE", argF(a, argNum)/2, 0, 0), condTag("ConsumedCorpseInPast2Sec"))}
+			return []any{
+				withTags(
+					newMod("EnergyShieldRegenPercent", "BASE", argF(a, argNum)/2, 0, 0),
+					condTag("ConsumedCorpseInPast2Sec"),
+				),
+			}
 		},
 		// ModParser.lua:2994 ["regenerate (%d+)%% of mana over 2 seconds when you consume a corpse"] = function(num) return {
 		//   mod("ManaRegen", "BASE", 1, { type = "PercentStat", stat = "Mana", percent = num / 2 }, { type = "Condition", var = "ConsumedCorpseInPast2Sec" }) } end
 		"regenerate (%d+)%% of mana over 2 seconds when you consume a corpse": func(_ *Parser, a []any) any {
-			return []any{withTags(newMod("ManaRegen", "BASE", 1.0, 0, 0),
-				map[string]any{"type": "PercentStat", "stat": "Mana", "percent": argF(a, argNum) / 2}, condTag("ConsumedCorpseInPast2Sec"))}
+			return []any{
+				withTags(
+					newMod("ManaRegen", "BASE", 1.0, 0, 0),
+					map[string]any{
+						"type":    "PercentStat",
+						"stat":    "Mana",
+						"percent": argF(a, argNum) / 2,
+					},
+					condTag("ConsumedCorpseInPast2Sec"),
+				),
+			}
 		},
 		// ModParser.lua:5802 ["for each nearby corpse, regenerate ([%d%.]+)%% life per second, up to ([%d%.]+)%%"] = function(num, _, limit) return {
 		//   mod("LifeRegenPercent", "BASE", num, { type = "Multiplier", var = "NearbyCorpse", limit = tonumber(limit), limitTotal = true }) } end
@@ -98,7 +128,13 @@ func init() {
 		//   function(num, _, limit) return { mod("ExtraAura", "LIST", { mod = mod("EnergyShieldRegenPercent", "BASE", num) },
 		//   { type = "Multiplier", var = "NearbyCorpse", limit = tonumber(limit), limitTotal = true }) } end
 		"for each nearby corpse, you and nearby allies regenerate ([%d%.]+)%% of energy shield per second, up to ([%d%.]+)%% per second": func(_ *Parser, a []any) any {
-			return []any{modifierOf("ExtraAura", newMod("EnergyShieldRegenPercent", "BASE", argF(a, argNum), 0, 0), nearbyCorpses(a))}
+			return []any{
+				modifierOf(
+					"ExtraAura",
+					newMod("EnergyShieldRegenPercent", "BASE", argF(a, argNum), 0, 0),
+					nearbyCorpses(a),
+				),
+			}
 		},
 		// ModParser.lua:2985 ["for each nearby corpse, you and nearby allies regenerate (%d+) mana per second, up to (%d+) per second"] =
 		//   function(num, _, limit) return { mod("ExtraAura", "LIST", { mod = mod("ManaRegen", "BASE", num) }, <same multiplier>) } end
@@ -124,7 +160,10 @@ func init() {
 		"(%d+)%% chance to gain (%d+) life on hit with attacks": func(_ *Parser, a []any) any {
 			amount := argF(a, cap2)
 			return []any{
-				withTags(newMod("LifeOnHit", "BASE", amount*argF(a, argNum)/100, modFlagAttack|modFlagHit, 0), condTag("AverageResourceGain")),
+				withTags(
+					newMod("LifeOnHit", "BASE", amount*argF(a, argNum)/100, modFlagAttack|modFlagHit, 0),
+					condTag("AverageResourceGain"),
+				),
 				withTags(newMod("LifeOnHit", "BASE", amount, modFlagAttack|modFlagHit, 0), condTag("MaxResourceGain")),
 			}
 		},

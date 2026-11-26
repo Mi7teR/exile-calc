@@ -62,7 +62,11 @@ func sourced(m map[string]any, source string) map[string]any {
 // threshold = tonumber(thresh) }, the tag of the "if N <influence> items are
 // equipped" lines.
 func itemsEquipped(thresh, influence string) map[string]any {
-	return map[string]any{"type": "MultiplierThreshold", "var": firstToUpper(influence) + "Item", "threshold": toNumber(thresh)}
+	return map[string]any{
+		"type":      "MultiplierThreshold",
+		"var":       firstToUpper(influence) + "Item",
+		"threshold": toNumber(thresh),
+	}
 }
 
 // perStat is { type = "PerStat", stat = stat, div = div }.

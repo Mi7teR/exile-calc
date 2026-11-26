@@ -6,7 +6,13 @@ package modparser
 // { mod = m }, { type = "PerStat", stat = "Dex", div = tonumber(div) }) } end.
 func minionPerDex(name string, flags uint64) Hook {
 	return func(_ *Parser, a []any) any {
-		return []any{modifierOf("MinionModifier", newMod(name, "INC", argF(a, argNum), flags, 0), perStat("Dex", toNumber(argS(a, cap2))))}
+		return []any{
+			modifierOf(
+				"MinionModifier",
+				newMod(name, "INC", argF(a, argNum), flags, 0),
+				perStat("Dex", toNumber(argS(a, cap2))),
+			),
+		}
 	}
 }
 
@@ -37,7 +43,8 @@ func init() {
 			}
 			out := make([]any, len(mods))
 			for i, m := range mods {
-				out[i] = modifierOf("MinionModifier", m.(map[string]any))
+				mm, _ := m.(map[string]any)
+				out[i] = modifierOf("MinionModifier", mm)
 			}
 			return out
 		},
@@ -57,20 +64,45 @@ func init() {
 		// ModParser.lua:4466 ["your linked minions take (%d+)%% less damage"] = function(num) return {
 		//   mod("MinionModifier", "LIST", { mod = mod("DamageTaken", "MORE", -num, { type = "Condition", var = "AffectedByLink"}) }) } end
 		"your linked minions take (%d+)%% less damage": func(_ *Parser, a []any) any {
-			return []any{modifierOf("MinionModifier", withTags(newMod("DamageTaken", "MORE", -argF(a, argNum), 0, 0), condTag("AffectedByLink")))}
+			return []any{
+				modifierOf(
+					"MinionModifier",
+					withTags(newMod("DamageTaken", "MORE", -argF(a, argNum), 0, 0), condTag("AffectedByLink")),
+				),
+			}
 		},
 		// ModParser.lua:4249 ["nearby allies have (%d+)%% increased defences per (%d+) strength you have"] = function(num, _, div) return {
 		//   mod("ExtraAura", "LIST", { onlyAllies = true, mod = mod("Defences", "INC", num) }, { type = "PerStat", stat = "Str", div = tonumber(div) }) } end
-		"nearby allies have (%d+)%% increased defences per (%d+) strength you have": allyAuraPerStat("Defences", "INC", 0, "Str"),
+		"nearby allies have (%d+)%% increased defences per (%d+) strength you have": allyAuraPerStat(
+			"Defences",
+			"INC",
+			0,
+			"Str",
+		),
 		// ModParser.lua:4250 ["nearby allies have %+(%d+)%% to critical strike multiplier per (%d+) dexterity you have"]:
 		//   mod("CritMultiplier", "BASE", num), PerStat Dex
-		"nearby allies have %+(%d+)%% to critical strike multiplier per (%d+) dexterity you have": allyAuraPerStat("CritMultiplier", "BASE", 0, "Dex"),
+		"nearby allies have %+(%d+)%% to critical strike multiplier per (%d+) dexterity you have": allyAuraPerStat(
+			"CritMultiplier",
+			"BASE",
+			0,
+			"Dex",
+		),
 		// ModParser.lua:4251 ["nearby allies have (%d+)%% increased cast speed per (%d+) intelligence you have"]:
 		//   mod("Speed", "INC", num, nil, ModFlag.Cast), PerStat Int
-		"nearby allies have (%d+)%% increased cast speed per (%d+) intelligence you have": allyAuraPerStat("Speed", "INC", modFlagCast, "Int"),
+		"nearby allies have (%d+)%% increased cast speed per (%d+) intelligence you have": allyAuraPerStat(
+			"Speed",
+			"INC",
+			modFlagCast,
+			"Int",
+		),
 		// ModParser.lua:6047 ["nearby allies have (%d+)%% chance to block attack damage per (%d+) strength you have"] = function(block, _, str) return {
 		//   mod("ExtraAura", "LIST", { onlyAllies = true, mod = mod("BlockChance", "BASE", block) }, { type = "PerStat", stat = "Str", div = tonumber(str) }) } end
-		"nearby allies have (%d+)%% chance to block attack damage per (%d+) strength you have": allyAuraPerStat("BlockChance", "BASE", 0, "Str"),
+		"nearby allies have (%d+)%% chance to block attack damage per (%d+) strength you have": allyAuraPerStat(
+			"BlockChance",
+			"BASE",
+			0,
+			"Str",
+		),
 		// ModParser.lua:4510 ["totems gain %+(%d+)%% to (%w+) resistance"] = function(num, _, resistance) return {
 		//   mod("Totem"..firstToUpper(resistance).."Resist", "BASE", num) } end
 		"totems gain %+(%d+)%% to (%w+) resistance": func(_ *Parser, a []any) any {

@@ -16,7 +16,7 @@ func incAndReducedRes(stat, res string, tags ...any) Hook {
 	}
 }
 
-func init() {
+func init() { //nolint:funlen // one registration table of ported Lua functions
 	registerSpecial(map[string]Hook{
 		// ModParser.lua:2496 ["(%d+)%% chance to defend with (%d+)%% of armour for each time you've been hit by an enemy recently, up to (%d+)%%"] =
 		//   function(numChance, _, numArmourMultiplier, cap) return {
@@ -33,11 +33,27 @@ func init() {
 			}
 			neg := func(v string) map[string]any { t := condTag(v); t["neg"] = true; return t }
 			return []any{
-				withTags(sourced(newMod("ArmourDefense", "MAX", more, 0, 0), "Armour Mastery: Max Calc"), condTag("ArmourMax")),
-				withTags(sourced(newMod("ArmourDefense", "MAX", math.Min(chance/100, 1)*more, 0, 0), "Armour Mastery: Average Calc"),
-					condTag("ArmourAvg"), hits()),
-				withTags(sourced(newMod("ArmourDefense", "MAX", math.Min(math.Floor(chance/100), 1)*more, 0, 0), "Armour Mastery: Min Calc"),
-					neg("ArmourMax"), neg("ArmourAvg"), hits()),
+				withTags(
+					sourced(newMod("ArmourDefense", "MAX", more, 0, 0), "Armour Mastery: Max Calc"),
+					condTag("ArmourMax"),
+				),
+				withTags(
+					sourced(
+						newMod("ArmourDefense", "MAX", math.Min(chance/100, 1)*more, 0, 0),
+						"Armour Mastery: Average Calc",
+					),
+					condTag("ArmourAvg"),
+					hits(),
+				),
+				withTags(
+					sourced(
+						newMod("ArmourDefense", "MAX", math.Min(math.Floor(chance/100), 1)*more, 0, 0),
+						"Armour Mastery: Min Calc",
+					),
+					neg("ArmourMax"),
+					neg("ArmourAvg"),
+					hits(),
+				),
 			}
 		},
 		// ModParser.lua:3935 ["modifiers to chance to suppress spell damage also apply to chance to defend with (%d+)%% of armour at (%d+)%% of their value"] =
@@ -48,30 +64,60 @@ func init() {
 		"modifiers to chance to suppress spell damage also apply to chance to defend with (%d+)%% of armour at (%d+)%% of their value": func(_ *Parser, a []any) any {
 			return []any{
 				newMod("SpellSuppressionAppliesToChanceToDefendWithArmourPercentArmour", "MAX", argF(a, argNum), 0, 0),
-				newMod("SpellSuppressionAppliesToChanceToDefendWithArmourPercent", "MAX", toNumber(argS(a, cap2)), 0, 0),
+				newMod(
+					"SpellSuppressionAppliesToChanceToDefendWithArmourPercent",
+					"MAX",
+					toNumber(argS(a, cap2)),
+					0,
+					0,
+				),
 				flagMod("SpellSuppressionAppliesToChanceToDefendWithArmour"),
 			}
 		},
 		// ModParser.lua:4977 ["(%d+)%% increased armour per (%d+) reserved mana"] = function(num, _, mana) return {
 		//   mod("Armour", "INC", num, { type = "PerStat", stat = "ManaReserved", div = tonumber(mana) }) } end
 		"(%d+)%% increased armour per (%d+) reserved mana": func(_ *Parser, a []any) any {
-			return []any{withTags(newMod("Armour", "INC", argF(a, argNum), 0, 0), perStat("ManaReserved", toNumber(argS(a, cap2))))}
+			return []any{
+				withTags(
+					newMod("Armour", "INC", argF(a, argNum), 0, 0),
+					perStat("ManaReserved", toNumber(argS(a, cap2))),
+				),
+			}
 		},
 		// ModParser.lua:5153 ["(%d+)%% increased armour per second you've been stationary, up to a maximum of (%d+)%%"] = function(num, _, limit) return {
 		//   mod("Armour", "INC", num, { type = "Multiplier", var = "StationarySeconds", limit = tonumber(limit / num) }, { type = "Condition", var = "Stationary" }) } end
 		"(%d+)%% increased armour per second you've been stationary, up to a maximum of (%d+)%%": func(_ *Parser, a []any) any {
 			n := argF(a, argNum)
-			return []any{withTags(newMod("Armour", "INC", n, 0, 0),
-				map[string]any{"type": "Multiplier", "var": "StationarySeconds", "limit": argF(a, cap2) / n}, condTag("Stationary"))}
+			return []any{
+				withTags(
+					newMod("Armour", "INC", n, 0, 0),
+					map[string]any{
+						"type":  "Multiplier",
+						"var":   "StationarySeconds",
+						"limit": argF(a, cap2) / n,
+					},
+					condTag("Stationary"),
+				),
+			}
 		},
 		// ModParser.lua:2613 ["gain (%d+)%% increased armour per (%d+) power for 8 seconds when you warcry, up to a maximum of (%d+)%%"] =
 		//   function(num, _, div, limit) return { mod("Armour", "INC", num,
 		//   { type = "Multiplier", var = "WarcryPower", div = tonumber(div), globalLimit = tonumber(limit), globalLimitKey = "WarningCall" },
 		//   { type = "Condition", var = "UsedWarcryInPast8Seconds" }) } end
 		"gain (%d+)%% increased armour per (%d+) power for 8 seconds when you warcry, up to a maximum of (%d+)%%": func(_ *Parser, a []any) any {
-			return []any{withTags(newMod("Armour", "INC", argF(a, argNum), 0, 0),
-				map[string]any{"type": "Multiplier", "var": "WarcryPower", "div": toNumber(argS(a, cap2)), "globalLimit": toNumber(argS(a, cap3)), "globalLimitKey": "WarningCall"},
-				condTag("UsedWarcryInPast8Seconds"))}
+			return []any{
+				withTags(
+					newMod("Armour", "INC", argF(a, argNum), 0, 0),
+					map[string]any{
+						"type":           "Multiplier",
+						"var":            "WarcryPower",
+						"div":            toNumber(argS(a, cap2)),
+						"globalLimit":    toNumber(argS(a, cap3)),
+						"globalLimitKey": "WarningCall",
+					},
+					condTag("UsedWarcryInPast8Seconds"),
+				),
+			}
 		},
 		// ModParser.lua:4270 ["warcries grant arcane surge to you and allies, with (%d+)%% increased effect per (%d+) power, up to (%d+)%%"] =
 		//   function(num, _, div, limit) return {
@@ -83,13 +129,20 @@ func init() {
 			power["globalLimit"], power["globalLimitKey"] = toNumber(argS(a, cap3)), "Brinerot Flag"
 			return []any{
 				modifierOf("ExtraAura", flagMod("Condition:ArcaneSurge"), condTag("UsedWarcryRecently")),
-				withTags(newMod("ArcaneSurgeEffect", "INC", argF(a, argNum), 0, 0), power, condTag("UsedWarcryRecently")),
+				withTags(
+					newMod("ArcaneSurgeEffect", "INC", argF(a, argNum), 0, 0),
+					power,
+					condTag("UsedWarcryRecently"),
+				),
 			}
 		},
 		// ModParser.lua:2558 ["(%d+)%% less damage taken while there are at least two rare or unique enemies nearby"] = function(num) return {
 		//   mod("DamageTaken", "MORE", -num, nil, 0, { type = "MultiplierThreshold", var = "NearbyRareOrUniqueEnemies", threshold = 2 }) } end
-		"(%d+)%% less damage taken while there are at least two rare or unique enemies nearby": negNum("DamageTaken", "MORE",
-			thresholdTag("NearbyRareOrUniqueEnemies", 2.0)),
+		"(%d+)%% less damage taken while there are at least two rare or unique enemies nearby": negNum(
+			"DamageTaken",
+			"MORE",
+			thresholdTag("NearbyRareOrUniqueEnemies", 2.0),
+		),
 		// ModParser.lua:5122 ["(%d+)%% increased maximum life and reduced fire resistance"] = function(num) return {
 		//   mod("Life", "INC", num), mod("FireResist", "INC", -num) } end
 		"(%d+)%% increased maximum life and reduced fire resistance": incAndReducedRes("Life", "FireResist"),
@@ -97,8 +150,11 @@ func init() {
 		"(%d+)%% increased maximum mana and reduced cold resistance": incAndReducedRes("Mana", "ColdResist"),
 		// ModParser.lua:5130 ["(%d+)%% increased global maximum energy shield and reduced lightning resistance"]:
 		//   mod("EnergyShield", "INC", num, { type = "Global" }), mod("LightningResist", "INC", -num)
-		"(%d+)%% increased global maximum energy shield and reduced lightning resistance": incAndReducedRes("EnergyShield", "LightningResist",
-			map[string]any{"type": "Global"}),
+		"(%d+)%% increased global maximum energy shield and reduced lightning resistance": incAndReducedRes(
+			"EnergyShield",
+			"LightningResist",
+			map[string]any{"type": "Global"},
+		),
 		// ModParser.lua:4439 ["debuffs on you expire (%d+)%% slower"] = function(num) return { mod("SelfDebuffExpirationRate", "BASE", -num) } end
 		"debuffs on you expire (%d+)%% slower": negNum("SelfDebuffExpirationRate", "BASE"),
 		// ModParser.lua:4073 ["poisons on you expire (%d+)%% slower"] = function(num) return { mod("SelfPoisonDebuffExpirationRate", "BASE", -num) } end
@@ -112,7 +168,13 @@ func init() {
 		"non%-damaging ailments have (%d+)%% reduced effect on you while you have arcane surge": func(_ *Parser, a []any) any {
 			var out []any
 			for _, ailment := range []string{"Chill", "Freeze", "Shock", "Scorch", "Brittle", "Sap"} {
-				out = append(out, withTags(newMod("Self"+ailment+"Effect", "INC", -argF(a, argNum), 0, 0), condTag("AffectedByArcaneSurge")))
+				out = append(
+					out,
+					withTags(
+						newMod("Self"+ailment+"Effect", "INC", -argF(a, argNum), 0, 0),
+						condTag("AffectedByArcaneSurge"),
+					),
+				)
 			}
 			return out
 		},
@@ -135,7 +197,9 @@ func init() {
 		// ModParser.lua:3069 ["nearby enemy monsters' action speed is at most (%d+)%% of base value"] = function(num) return {
 		//   mod("EnemyModifier", "LIST", { mod = mod("MaximumActionSpeedReduction", "MAX", 100 - num) }) } end
 		"nearby enemy monsters' action speed is at most (%d+)%% of base value": func(_ *Parser, a []any) any {
-			return []any{modifierOf("EnemyModifier", newMod("MaximumActionSpeedReduction", "MAX", 100-argF(a, argNum), 0, 0))}
+			return []any{
+				modifierOf("EnemyModifier", newMod("MaximumActionSpeedReduction", "MAX", 100-argF(a, argNum), 0, 0)),
+			}
 		},
 	})
 }

@@ -15,7 +15,7 @@ func trapThrowChance(names ...string) Hook {
 	}
 }
 
-func init() {
+func init() { //nolint:funlen // one registration table of ported Lua functions
 	registerSpecial(map[string]Hook{
 		// ModParser.lua:3962 ["(%d+)%% chance for bleeding inflicted with this weapon to deal (%d+)%% more damage"] = function(num, _, more) return {
 		//   mod("Damage", "MORE", tonumber(more) * num / 100, nil, 0, KeywordFlag.Bleed, { type = "Condition", var = "{Hand}Attack" },
@@ -29,7 +29,10 @@ func init() {
 		"(%d+)%% chance to throw up to (%d+) additional traps?": trapThrowChance("TrapThrowCount"),
 		// ModParser.lua:4494 ["(%d+)%% chance to throw up to (%d+) additional traps? or mines?"] = function(chance, _, num) return {
 		//   mod("TrapThrowCount", "BASE", tonumber(num) * tonumber(chance) / 100.0), mod("MineThrowCount", "BASE", <same>) } end
-		"(%d+)%% chance to throw up to (%d+) additional traps? or mines?": trapThrowChance("TrapThrowCount", "MineThrowCount"),
+		"(%d+)%% chance to throw up to (%d+) additional traps? or mines?": trapThrowChance(
+			"TrapThrowCount",
+			"MineThrowCount",
+		),
 		// ModParser.lua:4498 ["skills which throw traps throw up to (%d+) additional traps?"] = function(num) return {
 		//   mod("TrapThrowCount", "BASE", tonumber(num)) } end
 		"skills which throw traps throw up to (%d+) additional traps?": func(_ *Parser, a []any) any {
@@ -58,11 +61,19 @@ func init() {
 		// ModParser.lua:3900 ["hits with prismatic skills always ?i?n?f?l?i?c?t? (%w+)"] = function(_, type) return {
 		//   mod("Enemy" .. firstToUpper(type) .. "Chance", "BASE", 100, nil, ModFlag.Hit, { type = "SkillType", skillType = SkillType.RandomElement }) } end
 		"hits with prismatic skills always ?i?n?f?l?i?c?t? (%w+)": func(_ *Parser, a []any) any {
-			return []any{withTags(newMod("Enemy"+firstToUpper(argS(a, cap1))+"Chance", "BASE", 100.0, modFlagHit, 0), skillTypeTag(skillTypeRandElem))}
+			return []any{
+				withTags(
+					newMod("Enemy"+firstToUpper(argS(a, cap1))+"Chance", "BASE", 100.0, modFlagHit, 0),
+					skillTypeTag(skillTypeRandElem),
+				),
+			}
 		},
 		// ModParser.lua:5708 ["impale damage dealt to enemies impaled by you overwhelms (%d+)%% physical damage reduction"] = function(num) return {
 		//   mod("EnemyImpalePhysicalDamageReduction", "BASE", -num) } end
-		"impale damage dealt to enemies impaled by you overwhelms (%d+)%% physical damage reduction": negNum("EnemyImpalePhysicalDamageReduction", "BASE"),
+		"impale damage dealt to enemies impaled by you overwhelms (%d+)%% physical damage reduction": negNum(
+			"EnemyImpalePhysicalDamageReduction",
+			"BASE",
+		),
 		// ModParser.lua:4403 ["inflict fire exposure on hit against enemies with (%d+) cinderflame, applying %-(%d+)%% to (%w+) resistance"] =
 		//   function(cinderflame, _, num, element) return {
 		//   mod("FireExposureChance", "BASE", 100, { type = "Condition", var = "Effective" }, { type = "MultiplierThreshold", var = "CinderflameStacks", threshold = cinderflame }),
@@ -71,7 +82,12 @@ func init() {
 			stacks := func() map[string]any { return thresholdTag("CinderflameStacks", arg(a, argNum)) }
 			return []any{
 				withTags(newMod("FireExposureChance", "BASE", 100.0, 0, 0), condTag("Effective"), stacks()),
-				modifierOf("EnemyModifier", newMod(firstToUpper(argS(a, cap3))+"Exposure", "BASE", -argF(a, cap2), 0, 0), condTag("Effective"), stacks()),
+				modifierOf(
+					"EnemyModifier",
+					newMod(firstToUpper(argS(a, cap3))+"Exposure", "BASE", -argF(a, cap2), 0, 0),
+					condTag("Effective"),
+					stacks(),
+				),
 			}
 		},
 		// ModParser.lua:2689 ["projectiles deal (%d+)%% increased damage with hits and ailments for each remaining chain, up to a maximum of (%d+)%%"] =
@@ -79,9 +95,18 @@ func init() {
 		//   { type = "PerStat", stat = "ChainRemaining", globalLimit = tonumber(limit), globalLimitKey = "FollowThrough" },
 		//   { type = "SkillType", skillType = SkillType.Projectile }) } end
 		"projectiles deal (%d+)%% increased damage with hits and ailments for each remaining chain, up to a maximum of (%d+)%%": func(_ *Parser, a []any) any {
-			return []any{withTags(newMod("Damage", "INC", argF(a, argNum), 0, kwFlagHit|kwFlagAilment),
-				map[string]any{"type": "PerStat", "stat": "ChainRemaining", "globalLimit": toNumber(argS(a, cap2)), "globalLimitKey": "FollowThrough"},
-				skillTypeTag(skillTypeProj))}
+			return []any{
+				withTags(
+					newMod("Damage", "INC", argF(a, argNum), 0, kwFlagHit|kwFlagAilment),
+					map[string]any{
+						"type":           "PerStat",
+						"stat":           "ChainRemaining",
+						"globalLimit":    toNumber(argS(a, cap2)),
+						"globalLimitKey": "FollowThrough",
+					},
+					skillTypeTag(skillTypeProj),
+				),
+			}
 		},
 		// ModParser.lua:2934 ["gain (%d+)%% of (%a+) damage as extra (%a+) damage for each of your hallowing flames that have been removed by an allied hit recently,
 		//   up to (%d+)%%"] = function(num, _, fromType, destType, limit) return { mod(From .. "DamageGainAs" .. Dest, "BASE", num,
@@ -89,16 +114,29 @@ func init() {
 		//   { type = "Multiplier", var = "HallowingFlameStacksRemovedByAlly", limit = tonumber(limit) / num }) } end
 		"gain (%d+)%% of (%a+) damage as extra (%a+) damage for each of your hallowing flames that have been removed by an allied hit recently, up to (%d+)%%": func(_ *Parser, a []any) any {
 			n := argF(a, argNum)
-			return []any{withTags(newMod(firstToUpper(argS(a, cap2))+"DamageGainAs"+firstToUpper(argS(a, cap3)), "BASE", n, 0, 0),
-				map[string]any{"type": "ActorCondition", "actor": "enemy", "var": "HallowingFlame"},
-				map[string]any{"type": "Multiplier", "var": "HallowingFlameStacksRemovedByAlly", "limit": argF(a, cap4) / n})}
+			return []any{
+				withTags(
+					newMod(firstToUpper(argS(a, cap2))+"DamageGainAs"+firstToUpper(argS(a, cap3)), "BASE", n, 0, 0),
+					map[string]any{"type": "ActorCondition", "actor": "enemy", "var": "HallowingFlame"},
+					map[string]any{
+						"type":  "Multiplier",
+						"var":   "HallowingFlameStacksRemovedByAlly",
+						"limit": argF(a, cap4) / n,
+					},
+				),
+			}
 		},
 		// ModParser.lua:4146 ["(%d+)%% increased area of effect per second you've been stationary, up to a maximum of (%d+)%%"] = function(num, _, limit) return {
 		//   mod("AreaOfEffect", "INC", num, { type = "Multiplier", var = "StationarySeconds", globalLimit = tonumber(limit), globalLimitKey = "ExpansiveMight",
 		//   limitTotal = true }) } end
 		"(%d+)%% increased area of effect per second you've been stationary, up to a maximum of (%d+)%%": func(_ *Parser, a []any) any {
-			return []any{withTags(newMod("AreaOfEffect", "INC", argF(a, argNum), 0, 0), map[string]any{"type": "Multiplier", "var": "StationarySeconds",
-				"globalLimit": toNumber(argS(a, cap2)), "globalLimitKey": "ExpansiveMight", "limitTotal": true})}
+			return []any{
+				withTags(
+					newMod("AreaOfEffect", "INC", argF(a, argNum), 0, 0),
+					map[string]any{"type": "Multiplier", "var": "StationarySeconds",
+						"globalLimit": toNumber(argS(a, cap2)), "globalLimitKey": "ExpansiveMight", "limitTotal": true},
+				),
+			}
 		},
 		// ModParser.lua:5416 ["warcries have (%d+)%% chance to exert (%d+) additional attacks?"] = function(num, _, var) return {
 		//   mod("ExtraExertedAttacks", "BASE", (num*var/100)) } end
@@ -110,8 +148,17 @@ func init() {
 		// ModParser.lua:2217 ["enemies taunted by your warcries explode on death, dealing (%d+)%% of their maximum life as (.+) damage"] = function(amount, _, type)
 		//   return explodeFunc(100, amount, type, { type = "ActorCondition", actor = "enemy", var = "Taunted" }, { type = "Condition", var = "UsedWarcryRecently" }) end
 		"enemies taunted by your warcries explode on death, dealing (%d+)%% of their maximum life as (.+) damage": func(_ *Parser, a []any) any {
-			return explodeFunc(100, argS(a, cap1), argS(a, cap2),
-				map[string]any{"type": "ActorCondition", "actor": "enemy", "var": "Taunted"}, condTag("UsedWarcryRecently"))
+			return explodeFunc(
+				100,
+				argS(a, cap1),
+				argS(a, cap2),
+				map[string]any{
+					"type":  "ActorCondition",
+					"actor": "enemy",
+					"var":   "Taunted",
+				},
+				condTag("UsedWarcryRecently"),
+			)
 		},
 		// ModParser.lua:5959 ["%+([%d%.]+) metres? to weapon range per 10%% quality"] = function(num) return {
 		//   mod("AlternateQualityLocalWeaponRangePer10Quality", "BASE", num * 10) } end
@@ -121,7 +168,12 @@ func init() {
 		// ModParser.lua:6050 ["physical skills have (%d+)%% increased duration per (%d+) intelligence"] = function(num1, _, num2)
 		//   return { mod("Duration", "INC", num1, nil, nil, KeywordFlag.Physical, { type = "PerStat", stat = "Int", div = tonumber(num2) }) } end
 		"physical skills have (%d+)%% increased duration per (%d+) intelligence": func(_ *Parser, a []any) any {
-			return []any{withTags(newMod("Duration", "INC", argF(a, argNum), 0, kwFlagPhysical), perStat("Int", toNumber(argS(a, cap2))))}
+			return []any{
+				withTags(
+					newMod("Duration", "INC", argF(a, argNum), 0, kwFlagPhysical),
+					perStat("Int", toNumber(argS(a, cap2))),
+				),
+			}
 		},
 		// ModParser.lua:5539 ["travel skills other than ([%a%s]+) are disabled"] = function(_, name) return {
 		//   flag("DisableSkill", { type = "SkillType", skillType = SkillType.Travel }), flag("EnableSkill", { type = "SkillId", skillId = gemIdLookup[name] }) } end
@@ -145,10 +197,19 @@ func init() {
 		//   mod("FoulbornKitavaRequiredLifeCost", "BASE", tonumber(amount), "Kitava's Thirst"),
 		//   mod("ExtraSupport", "LIST", { skillId = "SupportCastOnLifeSpent", level = 1 }, { type = "SocketedIn", slotName = "{SlotName}" }) } end
 		"(%d+)%% chance to [c?t?][a?r?][s?i?][t?g?]g?e?r? socketed spells when you spend at least (%d+) life on an upfront cost to use or trigger a skill, with a ([%d%.]+) second cooldown": func(_ *Parser, a []any) any {
-			support := newMod("ExtraSupport", "LIST", map[string]any{keySkillID: "SupportCastOnLifeSpent", "level": 1.0}, 0, 0)
+			support := newMod(
+				"ExtraSupport",
+				"LIST",
+				map[string]any{keySkillID: "SupportCastOnLifeSpent", "level": 1.0},
+				0,
+				0,
+			)
 			return []any{
 				sourced(newMod("FoulbornKitavaTriggerChance", "BASE", arg(a, argNum), 0, 0), "Kitava's Thirst"),
-				sourced(newMod("FoulbornKitavaRequiredLifeCost", "BASE", toNumber(argS(a, cap2)), 0, 0), "Kitava's Thirst"),
+				sourced(
+					newMod("FoulbornKitavaRequiredLifeCost", "BASE", toNumber(argS(a, cap2)), 0, 0),
+					"Kitava's Thirst",
+				),
 				withTags(support, map[string]any{"type": "SocketedIn", "slotName": "{SlotName}"}),
 			}
 		},

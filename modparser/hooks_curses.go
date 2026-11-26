@@ -19,7 +19,9 @@ func init() {
 		"your curses have (%d+)%% increased effect if (%d+)%% of curse duration expired": func(_ *Parser, a []any) any {
 			expired := thresholdTag("CurseExpired", toNumber(argS(a, cap2)))
 			expired["actor"] = "enemy"
-			return []any{withTags(newMod("CurseEffect", "INC", argF(a, argNum), 0, 0), expired, skillTypeTag(skillTypeHex))}
+			return []any{
+				withTags(newMod("CurseEffect", "INC", argF(a, argNum), 0, 0), expired, skillTypeTag(skillTypeHex)),
+			}
 		},
 		// ModParser.lua:4124 ["non%-aura hexes expire upon reaching (%d+)%% of base effect non%-aura hexes gain (%d+)%% increased effect per second"] =
 		//   function(limit, _, num) return { mod("CurseEffect", "INC", tonumber(num),
@@ -28,22 +30,47 @@ func init() {
 		"non%-aura hexes expire upon reaching (%d+)%% of base effect non%-aura hexes gain (%d+)%% increased effect per second": func(_ *Parser, a []any) any {
 			aura := skillTypeTag(skillTypeAura)
 			aura["neg"] = true
-			return []any{withTags(newMod("CurseEffect", "INC", toNumber(argS(a, cap2)), 0, 0),
-				map[string]any{"type": "Multiplier", "actor": "enemy", "var": "CurseDurationExpired", "limit": argF(a, argNum), "limitTotal": true},
-				aura, skillTypeTag(skillTypeHex))}
+			return []any{
+				withTags(
+					newMod("CurseEffect", "INC", toNumber(argS(a, cap2)), 0, 0),
+					map[string]any{
+						"type":       "Multiplier",
+						"actor":      "enemy",
+						"var":        "CurseDurationExpired",
+						"limit":      argF(a, argNum),
+						"limitTotal": true,
+					},
+					aura,
+					skillTypeTag(skillTypeHex),
+				),
+			}
 		},
 		// ModParser.lua:4127 ["enemies cursed by you have malediction if (%d+)%% of curse duration expired"] = function(num) return {
 		//   mod("EnemyModifier", "LIST", { mod = flag("HasMalediction", { type = "MultiplierThreshold", var = "CurseExpired", threshold = tonumber(num) },
 		//   { type = "ActorCondition", var = "Cursed" }) }) } end
-		"enemies cursed by you have malediction if (%d+)%% of curse duration expired": cursedEnemyFlag("HasMalediction"),
+		"enemies cursed by you have malediction if (%d+)%% of curse duration expired": cursedEnemyFlag(
+			"HasMalediction",
+		),
 		// ModParser.lua:4130 ["enemies cursed by you are hindered if (%d+)%% of curse duration expired"]: flag("Condition:Hindered", <same tags>)
-		"enemies cursed by you are hindered if (%d+)%% of curse duration expired": cursedEnemyFlag("Condition:Hindered"),
+		"enemies cursed by you are hindered if (%d+)%% of curse duration expired": cursedEnemyFlag(
+			"Condition:Hindered",
+		),
 		// ModParser.lua:4206 ["temporal chains has (%d+)%% reduced effect on you"] = function(num) return {
 		//   mod("CurseEffectOnSelf", "INC", -num, { type = "SkillName", skillName = "Temporal Chains" }) } end
-		"temporal chains has (%d+)%% reduced effect on you": negNum("CurseEffectOnSelf", "INC", map[string]any{"type": "SkillName", "skillName": "Temporal Chains"}),
+		"temporal chains has (%d+)%% reduced effect on you": negNum(
+			"CurseEffectOnSelf",
+			"INC",
+			map[string]any{"type": "SkillName", "skillName": "Temporal Chains"},
+		),
 		// ModParser.lua:5680 ["offering skills have (%d+)%% reduced duration"] = function(num) return {
 		//   mod("Duration", "INC", -num, { type = "SkillName", skillNameList = { "Bone Offering", "Flesh Offering", "Spirit Offering", "Blood Offering" } }) } end
-		"offering skills have (%d+)%% reduced duration": negNum("Duration", "INC",
-			map[string]any{"type": "SkillName", "skillNameList": []any{"Bone Offering", "Flesh Offering", "Spirit Offering", "Blood Offering"}}),
+		"offering skills have (%d+)%% reduced duration": negNum(
+			"Duration",
+			"INC",
+			map[string]any{
+				"type":          "SkillName",
+				"skillNameList": []any{"Bone Offering", "Flesh Offering", "Spirit Offering", "Blood Offering"},
+			},
+		),
 	})
 }
