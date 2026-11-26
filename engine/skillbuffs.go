@@ -844,8 +844,11 @@ func (c *Calculator) playerAuraOthers(db *ModDB, s, pm *activeSkill, b *skillBuf
 			list.MoreCfg(cfg, "AuraEffect", "BuffEffect", "AuraBuffEffect"), 0)
 		add(totemAuraMods(scale, extra, b.mods), "Totem "+b.name)
 	}
-	// CalcPerform.lua:2582-2618: PoB merges the extra debuff mods without
-	// the multiplier it computes.
+	// CalcPerform.lua:2582-2618, with one difference (user decision): PoB
+	// computes the aura and debuff effect multiplier (2607-2609) and
+	// merges the extra debuff mods unscaled (2615); in the game aura effect
+	// scales them, so here they are scaled by that multiplier (0 when a
+	// stronger party aura debuff applies, 2611-2613).
 	if len(db.List(cfg, "ExtraAuraDebuffEffect")) == 0 || db.Flag("SelfAurasOnlyAffectYou") ||
 		list.FlagCfg(cfg, "SelfAurasAffectYouAndLinkedTarget") {
 		return
@@ -856,12 +859,15 @@ func (c *Calculator) playerAuraOthers(db *ModDB, s, pm *activeSkill, b *skillBuf
 		}
 	}
 	mods := extraAuraDebuffMods(db, cfg)
+	mult := (1 + list.SumCfg(cfg, "INC", "AuraEffect", "BuffEffect", "DebuffEffect")/100) *
+		list.MoreCfg(cfg, "AuraEffect", "BuffEffect", "DebuffEffect")
 	if e := db.partyExports; e != nil {
-		mult := (1 + list.SumCfg(cfg, "INC", "AuraEffect", "BuffEffect", "DebuffEffect")/100) *
-			list.MoreCfg(cfg, "AuraEffect", "BuffEffect", "DebuffEffect")
 		e.setAuraDebuff(b.name, &partyExport{effectMult: mult, mods: mods})
 	}
-	addDebuff(mods, b.name)
+	if db.party.auraBeats("AuraDebuff", b.name, mult) {
+		mult = 0
+	}
+	addDebuff(scaleMods(mods, mult), b.name)
 }
 
 // totemResistName is the mod.name:match("Resist?M?a?x?$") of the totem

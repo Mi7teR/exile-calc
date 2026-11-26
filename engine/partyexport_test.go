@@ -79,3 +79,24 @@ func exportBlocks(typ, text string) [][]string {
 	flush()
 	return out
 }
+
+// TestPartyExportLeechLink: a link's MaximumLifeLeechIsEqualToPartyMember
+// exports the player's leech cap (user decision; PoB's "Parent" filter at
+// CalcPerform.lua:3949 skips its branch, 3954-3955), and a "Parent" mod
+// still exports as PoB does (3950-3951).
+func TestPartyExportLeechLink(t *testing.T) {
+	db := NewModDB()
+	db.enemy = NewModDB()
+	db.output["MaxLifeLeechRatePercent"], db.output["BlockChanceMax"] = 20, 75
+	e := newPartyExports()
+	e.link["Protective Link"] = &partyExport{effectMult: 1, mods: []Mod{
+		{Name: "MaximumLifeLeechIsEqualToPartyMember", Type: "FLAG", Value: true},
+		{Name: "MaximumBlockAttackChanceIsEqualToParent", Type: "FLAG", Value: true},
+	}}
+	e.finish(db, nil, hitSource{})
+	for _, k := range []string{"MaxLifeLeechRatePercent=20", "BlockChanceMax=75"} {
+		if !e.playerMods[k] {
+			t.Errorf("PlayerMods %v without %s", e.playerMods, k)
+		}
+	}
+}

@@ -245,11 +245,13 @@ func TestPlayerAuraOthers(t *testing.T) {
 	if !totem.mods.conditions["AffectedByDetermination"] || !totem.mods.conditions["AffectedByAura"] {
 		t.Errorf("totem conditions %v", totem.mods.conditions)
 	}
-	// The AurasAffectEnemies debuff (scaled 1.5), then the extra debuff mod
-	// unscaled, as PoB merges it.
+	// The AurasAffectEnemies debuff (scaled 1.5), then the extra debuff mod,
+	// which PoB merges unscaled (CalcPerform.lua:2615) and the engine scales
+	// by aura effect as the game does (user decision): 5 * 1.5, truncated as
+	// ScaleAddList does a whole value.
 	want := []Mod{
 		{Name: "Armour", Type: "MORE", Value: 30.0},
-		{Name: "PhysicalDamageTaken", Type: "INC", Value: 5.0, Source: "Tree"},
+		{Name: "PhysicalDamageTaken", Type: "INC", Value: 7.0, Source: "Tree"},
 	}
 	got := debuffs["Determination"]
 	if len(got) != 2 || got[0].Value != want[0].Value || got[1].Name != want[1].Name || got[1].Value != want[1].Value {

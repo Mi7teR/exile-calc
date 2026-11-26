@@ -427,13 +427,20 @@ func (e *partyExports) finish(db *ModDB, main *activeSkill, w1 hitSource) {
 			e.aura[key] = cp
 		}
 	}
-	// The links (3944-3967). MaximumLifeLeechIsEqualToPartyMember has no
-	// "Parent" in its name, so PoB never exports it.
+	// The links (3944-3967), with one difference (user decision): PoB
+	// looks only at mods with "Parent" in their name (3949), so its branch
+	// for MaximumLifeLeechIsEqualToPartyMember (3954-3955) never runs and
+	// the party member's leech cap is not exported; here it is, as the
+	// link does in the game.
 	for _, name := range sortedKeys(e.link) {
 		if name == "Flame Link" {
 			e.playerMods["Life="+luaToString(out["Life"])] = true
 		}
 		for _, m := range e.link[name].mods {
+			if m.Name == "MaximumLifeLeechIsEqualToPartyMember" {
+				e.playerMods["MaxLifeLeechRatePercent="+luaToString(out["MaxLifeLeechRatePercent"])] = true
+				continue
+			}
 			if !strings.Contains(m.Name, "Parent") {
 				continue
 			}
