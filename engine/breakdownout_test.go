@@ -5,6 +5,7 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -38,6 +39,13 @@ func TestNonDamagingAilmentOutputs(t *testing.T) {
 // always set, every build must have each key.
 func oracleStats(t *testing.T, always bool, keys ...string) {
 	t.Helper()
+	oracleStatsExcept(t, always, nil, keys...)
+}
+
+// oracleStatsExcept is oracleStats without the keys skip lists per build
+// (a stat that follows another one the engine already gets wrong).
+func oracleStatsExcept(t *testing.T, always bool, skip map[string][]string, keys ...string) {
+	t.Helper()
 	if testing.Short() {
 		t.Skip("corpus")
 	}
@@ -62,6 +70,9 @@ func oracleStats(t *testing.T, always bool, keys ...string) {
 			t.Fatal(cerr)
 		}
 		for _, k := range keys {
+			if slices.Contains(skip[id], k) {
+				continue
+			}
 			want, ok := exp[k].(float64)
 			if bv, isBool := exp[k].(bool); isBool {
 				want, ok = b2f(bv), true
@@ -300,4 +311,40 @@ func TestBuildOutputStats(t *testing.T) {
 		"Spec:EnergyShieldInc")
 	oracleStats(t, false, "ManaCostWarning", "LifeCostWarning", "ESCostWarning", "RageCostWarning",
 		"EnergyShieldProtectsMana")
+}
+
+// TestLeechStats: the leech, gain on hit/kill and PvP outputs of
+// calcs.offence (CalcOffence.lua:3428-3830, 3906-3960, 4007-4031,
+// 4144-4185) and the leech caps of calcs.defence (CalcDefence.lua:1243-
+// 1275).
+func TestLeechStats(t *testing.T) {
+	var keys []string
+	for _, r := range []string{"Life", "EnergyShield", "Mana"} {
+		for _, k := range []string{
+			"Leech", "LeechDuration", "LeechGainPerHit", "LeechGainRate", "LeechInstanceRate", "LeechInstances",
+			"LeechInstant", "LeechInstantProportion", "LeechInstantRate", "LeechPerHit", "LeechRate", "OnHit",
+			"OnHitRate", "OnKill",
+		} {
+			keys = append(keys, r+k)
+		}
+		keys = append(keys, "Max"+r+"LeechInstance", "Max"+r+"LeechRate")
+	}
+	keys = append(keys, "MaxLifeLeechRatePercent", "PvpAverageDamage", "PvpTotalDPS", "TotalMin", "TotalMax",
+		"EnemyLifeRegen", "EnemyManaRegen", "EnemyEnergyShieldRegen")
+	skip := map[string][]string{
+		// The engine's EnergyShield is 7104, PoB's 7103 (also before this
+		// port); the energy shield leech caps follow it.
+		"mKBO1UbFLlKF": {"MaxEnergyShieldLeechInstance", "MaxEnergyShieldLeechRate", "EnergyShieldLeechInstanceRate"},
+		// The engine reads Watcher's Eye "Gain (20-30) Life per Enemy Hit
+		// while affected by Vitality" as 25, PoB as 30 ({range:1}).
+		"phcouqzIsSYP": {"LifeOnHit", "LifeOnHitRate", "LifeLeechGainRate"},
+		// The active config has the map mod "of Congealment" (enemies cannot
+		// be leeched from, Data/ModMap.lua:213-220); map mods are not ported.
+		"zKMTzbWQ2h1C": {
+			"LifeLeechDuration", "LifeLeechGainRate", "LifeLeechInstances", "LifeLeechInstant",
+			"LifeLeechInstantRate", "LifeLeechPerHit", "LifeLeechRate", "ManaLeechDuration", "ManaLeechGainRate",
+			"ManaLeechInstances", "ManaLeechInstant", "ManaLeechInstantRate", "ManaLeechPerHit", "ManaLeechRate",
+		},
+	}
+	oracleStatsExcept(t, false, skip, keys...)
 }

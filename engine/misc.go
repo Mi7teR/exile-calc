@@ -367,6 +367,16 @@ func initConditionMods(db *ModDB) {
 	db.NewMod("ActionSpeed", "MORE", -10, "Base", when("MalignantMadness"), madness)
 	db.NewMod("PhysicalDamageReduction", "BASE", -15, "Base", when("Crushed"))
 	db.NewMod("CritChanceCap", "BASE", 100, "Base")
+	// Leech caps of calcs.initModDB (CalcSetup.lua:62-70): Data/Misc.lua
+	// characterConstants maximum_life/mana_leech_rate_%_per_minute 1200
+	// (/ 60) and maximum_*_leech_amount_per_leech_% 10.
+	const leechRate, esLeechRate, leechInstance = 1200.0 / 60, 10, 10
+	db.NewMod("MaxLifeLeechRate", "BASE", leechRate, "Base")
+	db.NewMod("MaxManaLeechRate", "BASE", leechRate, "Base")
+	db.NewMod("MaxEnergyShieldLeechRate", "BASE", esLeechRate, "Base")
+	db.NewMod("MaxLifeLeechInstance", "BASE", leechInstance, "Base")
+	db.NewMod("MaxManaLeechInstance", "BASE", leechInstance, "Base")
+	db.NewMod("MaxEnergyShieldLeechInstance", "BASE", leechInstance, "Base")
 	// Skill use times and stack limits of calcs.initModDB.
 	db.NewMod("TrapThrowingTime", "BASE", 0.6, "Base")
 	db.NewMod("MineLayingTime", "BASE", 0.3, "Base")

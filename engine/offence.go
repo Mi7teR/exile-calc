@@ -76,6 +76,10 @@ type hitPass struct {
 	conv   map[string]*convEntry
 	out    map[string]float64
 	base   map[string][2]float64 // <Type>MinBase, <Type>MaxBase
+	// dpsMod is the DPS INC/MORE (and brand) part of skillData.dpsMultiplier.
+	dpsMod float64
+	// totalHitMin, totalHitMax: the non-crit hit's range (output.TotalMin/Max).
+	totalHitMin, totalHitMax float64
 }
 
 // offence computes a skill's hit DPS into out: Speed, HitChance,
@@ -266,7 +270,10 @@ func (c *Calculator) offence(actor *ModDB, s *activeSkill, w1 hitSource, w2 *hit
 			return
 		}
 		if !both {
-			out[stat] = passes[0].out[stat]
+			// output.MainHand[stat] or output.OffHand[stat]: nil stays unset.
+			if v, ok := passes[0].out[stat]; ok {
+				out[stat] = v
+			}
 			return
 		}
 		mh, oh := passes[0].out[stat], passes[1].out[stat]
@@ -347,7 +354,7 @@ func (c *Calculator) offence(actor *ModDB, s *activeSkill, w1 hitSource, w2 *hit
 	pacts(actor, s, out)
 	for _, p := range passes {
 		ruthlessAndFistOfWar(s, p, out)
-		p.global = out
+		p.global, p.dpsMod = out, dpsMod
 		c.hitDamage(actor, s, p)
 		// After hitDamage: postCritFunc may change it too (CalcOffence reads
 		// skillData.dpsMultiplier for TotalDPS after postCritFunc).
@@ -357,6 +364,7 @@ func (c *Calculator) offence(actor *ModDB, s *activeSkill, w1 hitSource, w2 *hit
 			speed = hs
 		}
 		p.out["TotalDPS"] = p.out["AverageDamage"] * speed * dpsMult * quantity
+		pvpDamage(actor, s, p, speed, dpsMult, p.totalHitMin, p.totalHitMax)
 		cullAndReservation(actor, s, p, out, dpsMult)
 	}
 	if debugPasses != nil {
@@ -366,7 +374,21 @@ func (c *Calculator) offence(actor *ModDB, s *activeSkill, w1 hitSource, w2 *hit
 	combine("CritChance", "AVERAGE")
 	combine("CritMultiplier", "AVERAGE")
 	combine("AverageDamage", "DPS")
+	combine("PvpAverageDamage", "DPS")
 	combine("TotalDPS", "DPS")
+	combine("PvpTotalDPS", "DPS")
+	for _, r := range leechPools { // CalcOffence.lua:4010-4031
+		for _, st := range []string{"LeechDuration", "LeechInstances", "LeechInstant", "LeechInstantRate",
+			"LeechInstantProportion"} {
+			combine(r+st, "DPS")
+		}
+	}
+	for _, r := range leechPools {
+		for _, st := range []string{"OnHit", "OnHitRate", "OnKill"} {
+			combine(r+st, "DPS")
+		}
+	}
+	leechRates(actor, s, out)
 	// Ailments and debuffs, per pass.
 	s.flags["igniteCanStack"] = list.FlagCfg(cfg, "IgniteCanStack")
 	for _, p := range passes {

@@ -93,6 +93,7 @@ func avoidanceAndRecovery(db *ModDB) {
 	}
 	out["ManaRecoveryRateMod"] = calcMod(db, nil, "ManaRecoveryRate")
 	out["EnergyShieldRecoveryRateMod"] = calcMod(db, nil, "EnergyShieldRecoveryRate")
+	leechCaps(db)
 
 	// Regeneration.
 	resources := []string{"Mana", "Life", "Energy Shield", "Rage"}

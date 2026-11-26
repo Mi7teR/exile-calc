@@ -131,6 +131,8 @@ func (c *Calculator) hitDamage(actor *ModDB, s *activeSkill, p *hitPass) {
 		warcry = 1
 	}
 	scaled *= out["RuthlessBlowHitEffect"] * out["FistOfWarDamageEffect"] * warcry
+	// CalcOffence.lua:3338, before postCritFunc.
+	hitRate := out["HitChance"] / 100 * outOr(p.global, "HitSpeed", p.global["Speed"]) * data.dpsMultiplier.or(1) * p.dpsMod
 	postCritFunc(s, out, p.global)
 	redirectAddedDamage(list, p.cfg)
 
@@ -159,7 +161,11 @@ func (c *Calculator) hitDamage(actor *ModDB, s *activeSkill, p *hitPass) {
 	}
 
 	// Hit damage per type: pass 1 crits, pass 2 non-crits.
-	var totalHitAvg, totalCritAvg float64
+	var totalHitAvg, totalCritAvg, totalHitMin, totalHitMax, ghostLeech float64
+	ghostReaver := list.Flag("GhostReaver")
+	for _, r := range leechPools { // CalcOffence.lua:3428-3433
+		out[r+"Leech"], out[r+"LeechInstant"] = 0, 0
+	}
 	out["impaleStoredHitAvg"] = 0
 	skillCond := p.cfg.SkillCond
 	for pass := 1; pass <= 2; pass++ {
@@ -169,6 +175,7 @@ func (c *Calculator) hitDamage(actor *ModDB, s *activeSkill, p *hitPass) {
 		}
 		cond["CriticalStrike"] = pass == 1
 		p.cfg.SkillCond = cond
+		leech := newLeechPass(list, enemy, p.cfg)
 		for _, t := range dmgTypeList {
 			if !s.flags["hit"] || list.FlagCfg(cfg, "DealNo"+t, "DealNoDamage") {
 				// CalcOffence.lua:3691-3701: the type's average is set, 0.
@@ -232,18 +239,27 @@ func (c *Calculator) hitDamage(actor *ModDB, s *activeSkill, p *hitPass) {
 				}
 				// output[type.."EffMult"] is set only in CALCS mode
 				// (CalcOffence.lua:3641-3643).
-				avg *= c.enemyEffMult(actor, list, p.cfg, s, t, avg)
+				em := c.enemyEffMult(actor, list, p.cfg, s, t, avg)
+				mn, mx, avg = mn*em, mx*em, avg*em
 			}
+			leech.addType(s, enemy, p.cfg, t, avg)
 			if pass == 1 {
 				totalCritAvg += avg
 				out[t+"CritAverage"] = avg
 			} else {
 				totalHitAvg += avg
+				totalHitMin += mn
+				totalHitMax += mx
 				out[t+"HitAverage"] = avg
 			}
 		}
+		leech.finish(s, actor, out, pass, ghostReaver, &ghostLeech)
 	}
 	p.cfg.SkillCond = skillCond
+	out["TotalMin"], out["TotalMax"] = totalHitMin, totalHitMax
+	damageTypeConditions(actor, s, out)
+	leechAndGain(actor, s, p, ghostLeech, hitRate)
+	p.totalHitMin, p.totalHitMax = totalHitMin, totalHitMax
 
 	out["AverageHit"] = totalHitAvg*(1-out["CritChance"]/100) + totalCritAvg*out["CritChance"]/100
 	if s.flags["monsterExplode"] && truthy(s.data.val("hitChanceIsExplodeChance")) {
