@@ -32,6 +32,8 @@ type calcState struct {
 	// compared is the id of the Comparer's compared item (0 = none),
 	// whose grants are not cached (itemInfo).
 	compared int
+	// buffMode is the CALCS pass's misc_buffMode ("": EFFECTIVE).
+	buffMode string
 
 	// Passive tree.
 	allocated    map[int]bool
@@ -132,15 +134,16 @@ func (c *Calculator) Calc(b *pobcode.Build) (*Result, error) {
 
 // calcOpts are the calcState settings Calc leaves at zero.
 type calcOpts struct {
-	calculator bool // calcState.calculator: CALCULATOR mode
-	compared   int  // calcState.compared
+	calculator bool   // calcState.calculator: CALCULATOR mode
+	compared   int    // calcState.compared
+	buffMode   string // calcState.buffMode
 }
 
 // calc is Calc with opts: MAIN mode, or CALCULATOR mode with
 // opts.calculator.
 func (c *Calculator) calc(b *pobcode.Build, opts calcOpts) (*Result, error) {
 	// The steps of calcSteps run in order over a fresh calcState.
-	st := &calcState{b: b, calculator: opts.calculator, compared: opts.compared}
+	st := &calcState{b: b, calculator: opts.calculator, compared: opts.compared, buffMode: opts.buffMode}
 	for _, step := range calcSteps {
 		if err := step.run(c, st); err != nil {
 			return nil, err
@@ -644,8 +647,8 @@ func stepItemConditions(c *Calculator, st *calcState) error {
 // tab's enemy mods (697), all before the tree nodes (786) and items (811).
 func stepConfig(c *Calculator, st *calcState) error {
 	db, b, res := st.db, st.b, st.res
-	buffMode(db)
-	buffMode(db.enemy)
+	buffMode(db, st.buffMode)
+	buffMode(db.enemy, st.buffMode)
 	db.enemyEnv = newEnemyEnv(st.config, c.data.Config, b.Level, c.data.Monster, res)
 	db.enemy.NewMod("Accuracy", "BASE", enemyAccuracy(c.data.Monster, db.enemyEnv.level), "Base")
 	// CalcSetup.lua:690.

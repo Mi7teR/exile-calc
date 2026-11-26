@@ -186,7 +186,9 @@ func offenceDuration(actor *ModDB, s *activeSkill, out map[string]float64) {
 	}
 	d := base * out["DurationMod"]
 	if truthy(data.val("debuff")) {
-		d /= math.Max(0.25, calcMod(actor.enemy, cfg, "BuffExpireFaster")) // BuffExpirationSlowCap
+		if modeEffective(actor.enemy) { // CalcOffence.lua:1494
+			d /= math.Max(buffExpirationSlowCap, calcMod(actor.enemy, cfg, "BuffExpireFaster"))
+		}
 	}
 	out["Duration"] = math.Ceil(d*serverTickRate) / serverTickRate
 }
@@ -196,7 +198,7 @@ func offenceDuration(actor *ModDB, s *activeSkill, out map[string]float64) {
 func impaleDuration(actor *ModDB, s *activeSkill, out map[string]float64) {
 	const impaledDebuffBaseDuration = 8 // characterConstants impaled_debuff_base_duration_ms / 1000
 	out["ImpaleDurationMod"] = math.Max(calcMod(s.mods, s.cfg, "ImpaleDuration"), 0)
-	debuffDurationMult := 1 / math.Max(buffExpirationSlowCap, calcMod(actor.enemy, s.cfg, "BuffExpireFaster"))
+	debuffDurationMult := debuffDurationMult(actor.enemy, s.cfg)
 	out["ImpaleDuration"] = math.Ceil(impaledDebuffBaseDuration*out["ImpaleDurationMod"]*serverTickRate*debuffDurationMult) / serverTickRate
 }
 

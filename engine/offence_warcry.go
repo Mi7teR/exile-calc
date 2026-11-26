@@ -37,6 +37,9 @@ func setCryOutputs(actor *ModDB, v *activeSkill, out map[string]float64, cry str
 func warcries(actor *ModDB, s *activeSkill, cfg *Cfg, out map[string]float64) {
 	out["OffensiveWarcryEffect"], out["MaxOffensiveWarcryEffect"], out["AilmentWarcryEffect"] = 1, 1, 1
 	out["GlobalWarcryUptimeRatio"] = 0
+	if !modeBuffs(actor) { // CalcOffence.lua:2653
+		return
+	}
 	for _, t := range []int{stNeverExertable, stTriggered, stChannel, stOtherThingUsesSkill, stRetaliation, stSummonsTotem} {
 		if s.types[t] {
 			return
@@ -127,7 +130,11 @@ func warcries(actor *ModDB, s *activeSkill, cfg *Cfg, out map[string]float64) {
 			}
 			areaOfEffect(s, out)
 		case "Intimidating":
-			dd := math.Min(list.SumCfg(cfg, "BASE", "DoubleDamageChance")+actor.enemy.SumCfg(cfg, "BASE", "SelfDoubleDamageChance")+exertDD, 100)
+			selfDD := 0.0
+			if modeEffective(actor) { // CalcOffence.lua:2729
+				selfDD = actor.enemy.SumCfg(cfg, "BASE", "SelfDoubleDamageChance")
+			}
+			dd := math.Min(list.SumCfg(cfg, "BASE", "DoubleDamageChance")+selfDD+exertDD, 100)
 			out["IntimidatingAvgDmg"] = 2 * (1 - dd/100)
 		case "Rallying":
 			avg := math.Min(player.SumCfg(cfg, "BASE", "Multiplier:NearbyAlly"), 5) * player.Sum("BASE", "RallyingExertMoreDamagePerAlly") / 100
@@ -178,6 +185,9 @@ func warcries(actor *ModDB, s *activeSkill, cfg *Cfg, out map[string]float64) {
 func ruthlessAndFistOfWar(s *activeSkill, p *hitPass, global map[string]float64) {
 	list, cfg, out := s.mods, p.cfg, p.out
 	out["RuthlessBlowHitEffect"], out["FistOfWarDamageEffect"] = 1, 1
+	if !modeCombat(list.root()) { // CalcOffence.lua:3008
+		return
+	}
 	mode := "AVERAGE"
 	if b := list.theBuild(); b != nil {
 		mode = configString(b.ActiveConfig(), "ruthlessSupportMode", "AVERAGE")

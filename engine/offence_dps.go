@@ -47,6 +47,9 @@ func skillDot(actor *ModDB, s *activeSkill, out map[string]float64, dpsMult, qua
 			resist = enemyResist(actor, &tc, t)
 		}
 		effMult := (1 - resist/100) * (1 + inc/100) * more
+		if !modeEffective(actor) { // CalcOffence.lua:5868
+			effMult = 1
+		}
 		out[t+"DotEffMult"] = effMult
 		dmgNames := []string{"Damage", t + "Damage"}
 		if isElemental[t] {
@@ -135,7 +138,10 @@ func decay(actor *ModDB, s *activeSkill, out map[string]float64) {
 	dotCfg.Flags = mfDot
 	dotCfg.KeywordFlags = s.cfg.KeywordFlags&^kfHit | kfDot["Chaos"]
 	names := []string{"DamageTaken", "DamageTakenOverTime", "ChaosDamageTaken", "ChaosDamageTakenOverTime"}
-	effMult := (1 - enemyResist(actor, &dotCfg, "Chaos")/100) * (1 + enemy.Sum("INC", names...)/100) * enemy.More(names...)
+	effMult := 1.0
+	if modeEffective(actor) { // CalcOffence.lua:5757
+		effMult = (1 - enemyResist(actor, &dotCfg, "Chaos")/100) * (1 + enemy.Sum("INC", names...)/100) * enemy.More(names...)
+	}
 	out["DecayEffMult"] = effMult
 	inc := list.SumCfg(&dotCfg, "INC", "Damage", "ChaosDamage")
 	more := list.MoreCfg(&dotCfg, "Damage", "ChaosDamage")
@@ -144,7 +150,7 @@ func decay(actor *ModDB, s *activeSkill, out map[string]float64) {
 		mult = list.SumCfg(&dotCfg, "BASE", "DotMultiplier") + list.SumCfg(&dotCfg, "BASE", "ChaosDotMultiplier")
 	}
 	out["DecayDPS"] = base * (1 + inc/100) * more * (1 + mult/100) * effMult
-	out["DecayDuration"] = 8 / math.Max(buffExpirationSlowCap, calcMod(enemy, s.cfg, "BuffExpireFaster"))
+	out["DecayDuration"] = 8 * debuffDurationMult(enemy, s.cfg)
 }
 
 // cullAndReservation is the culling and reservation DPS part of the damage

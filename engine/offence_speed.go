@@ -51,7 +51,7 @@ func (c *Calculator) hitAndSpeed(actor *ModDB, s *activeSkill, p *hitPass) {
 		}
 	}
 	if !isAttack || list.FlagCfg(p.cfg, "CannotBeEvaded") || truthy(data.val("cannotBeEvaded")) ||
-		enemy.Flag("CannotEvade") {
+		modeEffective(actor) && enemy.Flag("CannotEvade") { // CalcOffence.lua:2253
 		out["AccuracyHitChance"] = 100
 	} else {
 		ev := math.Max(round(val(enemy, "Evasion"), 0), 0)

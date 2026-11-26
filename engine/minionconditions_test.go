@@ -84,11 +84,12 @@ func TestMinionCombatConditions(t *testing.T) {
 	ms := triggerTestSkill("Minion Melee")
 	ms.flags["attack"], ms.flags["hit"], ms.flags["minion"] = true, true, true
 	mdb := NewModDB()
+	buffMode(mdb, "")
 	mdb.NewMod("FireExposureChance", "BASE", 10, "Minion")
 	mdb.Add(Mod{Name: "CritAlwaysAltAilments", Type: "FLAG", Value: true, Source: "Minion"})
 	combatConditions(mdb, ms, pm)
-	want := []string{"AttackedRecently", "CanApplyColdExposure", "CanApplyFireExposure", "CanInflictBrittle",
-		"CanInflictSap", "CanInflictScorch", "HitRecently", "UsedMinionSkillRecently"}
+	want := []string{"AttackedRecently", "Buffed", "CanApplyColdExposure", "CanApplyFireExposure", "CanInflictBrittle",
+		"CanInflictSap", "CanInflictScorch", "Combat", "Effective", "HitRecently", "UsedMinionSkillRecently"}
 	if got := slices.Sorted(maps.Keys(mdb.conditions)); !slices.Equal(got, want) {
 		t.Errorf("conditions %v, want %v", got, want)
 	}
@@ -96,12 +97,13 @@ func TestMinionCombatConditions(t *testing.T) {
 	// NeverCrit on env.player.mainSkill's skillCfg stops the alternate
 	// ailments; a triggered main skill sets no "recently" use conditions.
 	mdb = NewModDB()
+	buffMode(mdb, "")
 	mdb.Add(Mod{Name: "CritAlwaysAltAilments", Type: "FLAG", Value: true, Source: "Minion"})
 	mdb.Add(Mod{Name: "NeverCrit", Type: "FLAG", Value: true, Source: "Minion",
 		Tags: []map[string]any{{"type": "SkillName", "skillName": "Raise Spectre"}}})
 	ms.data.set("triggered", true)
 	combatConditions(mdb, ms, pm)
-	want = []string{"CanApplyColdExposure", "HitRecently"}
+	want = []string{"Buffed", "CanApplyColdExposure", "Combat", "Effective", "HitRecently"}
 	if got := slices.Sorted(maps.Keys(mdb.conditions)); !slices.Equal(got, want) {
 		t.Errorf("triggered, NeverCrit: conditions %v, want %v", got, want)
 	}

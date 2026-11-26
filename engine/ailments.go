@@ -94,7 +94,7 @@ func ailmentChances(actor *ModDB, s *activeSkill, p *hitPass) {
 	out["BleedChanceOnCrit"] = chance(attack && !list.FlagCfg(cfg, "CannotBleed"), "BleedChance", "SelfBleedChance")
 	out["PoisonChanceOnCrit"] = chance(hit && !list.FlagCfg(cfg, "CannotPoison"), "PoisonChance", "SelfPoisonChance")
 	out["ImpaleChanceOnCrit"] = 0
-	if hit {
+	if hit && modeEffective(actor) { // CalcOffence.lua:4254
 		out["ImpaleChanceOnCrit"] = math.Min(100, list.SumCfg(cfg, "BASE", "ImpaleChance"))
 	}
 	withCrit(false)
@@ -127,9 +127,15 @@ func ailmentChances(actor *ModDB, s *activeSkill, p *hitPass) {
 			out[a+"ChanceOnHit"], out[a+"ChanceOnCrit"] = 0, 0
 		}
 	}
-	out["ImpaleChance"] = math.Min(100, list.SumCfg(cfg, "BASE", "ImpaleChance"))
-	// mode_effective: enemy avoidance.
+	out["ImpaleChance"] = 0
+	if modeEffective(actor) { // CalcOffence.lua:4312
+		out["ImpaleChance"] = math.Min(100, list.SumCfg(cfg, "BASE", "ImpaleChance")) //nolint:mnd // percent
+	}
+	// mode_effective (CalcOffence.lua:4322): enemy avoidance.
 	for _, a := range ailmentTypeList {
+		if !modeEffective(actor) {
+			break
+		}
 		mult := 1 - enemy.Sum("BASE", "Avoid"+a)/100
 		if enemy.Flag(a + "Immune") {
 			mult = 0
@@ -374,6 +380,9 @@ func hitSpeed(global map[string]float64) float64 {
 // dotTakenMult is the effective DoT multiplier of type t on the enemy
 // (resist or, for physical, damage reduction; damage taken).
 func dotTakenMult(actor *ModDB, cfg *Cfg, t string) float64 {
+	if !modeEffective(actor) { // CalcOffence.lua:4624, 4894
+		return 1
+	}
 	enemy := actor.enemy
 	var resist float64
 	if t == "Physical" {

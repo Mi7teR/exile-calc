@@ -179,6 +179,10 @@ func replaceMod(db *ModDB, name, typ string, value float64) {
 // rage ports the Rage part of doActorMisc: with Condition:CanGainRage or
 // rage regeneration, the configured stacks within the main skill's maximum.
 func rage(db *ModDB, mainCfg *Cfg) {
+	// Inside doActorMisc's mode_combat block (CalcPerform.lua:647).
+	if !modeCombat(db) {
+		return
+	}
 	if m := db.Sum("BASE", "MinimumRage"); m > db.multipliers["Rage"] {
 		db.multipliers["Rage"] = m
 	}
@@ -212,6 +216,9 @@ func rage(db *ModDB, mainCfg *Cfg) {
 // charges" (mode_combat): Brutal Charges grant triple damage chance and
 // Affliction Charges ailment damage and non-damaging ailment effect.
 func alternateCharges(db *ModDB) {
+	if !modeCombat(db) { // CalcPerform.lua:3159
+		return
+	}
 	if db.Flag("UseEnduranceCharges") && db.Flag("EnduranceChargesConvertToBrutalCharges") {
 		db.NewMod("TripleDamageChance", "BASE", db.Sum("BASE", "PerBrutalTripleDamageChance"), "",
 			map[string]any{"type": "Multiplier", "var": "BrutalCharge"})

@@ -100,9 +100,15 @@ func (c *Calculator) hitDamage(actor *ModDB, s *activeSkill, p *hitPass) {
 	// Sum(TripleDamageChance) or 0 + self + onCrit parses as
 	// Sum or (0 + ...), so it drops the enemy's SelfTripleDamageChance and
 	// triple damage on crit; both count here.
-	triple := math.Min(list.SumCfg(p.cfg, "BASE", "TripleDamageChance")+enemy.SumCfg(p.cfg, "BASE", "SelfTripleDamageChance")+
+	// The enemy's chances are env.mode_effective (CalcOffence.lua:3319, 3324).
+	selfTriple, selfDouble := 0.0, 0.0
+	if modeEffective(actor) {
+		selfTriple = enemy.SumCfg(p.cfg, "BASE", "SelfTripleDamageChance")
+		selfDouble = enemy.SumCfg(p.cfg, "BASE", "SelfDoubleDamageChance")
+	}
+	triple := math.Min(list.SumCfg(p.cfg, "BASE", "TripleDamageChance")+selfTriple+
 		math.Min(list.SumCfg(p.cfg, "BASE", "TripleDamageChanceOnCrit"), 100)*out["CritChance"]/100, 100)
-	double := math.Min(list.SumCfg(p.cfg, "BASE", "DoubleDamageChance")+enemy.SumCfg(p.cfg, "BASE", "SelfDoubleDamageChance")+
+	double := math.Min(list.SumCfg(p.cfg, "BASE", "DoubleDamageChance")+selfDouble+
 		math.Min(list.SumCfg(p.cfg, "BASE", "DoubleDamageChanceOnCrit"), 100)*out["CritChance"]/100, 100)
 	if r, ok := p.global["IntimidatingUpTimeRatio"]; ok {
 		if list.Flag("Condition:WarcryMaxHit") {
@@ -205,7 +211,7 @@ func (c *Calculator) hitDamage(actor *ModDB, s *activeSkill, p *hitPass) {
 			} else {
 				avg = avg*(1+lucky) + ((rolls-1)*mn+mx)/rolls*(-lucky)
 			}
-			if mn != 0 || mx != 0 {
+			if (mn != 0 || mx != 0) && modeEffective(actor) { // CalcOffence.lua:3529
 				if t == "Physical" {
 					// Pre-armour physical damage for impale.
 					if pass == 1 {

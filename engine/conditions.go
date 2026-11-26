@@ -190,13 +190,44 @@ func playerAll1H(db *ModDB) [2]bool {
 	return out
 }
 
-// buffMode sets CalcSetup.lua's mode conditions for the main output
-// (buffMode "EFFECTIVE").
-func buffMode(db *ModDB) {
-	db.conditions["Buffed"] = true
-	db.conditions["Combat"] = true
-	db.conditions["Effective"] = true
+// buffMode sets CalcSetup.lua's mode conditions (132-134) for buffMode
+// mode (578-599): "" is EFFECTIVE, the mode of every pass but the Calcs
+// tab's, whose misc_buffMode may also be COMBAT, BUFFED or UNBUFFED.
+func buffMode(db *ModDB, mode string) {
+	buffs, combat, effective := false, false, false
+	switch mode {
+	case "", "EFFECTIVE":
+		buffs, combat, effective = true, true, true
+	case "COMBAT":
+		buffs, combat = true, true
+	case "BUFFED":
+		buffs = true
+	}
+	db.conditions[condBuffed], db.conditions[condCombat], db.conditions[condEffective] = buffs, combat, effective
 }
+
+// The mode conditions (CalcSetup.lua:132-134).
+const (
+	condBuffed    = "Buffed"
+	condCombat    = "Combat"
+	condEffective = "Effective"
+)
+
+// copyModeConditions gives a minion's ModDB the env's mode conditions
+// (calcs.initModDB, CalcSetup.lua:132-134).
+func copyModeConditions(mdb, owner *ModDB) {
+	for _, k := range []string{condBuffed, condCombat, condEffective} {
+		mdb.conditions[k] = owner.conditions[k]
+	}
+}
+
+// modeBuffs, modeCombat and modeEffective are env.mode_buffs, mode_combat
+// and mode_effective, read from an actor's mode conditions, which
+// CalcSetup.lua:132-134 sets to them for the player, the enemy and the
+// minion alike.
+func modeBuffs(actor *ModDB) bool     { return actor.conditions[condBuffed] }
+func modeCombat(actor *ModDB) bool    { return actor.conditions[condCombat] }
+func modeEffective(actor *ModDB) bool { return actor.conditions[condEffective] }
 
 // minionEquipmentConditions ports the equipment conditions of
 // doActorAttribsConditions (CalcPerform.lua:148-245) for env.minion

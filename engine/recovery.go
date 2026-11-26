@@ -43,14 +43,16 @@ func avoidanceAndRecovery(db *ModDB) {
 		out["EffectiveSpellSuppressionChance"] = 0
 	}
 	rolls := 0
-	if db.Flag("SpellSuppressionChanceIsLucky") {
-		rolls++
-	}
-	if db.Flag("SpellSuppressionChanceIsUnlucky") {
-		rolls--
-	}
-	if db.Flag("ExtremeLuck") {
-		rolls *= 2
+	if modeEffective(db) { // CalcDefence.lua:1167
+		if db.Flag("SpellSuppressionChanceIsLucky") {
+			rolls++
+		}
+		if db.Flag("SpellSuppressionChanceIsUnlucky") {
+			rolls--
+		}
+		if db.Flag("ExtremeLuck") {
+			rolls *= 2
+		}
 	}
 	out["EffectiveSpellSuppressionChance"] = luckyRolls(db, out["EffectiveSpellSuppressionChance"], float64(rolls))
 	out["SpellSuppressionChanceOverCap"] = math.Max(0, total-suppressionChanceCap)
@@ -74,7 +76,7 @@ func avoidanceAndRecovery(db *ModDB) {
 		out["EffectiveAttackDodgeChance"] = math.Min(math.Max(attackDodge-reduce, 0), dodgeChanceCap)
 		out["EffectiveSpellDodgeChance"] = math.Min(math.Max(spellDodge-reduce, 0), spellDodgeMax)
 	}
-	if db.Flag("DodgeChanceIsUnlucky") {
+	if modeEffective(db) && db.Flag("DodgeChanceIsUnlucky") { // CalcDefence.lua:1207
 		out["EffectiveAttackDodgeChance"] *= out["EffectiveAttackDodgeChance"] / 100
 		out["EffectiveSpellDodgeChance"] *= out["EffectiveSpellDodgeChance"] / 100
 	}

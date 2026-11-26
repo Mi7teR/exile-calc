@@ -460,7 +460,7 @@ func (a *partyActor) partyBuffsOnPlayer(db *ModDB, add func([]Mod, string), addD
 			}
 		}
 	}
-	if l := a.aura["AuraDebuff"]; l != nil {
+	if l := a.aura["AuraDebuff"]; l != nil && modeEffective(db) { // CalcPerform.lua:3090
 		for _, b := range append(append([]*partyBuff(nil), l.buffs...), l.vaal...) {
 			if !db.enemy.conditions[cond(b.name)] {
 				db.enemy.conditions[cond(b.name)] = true

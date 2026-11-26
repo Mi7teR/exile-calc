@@ -60,6 +60,7 @@ func (c *Calculator) initMinionDB(db *ModDB, s *activeSkill, m *skillMinion, res
 	mdb.enemy, mdb.owner, mdb.minionData = db.enemy, db, m.data
 	mdb.multipliers["Level"] = float64(m.level)
 	minionBaseMods(mdb)
+	copyModeConditions(mdb, db)
 	mdb.NewMod("Life", "BASE", math.Floor(table[m.level-1]*m.data.Life), "Base")
 	if m.data.EnergyShield != 0 {
 		mdb.NewMod("EnergyShield", "BASE", math.Floor(mon.AllyLife[m.level-1]*m.data.Life*m.data.EnergyShield), "Base")
@@ -841,12 +842,13 @@ func (c *Calculator) minionSkillBuffsOf(
 			for _, b := range ms.buffs {
 				name := strings.ReplaceAll(b.name, " ", "")
 				if b.typ == "Debuff" || b.typ == "AuraDebuff" { //nolint:goconst // PoB buff types
-					if casting == mdb && debuffStack(ms, b) > 0 {
-						mdb.conditions["AffectedBy"+name] = true // CalcPerform.lua:3012-3014
+					if casting == mdb && modeEffective(db) && debuffStack(ms, b) > 0 {
+						mdb.conditions["AffectedBy"+name] = true // CalcPerform.lua:2991, 3012-3014
 					}
 					continue
 				}
-				if !enabled {
+				// CalcPerform.lua:2831, 2873: Buff and Aura are mode_buffs.
+				if !enabled || !modeBuffs(db) {
 					continue
 				}
 				switch b.typ {
@@ -931,6 +933,7 @@ func (c *Calculator) castingMinionSkills(
 	if casting == nil {
 		casting = NewModDB()
 		casting.enemy, casting.owner, casting.minionData = db.enemy, db, m.data
+		copyModeConditions(casting, db)
 	}
 	casting.build, casting.enemyEnv = db.build, db.enemyEnv
 	mods := s.minionModifiers

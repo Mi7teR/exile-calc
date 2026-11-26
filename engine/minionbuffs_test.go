@@ -226,6 +226,7 @@ func sameStrings(a, b []string) bool {
 func TestPlayerAuraOthers(t *testing.T) {
 	c := &Calculator{}
 	db := NewModDB()
+	buffMode(db, "")
 	aura := triggerTestSkill("Determination")
 	aura.mods.NewMod("AuraEffect", "INC", 50, "Gem")
 	b := &skillBuff{typ: "Aura", name: "Determination", mods: []Mod{{Name: "Armour", Type: "MORE", Value: 20.0}}}
@@ -267,6 +268,8 @@ func TestMinionSkillBuffOrder(t *testing.T) {
 	c := &Calculator{}
 	for _, debuffFirst := range []bool{true, false} {
 		db, mdb := NewModDB(), NewModDB()
+		buffMode(db, "")
+		buffMode(mdb, "")
 		summon := triggerTestSkill("Raise Spectre")
 		ms := triggerTestSkill("Minion Wrath")
 		ms.summon = summon

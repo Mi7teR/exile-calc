@@ -216,7 +216,8 @@ func (c *Calculator) mergeSkillInstanceMods(list *ModDB, e *skillEffect, extra [
 func (c *Calculator) buildSkillMods(db *ModDB, s *activeSkill, res *Result) {
 	ge := s.active.ge
 	flags, types := s.flags, s.types
-	flags["buffs"], flags["combat"], flags["effective"] = true, true, true
+	// CalcActiveSkill.lua:254-263: the mode flags.
+	flags["buffs"], flags["combat"], flags["effective"] = modeBuffs(db), modeCombat(db), modeEffective(db)
 	// Multipart skills: the selected part's flags.
 	if parts := ge.Parts; len(parts) > 1 {
 		s.part = min(len(parts), max(s.active.srcPart, 1))
@@ -398,8 +399,12 @@ func (c *Calculator) buildSkillMods(db *ModDB, s *activeSkill, res *Result) {
 			dist = in.Number
 		}
 	}
+	// skillDist = env.mode_effective and effectiveRange (CalcActiveSkill.lua:492).
+	if !modeEffective(db) {
+		dist = 0
+	}
 	s.cfg = &Cfg{
-		SkillDist: dist, HasSkillDist: true,
+		SkillDist: dist, HasSkillDist: modeEffective(db),
 		Flags: modFlags | w1Flags, KeywordFlags: kw, SkillName: strings.TrimPrefix(ge.Name, "Vaal "),
 		SkillID: s.active.id, BaseFlags: baseFlags, SkillTypes: types, SkillGem: s.active.gem,
 		SlotName: s.cfg.SlotName, SummonSkillName: summonName, SkillPart: s.part,

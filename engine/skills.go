@@ -342,6 +342,25 @@ func mainSkill(skills []*activeSkill) *activeSkill {
 // skill, or for env.minion the summoning skill. The shrine buffs of the
 // mode_combat block are shrineBuffs.
 func combatConditions(db *ModDB, s, pm *activeSkill) {
+	if modeCombat(db) {
+		combatSkillConditions(db, s, pm)
+	}
+	if !modeEffective(db) {
+		return
+	}
+	// mode_effective (CalcPerform.lua:400-410): exposure the actor can
+	// apply, from env.player.mainSkill's mods or the actor's.
+	for _, el := range []string{"Fire", "Cold", "Lightning"} { //nolint:goconst // element names
+		if (pm != nil && pm.mods != nil && pm.mods.SumCfg(pm.cfg, "BASE", el+"ExposureChance") > 0) ||
+			db.Sum("BASE", el+"ExposureChance") > 0 {
+			db.conditions["CanApply"+el+"Exposure"] = true
+		}
+	}
+}
+
+// combatSkillConditions is the mode_combat part of combatConditions
+// (CalcPerform.lua:246-296).
+func combatSkillConditions(db *ModDB, s, pm *activeSkill) {
 	if s != nil {
 		skillConditions(db.conditions, s)
 	}
@@ -359,14 +378,6 @@ func combatConditions(db *ModDB, s, pm *activeSkill) {
 	}
 	if db.Sum("BASE", "EnemySapChance") > 0 || altAilments {
 		db.conditions["CanInflictSap"] = true
-	}
-	// mode_effective (CalcPerform.lua:400-410): exposure the actor can
-	// apply, from env.player.mainSkill's mods or the actor's.
-	for _, el := range []string{"Fire", "Cold", "Lightning"} {
-		if (pm != nil && pm.mods != nil && pm.mods.SumCfg(pm.cfg, "BASE", el+"ExposureChance") > 0) ||
-			db.Sum("BASE", el+"ExposureChance") > 0 {
-			db.conditions["CanApply"+el+"Exposure"] = true
-		}
 	}
 }
 

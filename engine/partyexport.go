@@ -476,23 +476,36 @@ type partyExportCache struct {
 func (p *partyExportCache) exports() *partyExports {
 	p.once.Do(func() {
 		b := calcsModeBuild(p.build)
+		opts := calcOpts{buffMode: calcsBuffMode(b)}
 		// The main skill takes its own *Calcs part, minion and item set
 		// (CalcActiveSkill.lua:268, 713, 755: activeSkill ==
 		// env.player.mainSkill); find its gem first.
-		r, err := p.calc.calc(b, calcOpts{})
+		r, err := p.calc.calc(b, opts)
 		if err != nil {
 			return
 		}
 		if g, k, ok := mainGem(r); ok {
 			gm := &b.ActiveSkills().Groups[g-1].Gems[k]
 			gm.SkillPart, gm.SkillMinion, gm.SkillMinionItemSet = gm.SkillPartCalcs, gm.SkillMinionCalcs, gm.SkillMinionItemSetCalcs
-			if r, err = p.calc.calc(b, calcOpts{}); err != nil {
+			if r, err = p.calc.calc(b, opts); err != nil {
 				return
 			}
 		}
 		p.e = r.DB.partyExports
 	})
 	return p.e
+}
+
+// calcsBuffMode is the Calcs tab's misc_buffMode (Classes/CalcsTab.lua:36,
+// EFFECTIVE when not set), the buff mode of the CALCS pass
+// (CalcSetup.lua:578-599).
+func calcsBuffMode(b *pobcode.Build) string {
+	for _, in := range b.CalcsInputs {
+		if in.Name == "misc_buffMode" && in.Kind == pobcode.KindString {
+			return in.String
+		}
+	}
+	return "EFFECTIVE"
 }
 
 // mainGem is the input build's group (1-based) and gem index of r's main
@@ -520,8 +533,7 @@ func mainGem(r *Result) (int, int, bool) {
 // group's mainActiveSkillCalcs (1959-1961), and each gem's stage count,
 // mine count and minion skill *Calcs selections (CalcActiveSkill.lua:642,
 // 668, 944); the main skill's part, minion and item set come in
-// exports. The Calcs tab's buff mode (misc_buffMode, CalcSetup.lua
-// 578-599) other than EFFECTIVE is not ported.
+// exports, and the Calcs tab's buff mode in calcsBuffMode.
 func calcsModeBuild(b *pobcode.Build) *pobcode.Build {
 	cp := *b
 	cp.SkillSets = append([]pobcode.SkillSet(nil), b.SkillSets...)

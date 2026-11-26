@@ -30,8 +30,12 @@ func shrineBaseMods(db *ModDB) {
 	}
 }
 
-// shrineBuffs ports CalcPerform.lua's shrine buffs.
+// shrineBuffs ports CalcPerform.lua's shrine buffs (in the mode_combat
+// block, 297).
 func shrineBuffs(db *ModDB) {
+	if !modeCombat(db) {
+		return
+	}
 	eff := 1 + db.Sum("INC", "BuffEffectOnSelf", "ShrineBuffEffect")/100
 	f := func(v float64) float64 { return math.Floor(v * eff) }
 	add := func(flag string, mods ...Mod) {

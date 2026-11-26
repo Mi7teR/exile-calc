@@ -70,8 +70,10 @@ func (c *Calculator) skillCurse(db *ModDB, s *activeSkill, b *skillBuff) *enemyC
 		db.enemyEnv.checks["balanceOfTerrorSelfCast"+strings.ReplaceAll(b.name, " ", "")] {
 		return nil
 	}
-	if !mark && enemy.Flag("Hexproof") && !db.Flag("CursesIgnoreHexproof") &&
-		!truthy(s.data.val("ignoreHexLimit")) && !truthy(s.data.val("ignoreHexproof")) {
+	// CalcPerform.lua:2696: a mark applies in every buff mode.
+	hexproof := enemy.Flag("Hexproof") && !db.Flag("CursesIgnoreHexproof") &&
+		!truthy(s.data.val("ignoreHexLimit")) && !truthy(s.data.val("ignoreHexproof"))
+	if !mark && (!modeEffective(db) || hexproof) {
 		return nil
 	}
 	cu := &enemyCurse{

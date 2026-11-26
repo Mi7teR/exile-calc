@@ -36,6 +36,10 @@ func maxSource(db *ModDB, source string, name string) (float64, bool) {
 //
 //nolint:gocognit,gocyclo,cyclop,funlen // one branch per buff or debuff, in doActorMisc's order
 func actorMisc(db *ModDB, main, pm *activeSkill, silverFlask bool, silverFlaskInc float64) {
+	// CalcPerform.lua:647: all of it is mode_combat.
+	if !modeCombat(db) {
+		return
+	}
 	out := db.output
 	cond := db.conditions
 	mainMods, mainCfg := db, (*Cfg)(nil)

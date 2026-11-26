@@ -72,6 +72,9 @@ func (c *Calculator) activeFlasks(db *ModDB, slots []flaskSlot) []*pobcode.Item 
 func (c *Calculator) applyFlasks(db *ModDB, res *Result, slots []flaskSlot) *flaskState {
 	st := &flaskState{silverInc: -100, // as in doActorMisc
 		durInc: db.Sum("INC", "FlaskDuration"), totalRateInc: db.Sum("INC", "FlaskRecoveryRate")}
+	if !modeCombat(db) { // CalcPerform.lua:1968
+		return st
+	}
 	flasks := c.activeFlasks(db, slots)
 	player := &Cfg{Actor: "player"}
 	effectInc := db.SumCfg(player, "INC", "FlaskEffect")
@@ -264,7 +267,7 @@ func flaskInstant(db *ModDB, perc, lowLife float64, life, mana bool) float64 {
 // effect is not removed at full recover over their duration
 // (calcFlaskRecovery); the highest flask of each kind applies.
 func flaskRecovery(db *ModDB, st *flaskState) {
-	if st == nil || db.Flag("FlasksDoNotApplyToPlayer") {
+	if st == nil || !modeCombat(db) || db.Flag("FlasksDoNotApplyToPlayer") { // mode_combat: CalcPerform.lua:3152
 		return
 	}
 	merged := map[string][]Mod{}
@@ -427,6 +430,9 @@ func readTinctureEffect(db *ModDB) tinctureEffect {
 // flasks are merged (CalcPerform.lua reads them above mergeFlasks), so
 // flask conditions do not reach them.
 func (c *Calculator) applyTinctures(db *ModDB, res *Result, slots []flaskSlot, te tinctureEffect) {
+	if !modeCombat(db) { // CalcPerform.lua:2128
+		return
+	}
 	notBurn := math.Min(db.Sum("BASE", "TincturesNotInflictManaBurn"), 100)
 	if !db.Flag("Condition:WeepingWoundsInsteadOfManaBurn") && !(notBurn < 100 && db.output["ManaUnreserved"] > 0) {
 		return
