@@ -416,6 +416,16 @@ func skillTypeOutputs(actor *ModDB, s *activeSkill, out map[string]float64) {
 		}
 		out["AuraEffectMod"] = calcMod(list, cfg, names...)
 	}
+	if s.types[stHasReservation] && !s.types[stReservationBecomesCost] { // CalcOffence.lua:1196-1202
+		for _, pool := range []string{"Life", "Mana"} {
+			out[pool+"ReservedMod"] = 0
+			mult := calcMod(list, cfg, "SupportManaMultiplier")
+			if res := calcMod(list, cfg, pool+"Reserved", "Reserved"); mult > 0 && res > 0 {
+				out[pool+"ReservedMod"] = res * floorTo(mult, 4) /
+					math.Max(0, calcMod(list, cfg, pool+"ReservationEfficiency", "ReservationEfficiency"))
+			}
+		}
+	}
 	if s.types[stHex] || s.types[stMark] {
 		out["CurseEffectMod"] = calcMod(list, cfg, "CurseEffect")
 	}
@@ -481,6 +491,31 @@ func skillDurations(actor *ModDB, s *activeSkill, out map[string]float64) {
 	out["TotemDurationMod"] = math.Max(calcMod(list, cfg, "TotemDuration"), 0)
 	out["TotemDuration"] = math.Ceil(list.SumCfg(cfg, "BASE", "TotemDuration")*out["TotemDurationMod"]*
 		serverTickRate) / serverTickRate
+	skillUptime(s, out)
+}
+
+// skillUptime is the "Skill uptime" block (CalcOffence.lua:1662-1690):
+// output.Cooldown there is the non-trap cooldown of 1322-1324.
+func skillUptime(s *activeSkill, out map[string]float64) {
+	list, cfg, data := s.mods, s.cfg, s.data
+	if s.types[stVaal] {
+		return
+	}
+	cooldown := 0.0
+	if _, set := data.cooldown.get(); !s.flags["trap"] && (set || list.SumCfg(cfg, "BASE", "CooldownRecovery") != 0) {
+		cooldown, _ = skillCooldown(list, cfg, data)
+	}
+	for _, d := range []string{"Duration", "DurationSecondary", "DurationTertiary", "AuraDuration", "reserveDuration"} {
+		duration := out[d]
+		if duration == 0 || cooldown == 0 {
+			continue
+		}
+		uptime := duration / cooldown
+		if list.FlagCfg(cfg, "NoCooldownRecoveryInDuration") {
+			uptime = duration / (cooldown + duration)
+		}
+		out[d+"Uptime"] = math.Min(uptime, 1) * 100
+	}
 }
 
 // burstOutputs is CalcOffence.lua:3834-3844 after a pass's AverageDamage:
@@ -524,4 +559,150 @@ func (c *Calculator) lifeFlaskMultipliers(db *ModDB, slots []flaskSlot) {
 	if found {
 		db.output["LifeFlaskRecovery"], db.output["LifeFlaskCharges"] = recovery, charges
 	}
+}
+
+// selfHitDamage is "Self hit dmg calcs" (CalcOffence.lua:6013-6139): the
+// hits the skill makes the player take (Heartbound Loop, Storm Secret, Eye
+// of Innocence, Echoes of Creation, Scold's Bridle, Trauma, Enmity's
+// Embrace), each through calcs.applyDmgTakenConversion.
+func selfHitDamage(actor *ModDB, s *activeSkill, out map[string]float64) {
+	list := s.mods
+	// listDamage is the List(nil, name) loop of a handler: the damage type
+	// of the last (or first, with once) entry and the summed base damage.
+	listDamage := func(name, key string, once bool) (string, float64, bool) {
+		var typ string
+		var val float64
+		found := false
+		for _, e := range list.List(nil, name) {
+			v, _ := e.Value.(map[string]any)
+			f, _ := num(v[key])
+			t, _ := v["damageType"].(string)
+			typ, found = upperWords(t), true
+			if once {
+				return typ, f, true
+			}
+			val += f
+		}
+		return typ, val, found
+	}
+	total, found := 0.0, false
+	add := func(typ string, base float64) {
+		total += applyDmgTakenConversion(actor, s, typ, base)
+		found = true
+	}
+	if s.active.ge.Name == "Summon Skeletons" {
+		if t, v, ok := listDamage("HeartboundLoopSelfDamage", "baseDamage", false); ok {
+			perCast := math.Max(math.Floor(valCfg(list, s.cfg, "MinionPerCastCount")), 1) // SummonedMinionsPerCast
+			total += applyDmgTakenConversion(actor, s, t, v) * perCast
+			found = true
+		}
+	}
+	if s.active.ge.Name == "Herald of Thunder" {
+		if t, v, ok := listDamage("StormSecretSelfDamage", "baseDamage", false); ok {
+			add(t, v)
+		}
+	}
+	if t, v, ok := listDamage("EyeOfInnocenceSelfDamage", "baseDamage", true); ok && s.flags["ignite"] {
+		add(t, v)
+	}
+	if t, m, ok := listDamage("EchoesOfCreationSelfDamage", "dmgMult", true); ok {
+		count := out["GlobalWarcryUptimeRatio"] / 100
+		if list.Flag("Condition:WarcryMaxHit") {
+			count = actor.Sum("BASE", "Multiplier:ExertingWarcryCount")
+		}
+		add(t, actor.output["Life"]*m/100*count)
+	}
+	if t, m, ok := listDamage("ScoldsBridleSelfDamage", "dmgMult", true); ok && out["ManaHasCost"] != 0 {
+		add(t, out["ManaCost"]*m/100)
+	}
+	if list.Flag("HasTrauma") {
+		stacks := math.Max(list.Sum("BASE", "Multiplier:TraumaStacks"), 1)
+		add("Physical", list.Sum("BASE", "TraumaSelfDamageTakenLife")*stacks)
+	}
+	if t, v, ok := listDamage("EnmitysEmbraceSelfDamage", "baseDamage", false); ok {
+		add(t, v)
+	}
+	if found {
+		out["SelfHitDamage"] = total
+	}
+}
+
+// upperWords is string.gsub(" "..s, "%W%l", string.upper):sub(2): each
+// word's first letter upper case ("fire" -> "Fire").
+func upperWords(s string) string {
+	b := []byte(" " + s)
+	for i := 1; i < len(b); i++ {
+		if b[i] >= 'a' && b[i] <= 'z' && !isAlnum(b[i-1]) {
+			b[i] -= 'a' - 'A'
+		}
+	}
+	return string(b[1:])
+}
+
+func isAlnum(c byte) bool {
+	return c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9'
+}
+
+// applyDmgTakenConversion is calcs.applyDmgTakenConversion (CalcDefence.lua:
+// 86-145): the damage the player takes from a self hit of src damage.
+func applyDmgTakenConversion(actor *ModDB, s *activeSkill, src string, base float64) float64 {
+	list, global := s.mods, actor.output
+	ele := func(t string) bool { return t == "Lightning" || t == "Cold" || t == "Fire" }
+	shift := map[string]float64{}
+	totalAs := 0.0
+	for _, t := range dmgTypes {
+		names := []string{src + "DamageTakenAs" + t, src + "DamageFromHitsTakenAs" + t}
+		if ele(src) {
+			names = append(names, "ElementalDamageTakenAs"+t, "ElementalDamageFromHitsTakenAs"+t)
+		}
+		shift[t] = list.Sum("BASE", names...)
+		totalAs += shift[t]
+	}
+	total := 0.0
+	for _, t := range dmgTypes {
+		as := shift[t] / 100
+		if t == src {
+			as = math.Max(1-totalAs/100, 0)
+		}
+		if as == 0 {
+			continue
+		}
+		damage := base * as
+		names := []string{"DamageTaken", t + "DamageTaken", "DamageTakenWhenHit", t + "DamageTakenWhenHit"}
+		inc, more := list.Sum("INC", names...), list.More(names...)
+		if ele(t) {
+			inc += list.Sum("INC", "ElementalDamageTaken", "ElementalDamageTakenWhenHit")
+			more *= list.More("ElementalDamageTaken", "ElementalDamageTakenWhenHit")
+		}
+		takenMods := math.Max((1+inc/100)*more, 0)
+		reduction := outOr(global, "Base"+t+"DamageReductionWhenHit", global["Base"+t+"DamageReduction"])
+		if list.Flag("SelfIgnoreBase" + t + "DamageReduction") {
+			reduction = 0
+		}
+		resist := outOr(global, t+"ResistWhenHit", global[t+"Resist"])
+		if list.Flag("SelfIgnore" + t + "Resistance") {
+			resist = 0
+		}
+		resMult := 1 - resist/100
+		armourReduct := 0.0
+		pct := 0.0
+		if !list.Flag("ArmourDoesNotApplyTo" + t + "DamageTaken") {
+			pct = math.Min(list.Sum("BASE", "ArmourAppliesTo"+t+"DamageTaken"), 100)
+		}
+		ward := t == "Physical" && list.Flag("PhysicalReductionBasedOnWard")
+		if pct > 0 || ward {
+			eff := global["Armour"] * pct / 100 * (1 + global["ArmourDefense"])
+			if ward {
+				m, _ := list.Override("PhysicalReductionBasedOnWardPercent")
+				eff = global["Ward"] * m / 100
+			}
+			if eff != 0 && damage*resMult != 0 {
+				armourReduct = round(eff/(eff+damage*resMult*5)*100, 0)
+			}
+			armourReduct = math.Min(global["DamageReductionMax"], armourReduct)
+		}
+		reductMult := (1 - math.Max(math.Min(global["DamageReductionMax"], armourReduct+reduction), 0)/100) * takenMods
+		total += damage * (resMult * reductMult)
+	}
+	return total
 }

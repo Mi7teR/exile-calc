@@ -596,6 +596,10 @@ func (c *Calculator) doomBlastSourceRate(db *ModDB, main *activeSkill, sourceOut
 			out["EffectiveSourceRate"] = 1 / (1/trigRate + 1/rate)
 		}
 	case "vixen":
+		// CalcTriggers.lua:720-723.
+		if g := db.items["Gloves"]; g == nil || !strings.Contains(g.Name, "Vixen's Entrapment") {
+			out["VixenModeNoVixenGlovesWarn"] = 1
+		}
 		vixensCD := 0.0
 		if v := c.data.Skills.Effects["SupportUniqueCastCurseOnCurse"]; v != nil {
 			if lv := v.Levels[1]; lv != nil {
@@ -605,6 +609,7 @@ func (c *Calculator) doomBlastSourceRate(db *ModDB, main *activeSkill, sourceOut
 		// chance nil: calcMultiSpellRotationImpact's default.
 		rot := []*simSkill{{skill: main, icdr: icdr}}
 		out["EffectiveSourceRate"] = rotationImpact(main, rot, trigRate, vixensCD, defaultTriggerChance)
+		out["VixensTooMuchCastSpeedWarn"] = b2f(vixensCD > 1/trigRate) // CalcTriggers.lua:729
 	}
 }
 
@@ -658,6 +663,7 @@ func (c *Calculator) cwcTrigger(db *ModDB, main *activeSkill) {
 			main.mods.Add(Mod{Name: "Damage", Type: typ, Value: m.Value, Flags: m.Flags, KeywordFlags: m.KeywordFlags, Source: m.Source, Tags: m.Tags})
 		}
 	}
+	db.output["ChannelTimeToTrigger"] = interval // CalcTriggers.lua:397
 	main.data.set("triggered", true)
 	main.data.set("triggerRate", rate)
 	main.flags["globalTrigger"] = true

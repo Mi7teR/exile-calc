@@ -476,9 +476,10 @@ linters:
         linters: [ mnd, goconst, gochecknoinits, gochecknoglobals ]
       # why: leech.go, buildoutput.go and outputs_misc.go port CalcOffence / CalcDefence / CalcPerform output
       # blocks and the MAIN-mode end of Calcs.lua buildOutput: PoB's percentages and output/mod name strings
-      # stay inline, and the pool tables are package-level like PoB's literal pairs tables.
+      # stay inline, the pool tables are package-level like PoB's literal pairs tables, and a few functions
+      # keep the shape of the Lua block they port (gocognit).
       - path: 'engine/(leech|buildoutput|outputs_misc)\.go'
-        linters: [ mnd, goconst, gochecknoglobals ]
+        linters: [ mnd, goconst, gochecknoglobals, gocognit ]
       # why: the themed modparser hook files port ModParser.lua specialModList functions: PoB's literal numbers
       # and mod name/type strings stay inline like hooks.go, and each file registers its ports from init() into
       # the package-level hooks map.

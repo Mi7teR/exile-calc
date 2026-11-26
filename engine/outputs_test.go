@@ -100,3 +100,12 @@ func TestOffenceMiscOutputs(t *testing.T) {
 		"CombinedAvgToMonsterLife", "showTotalDotDPS", "ReqStrString", "ReqDexString", "ReqIntString",
 		"ReqOmniString", "LifeFlaskRecovery", "LifeFlaskCharges", "SkillDPSMultiplier", "NormalHitsPerCast")
 }
+
+// TestSelfHitAndTriggerOutputs: CalcOffence.lua:1196-1202 (reserved mods),
+// 1662-1690 (skill uptime), 6013-6139 with CalcDefence.lua:86-145 (self hit
+// damage), CalcTriggers.lua:397, 720-729.
+func TestSelfHitAndTriggerOutputs(t *testing.T) {
+	oracleStats(t, false, "SelfHitDamage", "LifeReservedMod", "ManaReservedMod", "DurationUptime",
+		"DurationSecondaryUptime", "ChannelTimeToTrigger", "VixensTooMuchCastSpeedWarn",
+		"VixenModeNoVixenGlovesWarn")
+}

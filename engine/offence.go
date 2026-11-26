@@ -412,6 +412,7 @@ func (c *Calculator) offence(actor *ModDB, s *activeSkill, w1 hitSource, w2 *hit
 	skillDot(actor, s, out, dpsMult, quantity)
 	combinedDPS(s, out, passes, dpsMult, quantity, monsterLife)
 	perSecondCosts(actor, s, out)
+	selfHitDamage(actor, s, out)
 	return out
 }
 
