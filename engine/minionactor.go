@@ -508,6 +508,7 @@ func (c *Calculator) mainMinion(db *ModDB, skills []*activeSkill, buffs map[stri
 	mdb.activeSkills = mskills
 	addMinionModifiers(mdb, s.minionModifiers, m.typ)
 	c.mergeKeystones(mdb, map[string]bool{}, res)
+	minionEquipmentConditions(mdb.conditions, mdb.items, weaponType, weapon2Type)
 	c.attributes(mdb)
 	shrineBuffs(mdb)
 	c.lifeMana(mdb)

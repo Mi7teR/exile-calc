@@ -170,3 +170,86 @@ func buffMode(db *ModDB) {
 	db.conditions["Combat"] = true
 	db.conditions["Effective"] = true
 }
+
+// minionEquipmentConditions ports the equipment conditions of
+// doActorAttribsConditions (CalcPerform.lua:148-245) for env.minion
+// (CalcPerform.lua:1998): from its itemList and the types of its
+// weaponData1 (w1, "None" when unarmed) and weaponData2 (w2, "" when it
+// has none). countsAsAll1H (Varunastra) is not ported, as for the player.
+func minionEquipmentConditions(cond map[string]bool, items map[string]*itemtext.Item, w1, w2 string) {
+	// CalcPerform.lua:149: actor == env.player is false for a minion; the
+	// minion's aegis item is not ported.
+	if it := items["Weapon 2"]; it != nil && it.Base != nil && it.Base.Type == "Shield" {
+		cond["UsingShield"] = true
+	} else if items["Weapon 2"] == nil {
+		cond["OffHandIsEmpty"] = true
+	}
+	if w1 == "None" {
+		cond["Unarmed"] = true
+		if items["Weapon 2"] == nil && items["Gloves"] == nil {
+			cond["Unencumbered"] = true
+		}
+	} else {
+		weaponTypeConditions(cond, w1)
+	}
+	for _, s := range []string{"Helmet", "Body Armour", "Gloves", "Boots"} {
+		if items[s] != nil {
+			cond["Using"+s] = true
+		}
+	}
+	if w2 != "" {
+		weaponTypeConditions(cond, w2)
+		dualWieldConditions(cond, items, w1, w2)
+	}
+}
+
+// weaponTypeConditions are the Using<flag> and hand conditions of one
+// weapon type (CalcPerform.lua:160-185, 198-221).
+func weaponTypeConditions(cond map[string]bool, typ string) {
+	info := weaponTypeInfo[typ]
+	cond["Using"+info.flag] = true
+	if info.melee {
+		cond["UsingMeleeWeapon"] = true
+	}
+	if info.oneHand {
+		cond["UsingOneHandedWeapon"] = true
+	} else {
+		cond["UsingTwoHandedWeapon"] = true
+	}
+}
+
+// dualWieldConditions is CalcPerform.lua:223-245 for weapon types w1 and w2.
+func dualWieldConditions(cond map[string]bool, items map[string]*itemtext.Item, w1, w2 string) {
+	cond["DualWielding"] = true
+	if w1 == "Claw" && w2 == "Claw" {
+		cond["DualWieldingClaws"] = true
+	}
+	if w1 == "Dagger" && w2 == "Dagger" {
+		cond["DualWieldingDaggers"] = true
+	}
+	differ := weaponKind(items["Weapon 1"], w1) != weaponKind(items["Weapon 2"], w2)
+	if differ && weaponTypeInfo[w1].oneHand && weaponTypeInfo[w2].oneHand {
+		cond["WieldingDifferentWeaponTypes"] = true
+	}
+}
+
+// weaponKind is getWeaponType (CalcPerform.lua:231-237): thrusting swords
+// count as one handed swords; then the weaponTypeInfo label, the item
+// base's subType (Item.lua:2327) or the type.
+func weaponKind(it *itemtext.Item, typ string) string {
+	var sub string
+	if it != nil && it.Base != nil && it.Base.Weapon != nil {
+		sub = it.Base.SubType
+	}
+	switch {
+	case typ == "One Handed Sword" && sub == "Thrusting":
+		return "One Handed Sword"
+	case typ == "Sceptre":
+		return "Sceptre"
+	case typ == "Thrusting One Handed Sword":
+		return "One Handed Sword"
+	case sub != "":
+		return sub
+	}
+	return typ
+}
