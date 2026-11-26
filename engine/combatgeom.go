@@ -167,14 +167,15 @@ func expectedHits(sh skillShape, projectiles, pierce, chain, fork, radius, strik
 	s := &hitSim{
 		sh: sh, ts: m.targets, aim: m.distance, inside: m.inside, radius: radius,
 		rng:    rand.New(rand.NewPCG(seed, pcgStream)),
-		pierce: int(pierce), chain: int(chain), fork: int(fork),
+		pierce: targetCount(pierce, len(m.targets)), chain: targetCount(chain, len(m.targets)),
+		fork: targetCount(fork, len(m.targets)),
 		hits: make([]float64, len(m.targets)),
 	}
 	if sh.kind == projectile && sh.subHits == 0 {
 		s.blast = max(radius, 0)
 	}
 	n := max(int(math.Round(projectiles)), 1)
-	strikes := max(int(strikeTargets), 1)
+	strikes := max(targetCount(strikeTargets, len(m.targets)), 1)
 	for range geomTrials {
 		clear(s.hits)
 		s.cast(n, strikes)
@@ -189,6 +190,20 @@ func expectedHits(sh skillShape, projectiles, pierce, chain, fork, radius, strik
 		out[i] /= geomTrials
 	}
 	return out
+}
+
+// targetCount converts a pierce, chain, fork or strike count to an int no
+// larger than the targets there are: more can never hit anything, and an
+// infinite count (PoB's math.huge, e.g. ChainCountMax at close range) does
+// not survive int() portably. NaN and negative counts are 0.
+func targetCount(v float64, targets int) int {
+	switch {
+	case !(v > 0): // NaN, 0 or negative
+		return 0
+	case v >= float64(targets):
+		return targets
+	}
+	return int(v)
 }
 
 // hitSim runs one trial at a time, adding the trial's hits to hits.

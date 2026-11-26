@@ -248,3 +248,32 @@ func TestPackCountCap(t *testing.T) {
 		t.Errorf("unknown boss size: radius %v, want medium 20", m.targets[0].r)
 	}
 }
+
+// TestInfiniteChain: an infinite chain count (PoB's math.huge, "Projectiles
+// can Chain from any number of additional targets in Close Range") chains
+// through the pack on every architecture; int(+Inf) is not portable.
+func TestInfiniteChain(t *testing.T) {
+	sh := skillShape{kind: projectile}
+	m := packModel(PackParams{})
+	none := sumHits(expectedHits(sh, 1, 0, 0, 0, 0, 0, m, 1))
+	inf := sumHits(expectedHits(sh, 1, 0, math.Inf(1), 0, 0, 0, m, 1))
+	if inf <= none {
+		t.Errorf("chain +Inf: %v hits, want more than without chains (%v)", inf, none)
+	}
+	if all := sumHits(expectedHits(sh, 1, 0, float64(len(m.targets)), 0, 0, 0, m, 1)); inf != all {
+		t.Errorf("chain +Inf: %v hits, want the same as chaining to every target (%v)", inf, all)
+	}
+}
+
+func TestTargetCount(t *testing.T) {
+	for _, c := range []struct {
+		v    float64
+		want int
+	}{
+		{math.Inf(1), 10}, {1e300, 10}, {10, 10}, {3.7, 3}, {0, 0}, {-2, 0}, {math.Inf(-1), 0}, {math.NaN(), 0},
+	} {
+		if got := targetCount(c.v, 10); got != c.want {
+			t.Errorf("targetCount(%v, 10) = %d, want %d", c.v, got, c.want)
+		}
+	}
+}
