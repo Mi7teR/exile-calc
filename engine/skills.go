@@ -211,8 +211,9 @@ type skillEffect struct {
 	// srcTriggered and srcTriggerChance are srcInstance.triggered and
 	// triggerChance: the ExtraSkill mod's fields for a skill granted by an
 	// item or a node (CalcSetup.lua:1556-1557).
-	srcTriggered     bool
-	srcTriggerChance float64
+	srcTriggered        bool
+	srcTriggerChance    float64
+	srcHasTriggerChance bool
 }
 
 // skillBuff is an entry of activeSkill.buffList.

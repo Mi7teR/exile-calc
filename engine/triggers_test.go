@@ -59,6 +59,91 @@ func TestTriggersGlobalSelfSource(t *testing.T) {
 	if _, ok := db.output["SkillTriggerRate"]; ok || truthy(sp.data.val("triggered")) {
 		t.Errorf("CWDT without threshold: output %v triggered %v", db.output, sp.data.val("triggered"))
 	}
+
+	// A threshold of 0 is set (truthy in Lua): the skill is triggered.
+	sp = triggerTestSkill("Frostbolt")
+	sp.effects = append(sp.effects, cwdt)
+	sp.data.set("triggeredByDamageTaken", 0.0)
+	db = NewModDB()
+	c.triggers(db, sp, hitSource{}, nil)
+	if !truthy(sp.data.val("triggered")) {
+		t.Error("CWDT with threshold 0 is not triggered")
+	}
+}
+
+// withTestTriggerConfig registers a config for one test.
+func withTestTriggerConfig(t *testing.T, key string, f func(*ModDB, *activeSkill) *triggerConfig) {
+	t.Helper()
+	// Safe only because engine tests do not use t.Parallel.
+	triggerConfigs[key] = f
+	t.Cleanup(func() { delete(triggerConfigs, key) })
+}
+
+// config.triggerChance = config.triggerChance or srcInstance.triggerChance
+// keeps an explicit 0 (truthy in Lua), which gives no triggers; without a
+// config chance the granted skill's chance applies.
+func TestTriggerChanceExplicitZero(t *testing.T) {
+	c := &Calculator{}
+	src := triggerTestSkill("Source")
+	src.types[stSpell] = true
+	for _, tc := range []struct {
+		name    string
+		has     bool
+		wantOff bool
+	}{{"zero", true, true}, {"unset", false, false}} {
+		withTestTriggerConfig(t, "test chance "+tc.name, func(*ModDB, *activeSkill) *triggerConfig {
+			return &triggerConfig{source: src, sourceOut: map[string]float64{}, trigRate: 2, hasTriggerChance: tc.has}
+		})
+		main := triggerTestSkill("Test Chance " + tc.name)
+		main.active.srcTriggerChance, main.active.srcHasTriggerChance = 50, true
+		db := NewModDB()
+		c.triggers(db, main, hitSource{}, nil)
+		rate := db.output["SkillTriggerRate"]
+		if (rate == 0) != tc.wantOff || math.IsNaN(rate) || math.IsInf(rate, 0) {
+			t.Errorf("%s: SkillTriggerRate %v", tc.name, rate)
+		}
+	}
+}
+
+// CalcTriggers.lua:1629: configTable[skillId] is tried first, with the id
+// as it is; no game skill id is also a name key of the Go table.
+func TestTriggerConfigBySkillID(t *testing.T) {
+	withTestTriggerConfig(t, "TestSkillId", func(*ModDB, *activeSkill) *triggerConfig {
+		return &triggerConfig{selfSource: true, triggerName: "by id"}
+	})
+	main := triggerTestSkill("Tempest Shield")
+	main.active.id = "TestSkillId"
+	db := NewModDB()
+	(&Calculator{}).triggers(db, main, hitSource{}, nil)
+	if main.infoTrigger != "by id" {
+		t.Errorf("trigger %q, want the id's config", main.infoTrigger)
+	}
+	calc := newCalc(t)
+	for id := range calc.data.Skills.Effects {
+		if triggerConfigs[id] != nil {
+			t.Errorf("skill id %q is also a trigger config name key", id)
+		}
+	}
+}
+
+// The triggered skill's own mana cost is computed once per Calc: a cached
+// value is used without another offence pass.
+func TestManaforgedCostCached(t *testing.T) {
+	db := NewModDB()
+	main := triggerTestSkill("Toxic Rain")
+	main.data.set("triggeredByManaforged", true)
+	main.data.set("ManaForgedArrowsPercentThreshold", 3.0)
+	db.triggeredCostCache = map[*activeSkill]float64{main: 10}
+	// &Calculator{} has no data: an offence pass would panic.
+	src := map[string]float64{"ManaCostRaw": 7}
+	got := (&Calculator{}).manaforgedRate(db, main, &triggerConfig{}, src, 2, hitSource{}, nil)
+	if want := 2 / math.Ceil(30.0/7); got != want {
+		t.Errorf("rate %v, want %v", got, want)
+	}
+	got = (&Calculator{}).manaforgedRate(db, main, &triggerConfig{}, map[string]float64{}, 2, hitSource{}, nil)
+	if got != 0 {
+		t.Errorf("source without mana cost: rate %v, want 0", got)
+	}
 }
 
 // CalcSetup.lua:1556-1557: a skill granted by an item keeps its
@@ -69,11 +154,16 @@ func TestGrantedTrigger(t *testing.T) {
 	db.Add(Mod{Name: "ExtraSkill", Type: "LIST", Source: src,
 		Value: map[string]any{"skillId": "RainOfArrows", "level": 5.0, "triggered": true, "triggerChance": 30.0}})
 	g := &pobcode.SocketGroup{Source: src}
-	if tr, ch := grantedTrigger(db, g, "RainOfArrows"); !tr || ch != 30 {
-		t.Errorf("got %v %v, want true 30", tr, ch)
+	if tr, ch, has := grantedTrigger(db, g, "RainOfArrows"); !tr || ch != 30 || !has {
+		t.Errorf("got %v %v %v, want true 30 true", tr, ch, has)
 	}
-	if tr, _ := grantedTrigger(db, &pobcode.SocketGroup{Source: "Item:1:Other"}, "RainOfArrows"); tr {
+	if tr, _, _ := grantedTrigger(db, &pobcode.SocketGroup{Source: "Item:1:Other"}, "RainOfArrows"); tr {
 		t.Error("a mod of another source must not match")
+	}
+	db.Add(Mod{Name: "ExtraSkill", Type: "LIST", Source: "Item:2:Other",
+		Value: map[string]any{"skillId": "RainOfArrows", "level": 5.0, "triggered": true}})
+	if tr, _, has := grantedTrigger(db, &pobcode.SocketGroup{Source: "Item:2:Other"}, "RainOfArrows"); !tr || has {
+		t.Errorf("no triggerChance: got triggered %v set %v, want true false", tr, has)
 	}
 	s := triggerTestSkill("Rain of Arrows")
 	if isTriggered(s) {

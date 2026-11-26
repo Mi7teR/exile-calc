@@ -64,6 +64,10 @@ type ModDB struct {
 	// incomplete holds the actor's notes for Result.Incomplete from skill
 	// hooks (noteIncomplete).
 	incomplete []string
+	// triggeredCostCache holds the ManaCostRaw of a triggered skill
+	// calculated without its trigger (Manaforged Arrows), by skill, once
+	// per calculation.
+	triggeredCostCache map[*activeSkill]float64
 
 	// UnsupportedTags counts tag types EvalMod does not port yet; mods
 	// carrying them are left out of every sum.

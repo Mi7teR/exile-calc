@@ -14,10 +14,17 @@ import (
 
 const serverTickTime = 0.033
 
+// defaultTriggerChance is calcMultiSpellRotationImpact's chance when the
+// caller passes none (CalcTriggers.lua:110).
+const defaultTriggerChance = 100
+
 // triggerConfig is an entry of CalcTriggers.lua configTable.
 type triggerConfig struct {
-	triggerOnUse       bool
-	triggerChance      float64 // 0: not set
+	triggerOnUse bool
+	// triggerChance is config.triggerChance when hasTriggerChance (0 is a
+	// set value: Lua's "or" keeps it).
+	triggerChance      float64
+	hasTriggerChance   bool
 	triggerSkillCond   func(main, s *activeSkill) bool
 	triggeredSkillCond func(main, s *activeSkill) bool
 	overlaps           float64 // 0: not set
@@ -38,6 +45,19 @@ type triggerConfig struct {
 	// triggerName is config.triggerName: the infoTrigger label when the
 	// config sets its own.
 	triggerName string
+	// preTriggered is skillData.triggered as it was before calcs.triggers
+	// ran (hasPreTriggered: present): the state of the env PoB builds for
+	// the triggered skill with its trigger limited (manaforgedRate).
+	preTriggered    any
+	hasPreTriggered bool
+}
+
+// withChance is the config with config.triggerChance = v when v is set.
+func (cfg *triggerConfig) withChance(v any) *triggerConfig {
+	if f, ok := num(v); ok {
+		cfg.triggerChance, cfg.hasTriggerChance = f, true
+	}
+	return cfg
 }
 
 // isTriggered is isTriggered (CalcTriggers.lua:41-43).
@@ -104,10 +124,10 @@ var triggerConfigs = map[string]func(db *ModDB, main *activeSkill) *triggerConfi
 			triggeredSkillCond: func(_, s *activeSkill) bool { return truthy(s.data.val("triggeredByCovetousDark")) }}
 	},
 	"cast when stunned": func(_ *ModDB, main *activeSkill) *triggerConfig {
-		return &triggerConfig{selfSource: true, triggerChance: numOr(main.data.val("chanceToTriggerOnStun"), 0)}
+		return (&triggerConfig{selfSource: true}).withChance(main.data.val("chanceToTriggerOnStun"))
 	},
 	"cast on ward break": func(_ *ModDB, main *activeSkill) *triggerConfig {
-		return &triggerConfig{selfSource: true, triggerChance: numOr(main.data.val("chanceToTriggerOnWardBreak"), 0)}
+		return (&triggerConfig{selfSource: true}).withChance(main.data.val("chanceToTriggerOnWardBreak"))
 	},
 	"avenging flame": func(*ModDB, *activeSkill) *triggerConfig {
 		return &triggerConfig{ignoreSourceRate: true,
@@ -129,8 +149,9 @@ var triggerConfigs = map[string]func(db *ModDB, main *activeSkill) *triggerConfi
 	// CalcTriggers.lua:1196-1210: a global trigger without a source search;
 	// nil (the next name is tried) when the skill has no damage threshold.
 	"cast when damage taken": func(db *ModDB, main *activeSkill) *triggerConfig {
-		th, ok := main.data.val("triggeredByDamageTaken").(float64)
-		if !ok || th == 0 {
+		// if skillData.triggeredByDamageTaken: any number, 0 included, is truthy.
+		th, ok := num(main.data.val("triggeredByDamageTaken"))
+		if !ok {
 			return nil
 		}
 		db.output["CWDTThreshold"] = th * calcMod(main.mods, nil, "CWDTThreshold")
@@ -217,9 +238,6 @@ func rotationImpact(main *activeSkill, rotation []*simSkill, sourceRate, trigger
 	}
 	inc := 1 / sourceRate
 	simTime := inc * 1000
-	if chance == 0 {
-		chance = 100
-	}
 	for _, s := range rotation {
 		icdr := s.icdr
 		if icdr == 0 {
@@ -289,8 +307,10 @@ func (c *Calculator) triggers(db *ModDB, main *activeSkill, w1 hitSource, w2 *hi
 	}
 	// config = config or configTable[name](env): a config function that
 	// returns nil falls through to the next name (CalcTriggers.lua:1627-1631).
+	// The first key is the granted effect id, as it is (configTable[skillId]).
+	preTriggered, hasPreTriggered := main.data.get("triggered")
 	var cfg *triggerConfig
-	for _, n := range names {
+	for _, n := range append([]string{main.active.id}, names...) {
 		if f := triggerConfigs[n]; f != nil {
 			if cfg = f(db, main); cfg != nil {
 				break
@@ -301,9 +321,10 @@ func (c *Calculator) triggers(db *ModDB, main *activeSkill, w1 hitSource, w2 *hi
 		main.data.del("triggered")
 		return
 	}
+	cfg.preTriggered, cfg.hasPreTriggered = preTriggered, hasPreTriggered
 	// config.triggerChance = config.triggerChance or srcInstance.triggerChance.
-	if cfg.triggerChance == 0 {
-		cfg.triggerChance = main.active.srcTriggerChance
+	if !cfg.hasTriggerChance && main.active.srcHasTriggerChance {
+		cfg.triggerChance, cfg.hasTriggerChance = main.active.srcTriggerChance, true
 	}
 	c.defaultTrigger(db, main, by, cfg, w1, w2)
 }
@@ -367,7 +388,7 @@ func (c *Calculator) defaultTrigger(db *ModDB, main *activeSkill, by *skillEffec
 		(source.types[stMelee] || source.types[stAttack]) && by != nil && by.ge.FromItem {
 		trigRate /= 2
 	}
-	trigRate = c.manaforgedRate(db, main, sourceOut, trigRate, w1, w2)
+	trigRate = c.manaforgedRate(db, main, cfg, sourceOut, trigRate, w1, w2)
 	ignoresTick := truthy(main.data.val("ignoresTickRate")) || main.data.storedUses.or(0) > 1
 	icdr := calcMod(main.mods, main.cfg, "CooldownRecovery")
 	if icdr == 0 {
@@ -416,15 +437,15 @@ func (c *Calculator) defaultTrigger(db *ModDB, main *activeSkill, by *skillEffec
 			chance *= hc / 100
 		}
 		if truthy(main.data.val("triggerOnCrit")) {
-			if cfg.triggerChance == 0 {
-				cfg.triggerChance = numOr(main.data.val("chanceToTriggerOnCrit"), 0)
+			if !cfg.hasTriggerChance {
+				cfg.withChance(main.data.val("chanceToTriggerOnCrit"))
 			}
 			if cc := sourceOut["CritChance"]; cc != 100 {
 				chance *= cc / 100
 			}
 		}
 	}
-	if cfg.triggerChance != 0 && cfg.triggerChance != 100 {
+	if cfg.hasTriggerChance && cfg.triggerChance != 100 {
 		chance *= cfg.triggerChance / 100
 	}
 	var skillRate float64
@@ -465,13 +486,13 @@ func (c *Calculator) defaultTrigger(db *ModDB, main *activeSkill, by *skillEffec
 }
 
 // manaforgedRate is the Manaforged Arrows part of defaultTriggerHandler
-// (CalcTriggers.lua:228-263): the source rate divided by the source uses
+// (CalcTriggers.lua:540-575): the source rate divided by the source uses
 // needed to spend the threshold, a multiple of the triggered skill's own
-// mana cost (from a calculation with the skill as the main skill and no
-// trigger); 0 when the source costs no mana.
+// mana cost; 0 when the source costs no mana.
 func (c *Calculator) manaforgedRate(
 	db *ModDB,
 	main *activeSkill,
+	cfg *triggerConfig,
 	sourceOut map[string]float64,
 	trigRate float64,
 	w1 hitSource,
@@ -480,9 +501,7 @@ func (c *Calculator) manaforgedRate(
 	if !truthy(main.data.val("triggeredByManaforged")) || trigRate <= 0 {
 		return trigRate
 	}
-	cp := cloneSkill(main)
-	cp.data.del("triggered")
-	triggeredCost := c.offenceOnCopy(db, cp, w1, w2)["ManaCostRaw"]
+	triggeredCost := c.triggeredManaCost(db, main, cfg, w1, w2)
 	if triggeredCost <= 0 {
 		return trigRate
 	}
@@ -492,6 +511,41 @@ func (c *Calculator) manaforgedRate(
 		return 0
 	}
 	return trigRate / math.Ceil(threshold/sourceCost)
+}
+
+// triggeredManaCost is the triggered skill's ManaCostRaw as PoB caches it:
+// calcs.buildActiveSkill(env, mode, mainSkill, uuid, {uuid}) (Calcs.lua:365-400)
+// runs calcs.perform on a fresh env with the skill as the main skill and
+// its uuid in limitedSkills, so calcs.triggers skips it (CalcTriggers.lua:1619):
+// skillData.triggered is what the skill setup gave, no TriggeredDamage mods
+// are added and the trigger config has not run. The copy here is the skill
+// before this trigger pass: skillData.triggered restored to its value when
+// calcs.triggers began (manaforgedRate runs before addTriggerIncMoreMods,
+// and the Manaforged Arrows config changes nothing on the skill). The perform
+// part (CalcPerform.lua:247's conditions) saw that same state in this Calc.
+// The cost is computed once per Calc and skill (PoB caches it by uuid).
+func (c *Calculator) triggeredManaCost(
+	db *ModDB,
+	main *activeSkill,
+	cfg *triggerConfig,
+	w1 hitSource,
+	w2 *hitSource,
+) float64 {
+	if v, ok := db.triggeredCostCache[main]; ok {
+		return v
+	}
+	cp := cloneSkill(main)
+	if cfg.hasPreTriggered {
+		cp.data.set("triggered", cfg.preTriggered)
+	} else {
+		cp.data.del("triggered")
+	}
+	v := c.offenceOnCopy(db, cp, w1, w2)["ManaCostRaw"]
+	if db.triggeredCostCache == nil {
+		db.triggeredCostCache = map[*activeSkill]float64{}
+	}
+	db.triggeredCostCache[main] = v
+	return v
 }
 
 // doomBlastSourceRate is the Doom Blast part of the default trigger
@@ -532,7 +586,9 @@ func (c *Calculator) doomBlastSourceRate(db *ModDB, main *activeSkill, sourceOut
 				vixensCD = lv.Cooldown / icdr
 			}
 		}
-		out["EffectiveSourceRate"] = rotationImpact(main, []*simSkill{{skill: main, icdr: icdr}}, trigRate, vixensCD, 0)
+		// chance nil: calcMultiSpellRotationImpact's default.
+		rot := []*simSkill{{skill: main, icdr: icdr}}
+		out["EffectiveSourceRate"] = rotationImpact(main, rot, trigRate, vixensCD, defaultTriggerChance)
 	}
 }
 
