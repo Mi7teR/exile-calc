@@ -11,7 +11,8 @@ import (
 // calcs.offence (Modules/CalcOffence.lua): ailment chances, bleed, poison,
 // ignite, impale, skill DoT, culling and combined DPS. Not ported yet:
 // decay, non-damaging ailment effects, knockback, preDotFunc, the legacy
-// Perfect Agony (CritMultiplierAppliesToDegen) and ailmentMode CRIT.
+// Perfect Agony (CritMultiplierAppliesToDegen) and the rest of ailmentMode
+// CRIT (the non-damaging ailments' crit condition, 5469).
 
 // Data/Global.lua ModFlag and KeywordFlag bits for ailments.
 const (
@@ -146,7 +147,13 @@ func ailmentChances(actor *ModDB, s *activeSkill, p *hitPass) {
 			out["ChaosPoisonChance"] *= mult
 		}
 	}
-	if actor.Flag("AilmentsOnlyFromCrit") {
+	// CalcOffence.lua:4333-4338: the Config tab's ailmentMode CRIT, or
+	// AilmentsOnlyFromCrit, leaves only crits to inflict ailments.
+	ailmentMode := "AVERAGE" //nolint:goconst // PoB config value
+	if b := actor.theBuild(); b != nil {
+		ailmentMode = configString(b.ActiveConfig(), "ailmentMode", ailmentMode)
+	}
+	if ailmentMode == "CRIT" || actor.Flag("AilmentsOnlyFromCrit") {
 		for _, a := range ailmentTypeList {
 			out[a+"ChanceOnHit"] = 0
 		}

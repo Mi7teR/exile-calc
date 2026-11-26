@@ -99,6 +99,10 @@ func (c *Calculator) initMinionDB(db *ModDB, s *activeSkill, m *skillMinion, res
 	mdb.NewMod("PhysicalDamageReduction", "BASE", 4, "Base", endurance)  // monsterConstants physical_damage_reduction_%_per_endurance_charge
 	mdb.NewMod("ElementalDamageReduction", "BASE", 4, "Base", endurance) // elemental_damage_reduction_%_per_endurance_charge_if_player_minion
 	mdb.NewMod("MaximumFortification", "BASE", 20, "Base")               // base_max_fortification
+	// CalcPerform.lua:1196: bleeding deals more damage to a moving enemy.
+	//nolint:goconst,mnd // PoB mod and tag names, PoB literal
+	mdb.Add(Mod{Name: "Damage", Type: "MORE", Value: 200.0, KeywordFlags: kfBleed, Source: "Base",
+		Tags: []map[string]any{{"type": "ActorCondition", "actor": "enemy", "var": "Moving"}}})
 	for _, mm := range m.data.ModList {
 		mdb.Add(modFromMap(mm, "Minion:"+m.data.Name))
 	}

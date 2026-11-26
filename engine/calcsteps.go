@@ -197,6 +197,7 @@ func stepBaseMods(_ *Calculator, st *calcState) error {
 		db.NewMod(r+"ResistMax", "BASE", baseMaxResist, "Base")
 	}
 	chargeBaseMods(db)
+	playerChargeBaseMods(db)
 	db.NewMod("ManaRegen", "BASE", manaRegenBase, "Base", map[string]any{"type": "PerStat", "stat": "Mana", "div": 1.0})
 	db.NewMod("BlockChanceMax", "BASE", 75, "Base")      // characterConstants maximum_block_%
 	db.NewMod("SpellBlockChanceMax", "BASE", 75, "Base") // base_maximum_spell_block_%

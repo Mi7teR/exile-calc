@@ -22,6 +22,12 @@ func chargeBaseMods(db *ModDB) {
 	brine := map[string]any{"type": "Multiplier", "var": "BrineCharge"}
 	db.NewMod("PhysicalDamageGainAsCold", "BASE", 4, "Base", brine) // physical_damage_%_to_add_as_cold_per_brine_charge
 	db.NewMod("PhysicalDamageGainAsLightning", "BASE", 4, "Base", brine)
+}
+
+// playerChargeBaseMods are the player's own rage and valour maximums,
+// which calcs.initEnv adds to the player only (CalcSetup.lua:631, 635),
+// not calcs.initModDB to every actor: a minion has no base maximum rage.
+func playerChargeBaseMods(db *ModDB) {
 	db.NewMod("MaximumRage", "BASE", 30, "Base") // characterConstants maximum_rage
 	db.NewMod("MaximumValour", "BASE", 50, "Base")
 }
