@@ -198,6 +198,36 @@ func TestHooks(t *testing.T) {
 			"value":{"mod":{"@list":[{"type":"Condition","var":"Intimidated"}],"flags":1,"keywordFlags":0,"name":"DamageTaken","type":"INC","value":15}}},
 			{"@list":[{"threshold":3,"type":"MultiplierThreshold","var":"MurderousEyeJewel"}],"flags":0,"keywordFlags":0,"name":"EnemyModifier","type":"LIST",
 			"value":{"mod":{"@list":[{"type":"Condition","var":"Intimidated"}],"flags":0,"keywordFlags":0,"name":"Damage","type":"MORE","value":-10}}}]`,
+
+		// hooks_recovery.go
+		// "regenerate (%d+) rage per second for every (%d+) life recovery per second from regeneration": percent = num/div*100
+		"Regenerate 1 Rage per second for every 200 Life Recovery per second from Regeneration": `[{"@list":[{"percent":0.5,"stat":"LifeRegen","type":"PercentStat"}],
+			"flags":0,"keywordFlags":0,"name":"RageRegen","type":"BASE","value":1},{"flags":0,"keywordFlags":0,"name":"Condition:CanGainRage","type":"FLAG","value":true}]`,
+		// "inherent loss of rage is (%d+)%% slower"
+		"Inherent loss of Rage is 10% slower": `[{"flags":0,"keywordFlags":0,"name":"InherentRageLoss","type":"INC","value":-10}]`,
+		// "... prevented from hits in the past (%d+) seconds ...": the duration stays a string, as in PoB
+		"1.5% of Physical Damage prevented from Hits in the past 10 seconds is Regenerated as Life per second": `[
+			{"flags":0,"keywordFlags":0,"name":"PhysicalDamageMitigatedLifePseudoRecoup","type":"BASE","value":15},
+			{"flags":0,"keywordFlags":0,"name":"PhysicalDamageMitigatedLifePseudoRecoupDuration","type":"BASE","value":"10"}]`,
+		// "(%w+) recovery from regeneration is not applied"
+		"Mana Recovery from Regeneration is not applied": `[{"flags":0,"keywordFlags":0,"name":"UnaffectedByManaRegen","type":"FLAG","value":true}]`,
+		// "regenerate (%d+)%% of mana over 2 seconds when you consume a corpse"
+		"Regenerate 3% of Mana over 2 seconds when you Consume a corpse": `[{"@list":[{"percent":1.5,"stat":"Mana","type":"PercentStat"},
+			{"type":"Condition","var":"ConsumedCorpseInPast2Sec"}],"flags":0,"keywordFlags":0,"name":"ManaRegen","type":"BASE","value":1}]`,
+		// "for each nearby corpse, you and nearby allies regenerate ...": the 3.30 "within N metres" wording
+		"For each corpse within 6 metres, you and Allies within 6 metres Regenerate 5 Mana per second, up to 50 per second": `[{"@list":[{"limit":50,
+			"limitTotal":true,"type":"Multiplier","var":"NearbyCorpse"}],"flags":0,"keywordFlags":0,"name":"ExtraAura","type":"LIST",
+			"value":{"mod":{"flags":0,"keywordFlags":0,"name":"ManaRegen","type":"BASE","value":5}}}]`,
+		// "every (%d+) seconds, regenerate energy shield equal to (%d+)%% of evasion rating over (%d+) second": percent stays a string
+		"Every 4 seconds, Regenerate Energy Shield equal to 1% of Evasion Rating over 1 second": `[
+			{"@list":[{"type":"Condition","var":"LifeRegenBurstFull"},{"percent":"1","stat":"Evasion","type":"PercentStat"}],
+			"flags":0,"keywordFlags":0,"name":"EnergyShieldRegen","type":"BASE","value":1},
+			{"@list":[{"type":"Condition","var":"LifeRegenBurstAvg"},{"percent":"1","stat":"Evasion","type":"PercentStat"}],
+			"flags":0,"keywordFlags":0,"name":"EnergyShieldRegen","type":"BASE","value":0.25}]`,
+		// "(%d+)%% chance to gain (%d+) life on hit with attacks"
+		"15% chance to gain 200 Life on Hit with Attacks": `[{"@list":[{"type":"Condition","var":"AverageResourceGain"}],"flags":5,"keywordFlags":0,
+			"name":"LifeOnHit","type":"BASE","value":30},{"@list":[{"type":"Condition","var":"MaxResourceGain"}],"flags":5,"keywordFlags":0,
+			"name":"LifeOnHit","type":"BASE","value":200}]`,
 	}
 	p, err := PoE1()
 	if err != nil {
