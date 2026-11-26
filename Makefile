@@ -1,4 +1,7 @@
 STATSDUMP_DIR := $(HOME)/.cache/poe-lib/statsdump-base
+# Tests and dumps cache decoded timeless tables here, not in the user cache
+# (engine.TimelessCacheEnv; "off" turns the cache off).
+export POE_LIB_TIMELESS_CACHE ?= $(CURDIR)/.timeless-cache
 
 .PHONY: test test-short lint bench dump-base dump-check luaport
 

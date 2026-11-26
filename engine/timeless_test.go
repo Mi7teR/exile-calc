@@ -5,6 +5,7 @@ import (
 	"compress/zlib"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -158,5 +159,66 @@ func TestTimelessTablesConcurrent(t *testing.T) {
 	wg.Wait()
 	if _, err := l.table(9); err == nil {
 		t.Error("type 9 has no table, want an error")
+	}
+}
+
+// TestTimelessCachePrune: a write removes the table's other versions and
+// stale temporary files, keeps other tables and fresh temporary files,
+// and evicts the oldest tables past the size cap.
+func TestTimelessCachePrune(t *testing.T) {
+	dir := t.TempDir()
+	touch := func(name string, size int, age time.Duration) string {
+		p := filepath.Join(dir, name)
+		if err := os.WriteFile(p, make([]byte, size), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		mt := time.Now().Add(-age)
+		if err := os.Chtimes(p, mt, mt); err != nil {
+			t.Fatal(err)
+		}
+		return p
+	}
+	touch("LethalPride-0000000000000001.bin", 10, time.Hour)
+	other := touch("BrutalRestraint-0000000000000002.bin", 10, time.Hour)
+	stale := touch("LethalPride-0000000000000003.bin.tmp123", 10, 2*time.Hour)
+	fresh := touch("ElegantHubris-0000000000000004.bin.tmp456", 10, time.Minute)
+	cur := touch("LethalPride-0000000000000005.bin", 10, 0)
+	pruneTimelessCache(cur, time.Now())
+	for p, want := range map[string]bool{
+		filepath.Join(dir, "LethalPride-0000000000000001.bin"): false, other: true, stale: false, fresh: true, cur: true,
+	} {
+		if _, err := os.Stat(p); (err == nil) != want {
+			t.Errorf("%s exists %v, want %v", filepath.Base(p), err == nil, want)
+		}
+	}
+
+	// Size cap: the oldest table goes, the one just written stays.
+	big := timelessCacheMaxBytes/2 + 1
+	old := touch("GloriousVanity-0000000000000006.bin", big, 3*time.Hour)
+	cur2 := touch("MilitantFaith-0000000000000007.bin", big, 0)
+	pruneTimelessCache(cur2, time.Now())
+	if _, err := os.Stat(old); err == nil {
+		t.Error("oldest table not evicted past the size cap")
+	}
+	if _, err := os.Stat(cur2); err != nil {
+		t.Error("the table just written was evicted")
+	}
+}
+
+// TestTimelessCacheEnv: "off" turns the cache off, a path is used as is,
+// unset is the user cache directory.
+func TestTimelessCacheEnv(t *testing.T) {
+	t.Setenv(TimelessCacheEnv, "off")
+	if d := timelessCacheDir(); d != "" {
+		t.Errorf("off: cache dir %q", d)
+	}
+	dir := t.TempDir()
+	t.Setenv(TimelessCacheEnv, dir)
+	if d := timelessCacheDir(); d != dir {
+		t.Errorf("dir: cache dir %q, want %q", d, dir)
+	}
+	t.Setenv(TimelessCacheEnv, "")
+	if d := timelessCacheDir(); !strings.HasSuffix(d, filepath.Join("poe-lib", "timeless-decoded")) {
+		t.Errorf("default: cache dir %q", d)
 	}
 }

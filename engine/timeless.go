@@ -10,8 +10,11 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"sort"
 	"strconv"
+	"strings"
 	"sync"
+	"time"
 
 	"github.com/Mi7teR/poe-lib/gamedata"
 	"github.com/Mi7teR/poe-lib/pobcode"
@@ -22,6 +25,19 @@ import (
 // into its cache and logs the path. Without them, timeless jewels are
 // reported in Result.Incomplete instead of being applied.
 const TimelessDirEnv = "POE_LIB_TIMELESS_DIR"
+
+// TimelessCacheEnv overrides where decoded timeless tables are cached:
+// "off" turns the cache off, any other value is the cache directory.
+// Unset, the cache is <user cache dir>/poe-lib/timeless-decoded.
+const TimelessCacheEnv = "POE_LIB_TIMELESS_CACHE"
+
+// timelessCacheMaxBytes caps the decoded table cache; the oldest files go
+// first. timelessTmpMaxAge is the age after which a temporary file is
+// taken as left by a dead process.
+const (
+	timelessCacheMaxBytes = 512 << 20
+	timelessTmpMaxAge     = time.Hour
+)
 
 // PassiveSpec.lua timelessJewelTypeByConqueror and Data.lua seed ranges.
 var (
@@ -65,8 +81,8 @@ type lutEntry struct {
 
 func newTimelessLUTs() *timelessLUTs {
 	l := &timelessLUTs{dir: defaultTimelessDir()}
-	if cache, err := os.UserCacheDir(); err == nil && l.dir != "" {
-		l.cacheDir = filepath.Join(cache, "poe-lib", "timeless-decoded")
+	if l.dir != "" {
+		l.cacheDir = timelessCacheDir()
 	}
 	return l
 }
@@ -220,6 +236,75 @@ func readTimelessCache(path string) ([]byte, bool) {
 	return b, true
 }
 
+// timelessCacheDir is the cache directory by TimelessCacheEnv; "" when off.
+func timelessCacheDir() string {
+	switch v := os.Getenv(TimelessCacheEnv); v {
+	case "off":
+		return ""
+	case "":
+		if cache, err := os.UserCacheDir(); err == nil {
+			return filepath.Join(cache, "poe-lib", "timeless-decoded")
+		}
+		return ""
+	default:
+		return v
+	}
+}
+
+// pruneTimelessCache runs after path was written: it removes the other
+// versions of the same table (<name>-*.bin), temporary files older than
+// timelessTmpMaxAge, and then the oldest tables until the directory fits
+// timelessCacheMaxBytes. Errors are ignored; the cache is best effort.
+func pruneTimelessCache(path string, now time.Time) {
+	dir := filepath.Dir(path)
+	base := filepath.Base(path)
+	name, _, _ := strings.Cut(base, "-")
+	ents, err := os.ReadDir(dir)
+	if err != nil {
+		return
+	}
+	type file struct {
+		path string
+		size int64
+		mod  time.Time
+	}
+	var kept []file
+	total := int64(0)
+	for _, e := range ents {
+		info, ierr := e.Info()
+		if ierr != nil || e.IsDir() {
+			continue
+		}
+		n, p := e.Name(), filepath.Join(dir, e.Name())
+		switch {
+		case strings.Contains(n, ".tmp"):
+			if now.Sub(info.ModTime()) > timelessTmpMaxAge {
+				_ = os.Remove(p)
+			}
+			continue
+		case !strings.HasSuffix(n, ".bin"):
+			continue
+		case n != base && strings.HasPrefix(n, name+"-"):
+			_ = os.Remove(p)
+			continue
+		}
+		kept = append(kept, file{p, info.Size(), info.ModTime()})
+		total += info.Size()
+	}
+	sort.Slice(kept, func(i, j int) bool { return kept[i].mod.Before(kept[j].mod) })
+	for _, f := range kept {
+		if total <= timelessCacheMaxBytes {
+			break
+		}
+		if f.path == path {
+			continue
+		}
+		if os.Remove(f.path) == nil {
+			total -= f.size
+		}
+	}
+}
+
 // writeTimelessCache writes b to path through a temporary file and a
 // rename, so a reader in another process sees either no file or the whole
 // one. A failure leaves no cache; the table was decoded anyway.
@@ -247,7 +332,9 @@ func writeTimelessCache(path string, b []byte) {
 	}
 	if err != nil {
 		_ = os.Remove(tmp.Name())
+		return
 	}
+	pruneTimelessCache(path, time.Now())
 }
 
 // readLUT ports DataLegionLookUpTableHelper.lua readLUT for jewel types
