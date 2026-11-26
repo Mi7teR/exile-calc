@@ -88,12 +88,6 @@ var hooks = map[string]Hook{
 		n, _ := toNumber(arg(a, 0)).(float64)
 		return wiseOakMods(func(e string) map[string]any { return newMod(e+"DamageTaken", "INC", -n, 0, 0) }, true)
 	},
-	// ["during f?l?a?s?k? ?effect, damage penetrates (%d+)%% o?f? ?resistance of each element for which your uncapped elemental resistance is highest"] = function(num) return {
-	//   mod("<E>Penetration", "BASE", num, { type = "StatThreshold", stat = "<E>ResistTotal", thresholdStat = "<O>ResistTotal" }, ...) } end,
-	"specialModList[^during f?l?a?s?k? ?effect, damage penetrates (%d+)%% o?f? ?resistance of each element for which your uncapped elemental resistance is highest$]": func(p *Parser, a []any) any {
-		n, _ := toNumber(arg(a, 0)).(float64)
-		return wiseOakMods(func(e string) map[string]any { return newMod(e+"Penetration", "BASE", n, 0, 0) }, false)
-	},
 	// ["minions convert (%d+)%% of (.+) damage to (.+) damage"] = function(num, _, source, target) return {
 	//   mod("MinionModifier", "LIST", { mod = mod(Source.."DamageConvertTo"..Target, "BASE", num) }) } end,
 	"specialModList[^minions convert (%d+)%% of (.+) damage to (.+) damage$]": func(p *Parser, a []any) any {
@@ -563,9 +557,9 @@ var hooks = map[string]Hook{
 	// ["your offerings have (%d+)%% reduced effect on you"] = function(num) return {
 	//   mod("ExtraSkillMod", "LIST", { mod = mod("BuffEffectOnPlayer", "INC", -num) },
 	//   { type = "SkillName", skillNameList = { "Bone Offering", "Flesh Offering", "Spirit Offering", "Blood Offering" } }) } end
-	// and the "increased" form with num.
-	"specialModList[^your offerings have (%d+)%% reduced effect on you$]":   offeringEffectOnYou(-1),
-	"specialModList[^your offerings have (%d+)%% increased effect on you$]": offeringEffectOnYou(1),
+	// The "increased" form only substitutes num: the generator exports it as
+	// a $template, so it needs no port.
+	"specialModList[^your offerings have (%d+)%% reduced effect on you$]": offeringEffectOnYou(-1),
 	// ["%+(%d+)%% chance to block spell damage for each (%d+)%% overcapped chance to block attack damage"] = function(num, _, div) return {
 	//   mod("SpellBlockChance", "BASE", num, { type = "PerStat", stat = "BlockChanceOverCap", div = tonumber(div) }) } end
 	"specialModList[^%+(%d+)%% chance to block spell damage for each (%d+)%% overcapped chance to block attack damage$]": func(p *Parser, a []any) any {

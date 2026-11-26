@@ -23,15 +23,8 @@ func TestHookNamesExist(t *testing.T) {
 			}
 		}
 	}
-	// Ports that predate this check: the generator exports these rules as a
-	// $template (their Lua function only substitutes num), so the $hook key
-	// is never looked up.
-	stale := map[string]bool{
-		"specialModList[^your offerings have (%d+)%% increased effect on you$]":                                                                                           true,
-		"specialModList[^during f?l?a?s?k? ?effect, damage penetrates (%d+)%% o?f? ?resistance of each element for which your uncapped elemental resistance is highest$]": true,
-	}
 	for name := range hooks {
-		if strings.HasPrefix(name, "specialModList[") && !inData[name] && !stale[name] {
+		if strings.HasPrefix(name, "specialModList[") && !inData[name] {
 			t.Errorf("hook %q is not in the data", name)
 		}
 	}
