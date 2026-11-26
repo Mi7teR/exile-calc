@@ -86,6 +86,7 @@ func (c *Calculator) skillCurse(db *ModDB, s *activeSkill, b *skillBuff) *enemyC
 		inc += list.SumCfg(cfg, "INC", "AuraEffect")
 	}
 	more := list.MoreCfg(cfg, "CurseEffect")
+	moreMark := more
 	if !mark {
 		more *= enemy.More("CurseEffectOnSelf")
 	}
@@ -95,6 +96,14 @@ func (c *Calculator) skillCurse(db *ModDB, s *activeSkill, b *skillBuff) *enemyC
 	}
 	if b.typ == "Curse" {
 		cu.mods = scaleMods(b.mods, mult)
+		if e := db.partyExports; e != nil {
+			// CalcPerform.lua:2722-2724.
+			effect := (1 + inc/100) * moreMark
+			if mark {
+				effect = mult
+			}
+			e.curse[b.name] = &partyExport{isMark: mark, effectMult: effect, mods: b.mods}
+		}
 	} else {
 		// The curse grants a buff: scaled by curse effect, then buff effect.
 		buffMult := (1 + db.SumCfg(cfg, "INC", "BuffEffectOnSelf")/100) * db.MoreCfg(cfg, "BuffEffectOnSelf")
@@ -114,6 +123,9 @@ func (c *Calculator) applyCurses(db *ModDB, skills []*activeSkill, curses []*ene
 		res.Incomplete = append(res.Incomplete, "curse limit from maximum power charges uses the base maximum")
 	}
 	db.output["EnemyCurseLimit"] = float64(limit) // CalcPerform.lua:3250
+	if e := db.partyExports; e != nil {
+		e.curseLimit = float64(limit) // CalcPerform.lua:3252
+	}
 	allyCurses, allyLimit := db.party.partyCurses(db.enemy)
 	var own, minion []*enemyCurse
 	for _, cu := range curses {

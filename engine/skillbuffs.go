@@ -138,6 +138,19 @@ func (c *Calculator) applyBuffs(db *ModDB, skills []*activeSkill, res *Result) (
 		mergeBuff(src, debuffs, name)
 	}
 	pm := mainSkill(skills)
+	// env.minion, and linksApplyToMinions (CalcPerform.lua:2743-2744) on its
+	// ModDB as the buff loop sees it.
+	envMinion, linkMinion := false, false
+	if pm != nil && db.enemyEnv != nil {
+		if m := c.minionOf(pm, int(db.multipliers["Level"]), db.enemyEnv.level); m != nil {
+			envMinion = true
+			if !m.data.Hostile {
+				casting, _ := c.castingMinionSkills(db, pm, m, res)
+				linkMinion = linksApplyToMinion(db, casting, pm)
+			}
+		}
+	}
+	linked := false // #linkSkills >= 1
 	// CalcPerform.lua:2242: the active spectres' modLists, before the
 	// skills' buffs; their mods are inserted, not merged.
 	sp := c.spectreEffectsOf(db, skills)
@@ -166,20 +179,29 @@ func (c *Calculator) applyBuffs(db *ModDB, skills []*activeSkill, res *Result) (
 					db.Add(m)
 				}
 			case "Buff":
-				if s.flags["totem"] && !b.allowTotemBuff || b.applyNotPlayer {
+				if s.flags["totem"] && !b.allowTotemBuff {
 					continue
 				}
 				store, bcfg := db, (*Cfg)(nil)
 				if b.activeSkillBuff {
 					store, bcfg = list, cfg
 				}
-				db.conditions["AffectedBy"+strings.ReplaceAll(b.name, " ", "")] = true
-				inc := store.SumCfg(bcfg, "INC", "BuffEffect", "BuffEffectOnSelf", "BuffEffectOnPlayer") +
-					list.SumCfg(cfg, "INC", strings.ReplaceAll(b.name, " ", "")+"Effect")
-				more := store.MoreCfg(bcfg, "BuffEffect", "BuffEffectOnSelf")
-				add(scaleMods(b.mods, (1+inc/100)*more), b.name)
-				if truthy(s.data.val("thisIsNotABuff")) {
-					notBuff[b.name] = true
+				effectName := strings.ReplaceAll(b.name, " ", "") + "Effect"
+				if !b.applyNotPlayer {
+					db.conditions["AffectedBy"+strings.ReplaceAll(b.name, " ", "")] = true
+					inc := store.SumCfg(bcfg, "INC", "BuffEffect", "BuffEffectOnSelf", "BuffEffectOnPlayer") +
+						list.SumCfg(cfg, "INC", effectName)
+					more := store.MoreCfg(bcfg, "BuffEffect", "BuffEffectOnSelf")
+					add(scaleMods(b.mods, (1+inc/100)*more), b.name)
+					if truthy(s.data.val("thisIsNotABuff")) {
+						notBuff[b.name] = true
+					}
+				}
+				// CalcPerform.lua:2377-2382.
+				if e := db.partyExports; e != nil &&
+					(b.applyAllies || list.Flag("BuffAppliesToAllies") || list.Flag("BuffAppliesToPartyMembers")) {
+					inc := store.SumCfg(bcfg, "INC", "BuffEffect") + list.SumCfg(cfg, "INC", effectName)
+					e.other[b.name] = &partyExport{effectMult: (1 + inc/100) * store.MoreCfg(bcfg, "BuffEffect"), mods: b.mods}
 				}
 			case "Aura":
 				extra := extraAuraMods(db, cfg)
@@ -210,7 +232,7 @@ func (c *Calculator) applyBuffs(db *ModDB, skills []*activeSkill, res *Result) (
 				}
 				mergeBuff(scaleMods(b.mods, (1+inc/100)*more), guards, b.name)
 			case "Warcry":
-				c.warcry(db, s, b, mainCfg(skills), warcries, add)
+				c.warcry(db, s, b, mainCfg(skills), warcries, envMinion, add)
 			case "Debuff", "AuraDebuff":
 				stack := 1.0
 				if b.stackVar != "" {
@@ -236,6 +258,10 @@ func (c *Calculator) applyBuffs(db *ModDB, skills []*activeSkill, res *Result) (
 					mult = 0
 					if !db.Flag("SelfAurasOnlyAffectYou") {
 						mult = (1 + list.SumCfg(cfg, "INC", "AuraEffect", "BuffEffect", "DebuffEffect")/100) * list.MoreCfg(cfg, "AuraEffect", "BuffEffect", "DebuffEffect")
+						if e := db.partyExports; e != nil {
+							// CalcPerform.lua:2658-2669.
+							e.setAuraDebuff(b.name, &partyExport{effectMult: mult, mods: append(append([]Mod(nil), b.mods...), extra...)})
+						}
 						if db.party.auraBeats("AuraDebuff", b.name, mult) {
 							mult = 0
 						}
@@ -257,7 +283,17 @@ func (c *Calculator) applyBuffs(db *ModDB, skills []*activeSkill, res *Result) (
 				}
 			case "Link":
 				// The player is never linked to itself: a link reaches the
-				// main minion (minionBuffs) or the party (buffExports only).
+				// main minion (minionBuffs) or the party (CalcPerform.lua
+				// 2745-2773), while no link has reached the minion.
+				if linked {
+					continue
+				}
+				if e := db.partyExports; e != nil {
+					extra := extraEffectMods(db, cfg, "ExtraLinkEffect")
+					mult := (1 + list.SumCfg(cfg, "INC", "LinkEffect", "BuffEffect")/100) * list.MoreCfg(cfg, "LinkEffect", "BuffEffect")
+					e.link[b.name] = &partyExport{effectMult: mult, mods: append(append([]Mod(nil), b.mods...), extra...)}
+				}
+				linked = linkMinion
 			}
 		}
 		// Wither: the skill or its (main) minion can wither.
@@ -465,7 +501,9 @@ func warcryBonus(db *ModDB, s *activeSkill, b *skillBuff) ([]float64, float64) {
 // warcry ports the Warcry branch of calcs.perform: exerted attacks, warcry
 // power bonuses on mods tagged with a div, uptime from duration and
 // cooldown, and the buff on the player scaled by buff effect.
-func (c *Calculator) warcry(db *ModDB, s *activeSkill, b *skillBuff, mainCfg *Cfg, seen map[string]bool, add func([]Mod, string)) {
+func (c *Calculator) warcry(
+	db *ModDB, s *activeSkill, b *skillBuff, mainCfg *Cfg, seen map[string]bool, envMinion bool, add func([]Mod, string),
+) {
 	list, cfg := s.mods, s.cfg
 	name := strings.ReplaceAll(strings.ReplaceAll(strings.ReplaceAll(b.name, " Cry", ""), "'s", ""), " ", "")
 	if base := list.SumCfg(mainCfg, "BASE", name+"ExertedAttacks"); base > 0 {
@@ -480,6 +518,26 @@ func (c *Calculator) warcry(db *ModDB, s *activeSkill, b *skillBuff, mainCfg *Cf
 		return
 	}
 	bonus, uptime := warcryBonus(db, s, b)
+	if e := db.partyExports; e != nil {
+		// CalcPerform.lua:2468-2475: buff.modList with the warcryPowerBonus
+		// written on its tags (2414-2418), and Rallying Cry's weapon damage,
+		// which exists only with env.minion (2449-2465).
+		mods := make([]Mod, 0, len(b.mods))
+		for i, m := range b.mods {
+			if len(m.Tags) > 0 && tagStr(m.Tags[0], "effectType") == "Warcry" {
+				if _, hasDiv := tagNum(m.Tags[0], "div"); hasDiv {
+					m.Tags = append([]map[string]any{maps.Clone(m.Tags[0])}, m.Tags[1:]...)
+					m.Tags[0]["warcryPowerBonus"] = bonus[i]
+				}
+			}
+			mods = append(mods, m)
+		}
+		if envMinion && s.active.ge.Name == "Rallying Cry" {
+			mods = append(mods, rallyingCryWeaponMods(db, s, mainCfg)...)
+		}
+		mult := (1 + list.SumCfg(cfg, "INC", "BuffEffect")/100) * list.MoreCfg(cfg, "BuffEffect") * uptime
+		e.warcry[b.name] = &partyExport{effectMult: mult, mods: mods}
+	}
 	if db.Flag("CannotGainWarcryBuffs") || b.applyNotPlayer {
 		return
 	}
@@ -606,6 +664,9 @@ func extraAuras(db *ModDB, main *activeSkill) {
 			if !truthy(v["notBuff"]) {
 				db.multipliers["BuffOnSelf"]++
 			}
+		}
+		if x := db.partyExports; x != nil && (truthy(v["fromAllies"]) || !db.Flag("SelfAurasCannotAffectAllies")) {
+			x.extraAura = append(x.extraAura, modFromMap(mm, e.Mod.Source)) // CalcPerform.lua:3469
 		}
 		if (truthy(v["fromAllies"]) || !db.Flag("SelfAurasCannotAffectAllies")) && totem {
 			m := modFromMap(mm, e.Mod.Source)

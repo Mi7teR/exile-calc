@@ -73,6 +73,8 @@ type Result struct {
 	main *activeSkill
 	// build is the calculated build (Build).
 	build *pobcode.Build
+	// party is the Party tab export, when the build exports one.
+	party *partyExportCache
 	// callerGroups maps build's groups to the input build's (the second
 	// result of applyGrantedSkills); nil is the identity.
 	callerGroups []int
@@ -396,4 +398,22 @@ func (c *Calculator) customMods(db *ModDB, res *Result, config *pobcode.ConfigSe
 			}
 		}
 	}
+}
+
+// PartyExport is the build's Party tab export of one buff type, the text
+// PoB saves as an ExportedBuffs element for party members to import
+// (Classes/PartyTab.lua:575-655, exportBuffs 996-1043): "PlayerMods"
+// (saved as PartyMemberStats), "Aura", "Curse", "Warcry", "Link",
+// "EnemyConditions" or "EnemyMods". It is "" unless the build's Party tab
+// exports ("Export Support" on the Import tab) and the calculation is in
+// PoB's MAIN mode.
+func (r *Result) PartyExport(buffType string) string {
+	if r == nil || r.party == nil {
+		return ""
+	}
+	e := r.party.exports()
+	if e == nil {
+		return ""
+	}
+	return e.text(buffType)
 }

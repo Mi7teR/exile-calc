@@ -364,6 +364,17 @@ func clawCritToMinion(s *activeSkill, mdb *ModDB) {
 // Rallying Cry in calcs.perform: a share of the player's main hand weapon
 // damage per 5 warcry power (up to 30). An unarmed player is not ported.
 func rallyingCryWeaponDamage(db *ModDB, s *activeSkill, mainCfg *Cfg, scale float64) []Mod {
+	more := 1 + s.mods.SumCfg(mainCfg, "BASE", "RallyingCryMinionDamageBonusMultiplier")
+	out := rallyingCryWeaponMods(db, s, mainCfg)
+	for i, m := range out {
+		out[i] = scaleMod(m, scale*more)
+	}
+	return out
+}
+
+// rallyingCryWeaponMods is Rallying Cry's extraWarcryModList
+// (CalcPerform.lua:2449-2463) before it is scaled.
+func rallyingCryWeaponMods(db *ModDB, s *activeSkill, mainCfg *Cfg) []Mod {
 	w, _, ok := itemWeapon(db.items["Weapon 1"], db.gearMods["Weapon 1"])
 	if !ok {
 		return nil
@@ -373,7 +384,6 @@ func rallyingCryWeaponDamage(db *ModDB, s *activeSkill, mainCfg *Cfg, scale floa
 		power = math.Max(db.Sum("BASE", "WarcryPower")*(1+db.Sum("INC", "WarcryPower")/100), db.Sum("BASE", "MinimumWarcryPower"))
 	}
 	effect := math.Floor(s.mods.SumCfg(mainCfg, "BASE", "RallyingCryAllyDamageBonusPer5Power") * math.Floor(math.Min(power, 30)/5))
-	more := 1 + s.mods.SumCfg(mainCfg, "BASE", "RallyingCryMinionDamageBonusMultiplier")
 	tag := map[string]any{"type": "GlobalEffect", "effectType": "Warcry", "div": 5.0, "limit": 30.0}
 	var out []Mod
 	for _, t := range dmgTypeList {
@@ -384,8 +394,8 @@ func rallyingCryWeaponDamage(db *ModDB, s *activeSkill, mainCfg *Cfg, scale floa
 			name string
 			v    float64
 		}{{t + "Min", w.min[t]}, {t + "Max", w.max[t]}} {
-			out = append(out, scaleMod(Mod{Name: x.name, Type: "BASE", Value: x.v * effect / 100,
-				KeywordFlags: kfAttack, Source: "Rallying Cry", Tags: []map[string]any{tag}}, scale*more))
+			out = append(out, Mod{Name: x.name, Type: "BASE", Value: x.v * effect / 100, //nolint:mnd // percent
+				KeywordFlags: kfAttack, Source: "Rallying Cry", Tags: []map[string]any{tag}})
 		}
 	}
 	return out

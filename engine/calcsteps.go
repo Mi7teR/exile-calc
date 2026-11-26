@@ -123,7 +123,11 @@ var calcSteps = []calcStep{
 
 // Calc computes a build (PoB's calcs.initEnv and calcs.perform).
 func (c *Calculator) Calc(b *pobcode.Build) (*Result, error) {
-	return c.calc(b, calcOpts{})
+	res, err := c.calc(b, calcOpts{})
+	if err == nil && b.Party != nil && b.Party.ExportBuffs {
+		res.party = &partyExportCache{calc: c, build: b}
+	}
+	return res, err
 }
 
 // calcOpts are the calcState settings Calc leaves at zero.
@@ -644,6 +648,9 @@ func stepConfig(c *Calculator, st *calcState) error {
 	buffMode(db.enemy)
 	db.enemyEnv = newEnemyEnv(st.config, c.data.Config, b.Level, c.data.Monster, res)
 	db.enemy.NewMod("Accuracy", "BASE", enemyAccuracy(c.data.Monster, db.enemyEnv.level), "Base")
+	// CalcSetup.lua:690.
+	db.enemy.Add(Mod{Name: "Condition:AgainstDamageOverTime", Type: "FLAG", Value: true, Source: "Base", Flags: mfDot,
+		Tags: []map[string]any{{"type": "ActorCondition", "actor": "player", "var": "Combat"}}})
 	c.applyConfig(db, res, st.config)
 	// CalcSetup.lua: env.enemyDB:AddList(build.partyTab.enemyModList).
 	db.party = newPartyActor(b.Party)
@@ -987,6 +994,11 @@ func stepDefence(c *Calculator, st *calcState) error {
 // calcs.offence for env.minion, after the player's offence.
 func stepMinionOffence(c *Calculator, st *calcState) error {
 	c.minionOffence(st.db, st.minion, st.res)
+	// CalcPerform.lua:3848-3968: the rest of the Party tab export.
+	if e := st.db.partyExports; e != nil {
+		w1, _ := playerWeapons(st.db, st.gearMods, st.spec.ClassID)
+		e.finish(st.db, mainSkill(st.skills), w1)
+	}
 	return nil
 }
 

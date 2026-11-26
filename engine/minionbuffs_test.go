@@ -160,8 +160,8 @@ func TestMinionDebuffCondition(t *testing.T) {
 func TestMinionPartyExports(t *testing.T) {
 	c := newCalc(t)
 	b := corpusBuild(t, "a2nRZLW9ZVuu")
-	if res, err := c.Calc(b); err != nil || res.DB.partyExports != nil {
-		t.Fatalf("exports without the Party tab's export: %v %v", err, res.DB.partyExports)
+	if res, err := c.Calc(b); err != nil || res.PartyExport("Aura") != "" {
+		t.Fatalf("exports without the Party tab's export: %v", err)
 	}
 	if b.Party == nil {
 		b.Party = &pobcode.Party{}
@@ -171,7 +171,7 @@ func TestMinionPartyExports(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	text := res.DB.partyExports.text("Aura")
+	text := res.PartyExport("Aura")
 	got := map[string][]string{}
 	name := ""
 	for l := range strings.SplitSeq(text, "\n") {
