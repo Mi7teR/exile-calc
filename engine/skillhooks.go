@@ -3,7 +3,7 @@ package engine
 import "slices"
 
 // Per-skill hooks: PoB's skill functions (initialFunc, preSkillTypeFunc,
-// preDamageFunc, postCritFunc in Data/Skills/*.lua) plus the warcry share
+// preDamageFunc, postCritFunc, preDotFunc in Data/Skills/*.lua) plus the warcry share
 // of calcs.perform, keyed by the active skill's gem name. Each skills_*.go
 // file registers its group in init().
 
@@ -13,7 +13,10 @@ type skillHooks struct {
 	preSkillType func(actor *ModDB, s *activeSkill)
 	preDamage    func(actor *ModDB, s *activeSkill, out map[string]float64)
 	postCrit     func(s *activeSkill, out, global map[string]float64)
-	warcryShare  func(db *ModDB, s, main *activeSkill)
+	// preDot is preDotFunc, run before the skill's DoT (CalcOffence.lua:
+	// 5851). No skill of PoB v2.68.1 has one (TestLuaPortPreDotFuncs).
+	preDot      func(actor *ModDB, s *activeSkill, out map[string]float64)
+	warcryShare func(db *ModDB, s, main *activeSkill)
 }
 
 // skillHookRegistry maps a gem name to its hooks.
@@ -48,6 +51,10 @@ func registerSkill(names []string, h skillHooks) {
 		if h.postCrit != nil {
 			set("postCrit", e.postCrit != nil)
 			e.postCrit = h.postCrit
+		}
+		if h.preDot != nil {
+			set("preDot", e.preDot != nil)
+			e.preDot = h.preDot
 		}
 		if h.warcryShare != nil {
 			set("warcryShare", e.warcryShare != nil)

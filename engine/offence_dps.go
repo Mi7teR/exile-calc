@@ -22,6 +22,10 @@ func skillDot(actor *ModDB, s *activeSkill, out map[string]float64, dpsMult, qua
 		taken.Flags &^= mfSpell
 	}
 	out["TotalDotInstance"] = 0
+	// runSkillFunc("preDotFunc") (CalcOffence.lua:5851).
+	if h := hooksOf(s); h != nil && h.preDot != nil {
+		h.preDot(actor, s, out)
+	}
 	for _, t := range dmgTypeList {
 		tc := base
 		tc.KeywordFlags |= kfDot[t]
