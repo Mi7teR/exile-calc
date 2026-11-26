@@ -4,7 +4,7 @@ import (
 	"slices"
 	"testing"
 
-	"github.com/Mi7teR/poe-lib/pobcode"
+	"github.com/Mi7teR/exile-calc/pobcode"
 )
 
 // groupBySource is the 0-based index of b's active group with source src.

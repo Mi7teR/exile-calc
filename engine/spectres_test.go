@@ -5,8 +5,8 @@ import (
 	"slices"
 	"testing"
 
-	"github.com/Mi7teR/poe-lib/gamedata"
-	"github.com/Mi7teR/poe-lib/pobcode"
+	"github.com/Mi7teR/exile-calc/gamedata"
+	"github.com/Mi7teR/exile-calc/pobcode"
 )
 
 func TestSpectreModList(t *testing.T) {

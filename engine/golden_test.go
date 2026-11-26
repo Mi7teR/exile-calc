@@ -10,7 +10,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Mi7teR/poe-lib/pobcode"
+	"github.com/Mi7teR/exile-calc/pobcode"
 )
 
 // The golden corpus (testdata/golden) holds real 3.30 builds and the stats

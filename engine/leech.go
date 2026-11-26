@@ -3,7 +3,7 @@ package engine
 import (
 	"math"
 
-	"github.com/Mi7teR/poe-lib/pobcode"
+	"github.com/Mi7teR/exile-calc/pobcode"
 )
 
 // leechRateBase is data.misc.LeechRateBase (Data.lua:260).

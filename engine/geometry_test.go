@@ -3,7 +3,7 @@ package engine
 import (
 	"testing"
 
-	"github.com/Mi7teR/poe-lib/gamedata"
+	"github.com/Mi7teR/exile-calc/gamedata"
 )
 
 // Sizes PoB v2.68.1 reports for socket 26725 (socket.nodesInRadius); the

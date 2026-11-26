@@ -3,7 +3,7 @@ package engine
 import (
 	"math"
 
-	"github.com/Mi7teR/poe-lib/gamedata"
+	"github.com/Mi7teR/exile-calc/gamedata"
 )
 
 // perStat is a getPerStat jewel function (Modules/ModParser.lua) of the

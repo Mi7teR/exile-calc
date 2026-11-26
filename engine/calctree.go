@@ -5,10 +5,10 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/Mi7teR/poe-lib/gamedata"
-	"github.com/Mi7teR/poe-lib/itemtext"
-	"github.com/Mi7teR/poe-lib/modparser"
-	"github.com/Mi7teR/poe-lib/pobcode"
+	"github.com/Mi7teR/exile-calc/gamedata"
+	"github.com/Mi7teR/exile-calc/itemtext"
+	"github.com/Mi7teR/exile-calc/modparser"
+	"github.com/Mi7teR/exile-calc/pobcode"
 )
 
 // classStartJewelEffect is the jewelIncEffectFromClassStart part of the

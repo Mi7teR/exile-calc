@@ -3,7 +3,7 @@ package engine
 import (
 	"math"
 
-	"github.com/Mi7teR/poe-lib/gamedata"
+	"github.com/Mi7teR/exile-calc/gamedata"
 )
 
 // orbitAngles is PassiveTreeClass:CalcOrbitAngles: orbits of 16 and 40

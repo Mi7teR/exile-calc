@@ -7,7 +7,7 @@ import (
 
 	"github.com/google/go-cmp/cmp"
 
-	"github.com/Mi7teR/poe-lib/pobcode"
+	"github.com/Mi7teR/exile-calc/pobcode"
 )
 
 // TestPartyExportFlagInert: the Import tab's "Export Support"

@@ -3,8 +3,8 @@ package main
 import (
 	"fmt"
 
-	"github.com/Mi7teR/poe-lib/gamedata"
-	"github.com/Mi7teR/poe-lib/internal/luadata"
+	"github.com/Mi7teR/exile-calc/gamedata"
+	"github.com/Mi7teR/exile-calc/internal/luadata"
 )
 
 // convertTimeless exports LegionPassives.lua and NodeIndexMapping.lua.

@@ -1,4 +1,4 @@
-# poe-lib
+# exile-calc
 
 Pure Go port of the [Path of Building Community](https://github.com/PathOfBuildingCommunity/PathOfBuilding)
 calculation engine and game data for Path of Exile 1 (pinned to PoB v2.68.1).
@@ -7,7 +7,7 @@ offence numbers PoB shows, with no Lua or LuaJIT in the build and no
 dependencies outside the standard library.
 
 ```bash
-go get github.com/Mi7teR/poe-lib
+go get github.com/Mi7teR/exile-calc
 ```
 
 ## Packages
@@ -221,7 +221,7 @@ go run ./cmd/enginediff -combat -builds ID1                # combat DPS report
 (no Lua runs). Not exported: `Data/Uniques/Special/Generated.lua` (a program
 that builds Megalomaniac, Forbidden jewels and similar uniques). The
 reference stats come from headless PoB in
-[poe-pob-oracle](https://github.com/Mi7teR/poe-pob-oracle).
+[poe-pob-oracle](https://github.com/Mi7teR/exile-oracle).
 
 ## License
 

@@ -27,8 +27,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Mi7teR/poe-lib/engine"
-	"github.com/Mi7teR/poe-lib/pobcode"
+	"github.com/Mi7teR/exile-calc/engine"
+	"github.com/Mi7teR/exile-calc/pobcode"
 )
 
 // ring is a rare ring as the game copies it (Ctrl+C).

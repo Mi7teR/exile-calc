@@ -1,4 +1,4 @@
-module github.com/Mi7teR/poe-lib
+module github.com/Mi7teR/exile-calc
 
 go 1.27
 

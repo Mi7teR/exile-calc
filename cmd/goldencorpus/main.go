@@ -1,6 +1,6 @@
 // Command goldencorpus maintains the engine's golden corpus in
 // testdata/golden: real PoB builds and the stats headless PoB computes for
-// them (github.com/Mi7teR/poe-pob-oracle).
+// them (github.com/Mi7teR/exile-oracle).
 //
 //	goldencorpus add -name ID -source URL [-tree 3_30] < code    # sanitise and store a build
 //	goldencorpus input > builds.jsonl               # oracle input: {"name","xml","minions"}
@@ -23,7 +23,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/Mi7teR/poe-lib/pobcode"
+	"github.com/Mi7teR/exile-calc/pobcode"
 )
 
 const dir = "testdata/golden"

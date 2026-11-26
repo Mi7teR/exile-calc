@@ -5,8 +5,8 @@ import (
 	"math"
 	"strings"
 
-	"github.com/Mi7teR/poe-lib/gamedata"
-	"github.com/Mi7teR/poe-lib/pobcode"
+	"github.com/Mi7teR/exile-calc/gamedata"
+	"github.com/Mi7teR/exile-calc/pobcode"
 )
 
 // Combat DPS (spec "Combat DPS", section "Calculation"): the main skill's DPS

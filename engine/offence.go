@@ -5,7 +5,7 @@ import (
 	"math"
 	"strings"
 
-	"github.com/Mi7teR/poe-lib/modparser"
+	"github.com/Mi7teR/exile-calc/modparser"
 )
 
 // The hit damage part of calcs.offence (Modules/CalcOffence.lua) for one

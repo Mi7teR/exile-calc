@@ -9,7 +9,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/Mi7teR/poe-lib/pobcode"
+	"github.com/Mi7teR/exile-calc/pobcode"
 )
 
 // partyExports is calcs.perform's buffExports (CalcPerform.lua:2241), the

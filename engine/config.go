@@ -7,9 +7,9 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/Mi7teR/poe-lib/gamedata"
-	"github.com/Mi7teR/poe-lib/internal/luadata"
-	"github.com/Mi7teR/poe-lib/pobcode"
+	"github.com/Mi7teR/exile-calc/gamedata"
+	"github.com/Mi7teR/exile-calc/internal/luadata"
+	"github.com/Mi7teR/exile-calc/pobcode"
 )
 
 // configApplies caches the parsed apply functions of ConfigOptions.lua.

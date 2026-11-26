@@ -3,7 +3,7 @@ package engine
 import (
 	"math"
 
-	"github.com/Mi7teR/poe-lib/modparser"
+	"github.com/Mi7teR/exile-calc/modparser"
 )
 
 const blockChanceCap = 90 // Data.lua data.misc.BlockChanceCap

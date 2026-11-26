@@ -4,7 +4,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/Mi7teR/poe-lib/gamedata"
+	"github.com/Mi7teR/exile-calc/gamedata"
 )
 
 // notableMaps builds PassiveTree.lua's notableMap and ascendancyMap by

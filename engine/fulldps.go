@@ -4,7 +4,7 @@ import (
 	"math"
 	"strings"
 
-	"github.com/Mi7teR/poe-lib/pobcode"
+	"github.com/Mi7teR/exile-calc/pobcode"
 )
 
 // SkillDPS is one entry of PoB's output.SkillDPS (calcs.calcFullDPS

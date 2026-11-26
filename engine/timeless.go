@@ -16,8 +16,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/Mi7teR/poe-lib/gamedata"
-	"github.com/Mi7teR/poe-lib/pobcode"
+	"github.com/Mi7teR/exile-calc/gamedata"
+	"github.com/Mi7teR/exile-calc/pobcode"
 )
 
 // TimelessDirEnv names the directory holding PoB's timeless jewel lookup

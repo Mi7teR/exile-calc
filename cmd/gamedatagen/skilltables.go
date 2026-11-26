@@ -6,8 +6,8 @@ import (
 	"strings"
 	"unicode"
 
-	"github.com/Mi7teR/poe-lib/gamedata"
-	"github.com/Mi7teR/poe-lib/internal/luadata"
+	"github.com/Mi7teR/exile-calc/gamedata"
+	"github.com/Mi7teR/exile-calc/internal/luadata"
 )
 
 // skillFiles are loaded by Modules/Data.lua in this order.

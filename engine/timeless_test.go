@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Mi7teR/poe-lib/gamedata"
+	"github.com/Mi7teR/exile-calc/gamedata"
 )
 
 func TestPobConqueredBy(t *testing.T) {

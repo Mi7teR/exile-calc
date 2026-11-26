@@ -6,9 +6,9 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/Mi7teR/poe-lib/itemtext"
-	"github.com/Mi7teR/poe-lib/modparser"
-	"github.com/Mi7teR/poe-lib/pobcode"
+	"github.com/Mi7teR/exile-calc/itemtext"
+	"github.com/Mi7teR/exile-calc/modparser"
+	"github.com/Mi7teR/exile-calc/pobcode"
 )
 
 // itemScaling is how addItem applies an item's scale (CalcSetup.lua

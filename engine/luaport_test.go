@@ -13,7 +13,7 @@ import (
 	"github.com/google/go-cmp/cmp/cmpopts"
 	lua "github.com/yuin/gopher-lua"
 
-	"github.com/Mi7teR/poe-lib/gamedata"
+	"github.com/Mi7teR/exile-calc/gamedata"
 )
 
 // TestLuaPort runs a skill hook twice on the same synthetic skill — PoB's

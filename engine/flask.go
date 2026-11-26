@@ -6,9 +6,9 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/Mi7teR/poe-lib/itemtext"
-	"github.com/Mi7teR/poe-lib/modparser"
-	"github.com/Mi7teR/poe-lib/pobcode"
+	"github.com/Mi7teR/exile-calc/itemtext"
+	"github.com/Mi7teR/exile-calc/modparser"
+	"github.com/Mi7teR/exile-calc/pobcode"
 )
 
 // Base types with their own "increased effect" stat (CalcPerform.lua calcFlaskMods).

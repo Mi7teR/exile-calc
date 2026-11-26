@@ -4,8 +4,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Mi7teR/poe-lib/itemtext"
-	"github.com/Mi7teR/poe-lib/modparser"
+	"github.com/Mi7teR/exile-calc/itemtext"
+	"github.com/Mi7teR/exile-calc/modparser"
 )
 
 // luaFind handles only plain text with ^/$ anchors; fail if Data.lua

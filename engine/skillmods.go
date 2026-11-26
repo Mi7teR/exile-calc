@@ -6,8 +6,8 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/Mi7teR/poe-lib/gamedata"
-	"github.com/Mi7teR/poe-lib/pobcode"
+	"github.com/Mi7teR/exile-calc/gamedata"
+	"github.com/Mi7teR/exile-calc/pobcode"
 )
 
 // skillStats is calcLib.buildSkillInstanceStats. Effectiveness and linear

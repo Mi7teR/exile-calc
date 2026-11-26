@@ -5,7 +5,7 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/Mi7teR/poe-lib/gamedata"
+	"github.com/Mi7teR/exile-calc/gamedata"
 )
 
 // eval ports ModStoreClass:EvalMod for the tag types used by defence. It

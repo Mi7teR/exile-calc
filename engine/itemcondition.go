@@ -3,7 +3,7 @@ package engine
 import (
 	"strings"
 
-	"github.com/Mi7teR/poe-lib/itemtext"
+	"github.com/Mi7teR/exile-calc/itemtext"
 )
 
 // itemTags holds Data.lua's itemTagSpecial and itemTagSpecialExclusionPattern:

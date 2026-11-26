@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/Mi7teR/poe-lib/internal/luadata"
+	"github.com/Mi7teR/exile-calc/internal/luadata"
 )
 
 // TestBossStatsMatchBossesLua recomputes Data.lua:975-993 data.bossStats from

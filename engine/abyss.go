@@ -7,7 +7,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/Mi7teR/poe-lib/gamedata"
+	"github.com/Mi7teR/exile-calc/gamedata"
 )
 
 // The abyssal timeless jewels of 3.30 (jewel types 7-11) port

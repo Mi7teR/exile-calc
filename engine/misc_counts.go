@@ -4,7 +4,7 @@ import (
 	"math"
 	"strings"
 
-	"github.com/Mi7teR/poe-lib/itemtext"
+	"github.com/Mi7teR/exile-calc/itemtext"
 )
 
 // heraldAuraCounts is "Calculate number of active heralds and auras

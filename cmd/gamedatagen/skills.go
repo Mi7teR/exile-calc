@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"sort"
 
-	"github.com/Mi7teR/poe-lib/gamedata"
-	"github.com/Mi7teR/poe-lib/internal/luadata"
+	"github.com/Mi7teR/exile-calc/gamedata"
+	"github.com/Mi7teR/exile-calc/internal/luadata"
 )
 
 // convertSkills exports what Modules/Data.lua loads as data.skills and

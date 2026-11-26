@@ -4,7 +4,7 @@ import (
 	"maps"
 	"math"
 
-	"github.com/Mi7teR/poe-lib/pobcode"
+	"github.com/Mi7teR/exile-calc/pobcode"
 )
 
 // The ailment, skill damage over time and combined DPS parts of

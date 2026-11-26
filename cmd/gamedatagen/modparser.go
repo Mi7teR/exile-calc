@@ -8,7 +8,7 @@ import (
 	"strings"
 	"unicode"
 
-	"github.com/Mi7teR/poe-lib/internal/luadata"
+	"github.com/Mi7teR/exile-calc/internal/luadata"
 )
 
 // Tables of Modules/ModParser.lua exported as data. Their Lua functions are

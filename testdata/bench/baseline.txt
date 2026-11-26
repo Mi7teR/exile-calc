@@ -1,6 +1,6 @@
 goos: darwin
 goarch: arm64
-pkg: github.com/Mi7teR/poe-lib/engine
+pkg: github.com/Mi7teR/exile-calc/engine
 cpu: Apple M4 Pro
 BenchmarkCalc/2HB8-0xwYEA6-12         	     490	   2424851 ns/op	 2621044 B/op	   20222 allocs/op
 BenchmarkCalc/2HB8-0xwYEA6-12         	     487	   2439368 ns/op	 2621495 B/op	   20222 allocs/op
@@ -203,4 +203,4 @@ BenchmarkCompareItem/3uy_tEm_vqpB-12  	     129	   9221806 ns/op	 4392754 B/op	 
 BenchmarkCompareItem/3uy_tEm_vqpB-12  	     132	   9154183 ns/op	 4393846 B/op	   42866 allocs/op
 BenchmarkCompareItem/3uy_tEm_vqpB-12  	     129	   9188124 ns/op	 4394027 B/op	   42866 allocs/op
 PASS
-ok  	github.com/Mi7teR/poe-lib/engine	304.583s
+ok  	github.com/Mi7teR/exile-calc/engine	304.583s

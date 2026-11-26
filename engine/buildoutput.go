@@ -4,7 +4,7 @@ import (
 	"math"
 	"strings"
 
-	"github.com/Mi7teR/poe-lib/pobcode"
+	"github.com/Mi7teR/exile-calc/pobcode"
 )
 
 // costWarnPools is the first pairs table of Calcs.lua:426: the pool each

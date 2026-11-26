@@ -4,8 +4,8 @@ import (
 	"math"
 	"strings"
 
-	"github.com/Mi7teR/poe-lib/modparser"
-	"github.com/Mi7teR/poe-lib/pobcode"
+	"github.com/Mi7teR/exile-calc/modparser"
+	"github.com/Mi7teR/exile-calc/pobcode"
 )
 
 // MinionResult is one minion skill's minion: PoB's output.Minion with that

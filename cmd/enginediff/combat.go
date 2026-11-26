@@ -7,8 +7,8 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/Mi7teR/poe-lib/engine"
-	"github.com/Mi7teR/poe-lib/pobcode"
+	"github.com/Mi7teR/exile-calc/engine"
+	"github.com/Mi7teR/exile-calc/pobcode"
 )
 
 // runCombat prints the combat DPS model for the golden builds. It does not

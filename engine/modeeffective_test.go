@@ -3,7 +3,7 @@ package engine
 import (
 	"testing"
 
-	"github.com/Mi7teR/poe-lib/pobcode"
+	"github.com/Mi7teR/exile-calc/pobcode"
 )
 
 // testMod is a mod a test adds to the player (enemy false) or the enemy.

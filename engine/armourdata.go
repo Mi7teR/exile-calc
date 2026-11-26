@@ -4,8 +4,8 @@ import (
 	"math"
 	"strings"
 
-	"github.com/Mi7teR/poe-lib/itemtext"
-	"github.com/Mi7teR/poe-lib/modparser"
+	"github.com/Mi7teR/exile-calc/itemtext"
+	"github.com/Mi7teR/exile-calc/modparser"
 )
 
 // calcLocal is Item.lua calcLocal for BASE and INC: the item's mods of

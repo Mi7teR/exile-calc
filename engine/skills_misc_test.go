@@ -3,7 +3,7 @@ package engine
 import (
 	"testing"
 
-	"github.com/Mi7teR/poe-lib/pobcode"
+	"github.com/Mi7teR/exile-calc/pobcode"
 )
 
 // Bane counts the curses of its own group it applies, up to the curse

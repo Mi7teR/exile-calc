@@ -4,7 +4,7 @@ import (
 	"slices"
 	"testing"
 
-	"github.com/Mi7teR/poe-lib/pobcode"
+	"github.com/Mi7teR/exile-calc/pobcode"
 )
 
 // PassiveSpec.lua ApplyLegacyClusterNodeRemap: fmxcrOoQ46rS is a format-1
