@@ -141,6 +141,7 @@ func (c *Calculator) offence(actor *ModDB, s *activeSkill, w1 hitSource, w2 *hit
 	}
 	trapMineStats(actor, s, out)
 	offenceDuration(actor, s, out)
+	skillTypeOutputs(actor, s, out)
 	// CalcPerform.lua's "maximum sustainable stages" block, from the
 	// skill's own cached outputs: Earthquake of Amplification's aftershock
 	// scales per 100ms of duration (the rate-based stages are set after the

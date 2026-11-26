@@ -426,6 +426,11 @@ type SkillLevel struct {
 	AttackTime            float64 `json:"attackTime,omitempty"`
 	AttackSpeedMultiplier float64 `json:"attackSpeedMultiplier,omitempty"`
 	StoredUses            float64 `json:"storedUses,omitempty"`
+	// VaalStoredUses, SoulPreventionDuration and PvPDamageMultiplier are
+	// the level fields CalcActiveSkill.lua:557-565, 615-622 reads.
+	VaalStoredUses         float64 `json:"vaalStoredUses,omitempty"`
+	SoulPreventionDuration float64 `json:"soulPreventionDuration,omitempty"`
+	PvPDamageMultiplier    float64 `json:"PvPDamageMultiplier,omitempty"`
 	// Cost is the level's cost by resource (Data/Costs.lua names).
 	Cost map[string]float64 `json:"cost,omitempty"`
 }

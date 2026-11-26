@@ -395,3 +395,90 @@ func piousPath(db *ModDB, rs []string, pseudo, duration float64, extra map[strin
 		}
 	}
 }
+
+// The trap and mine radii of data.misc (Data.lua:269-271).
+const (
+	trapTriggerRadiusBase    = 10
+	mineDetonationRadiusBase = 60
+	mineAuraRadiusBase       = 35
+)
+
+// skillTypeOutputs are the skill type outputs of calcs.offence that the
+// engine does not compute elsewhere: CalcOffence.lua:1190-1191, 1216-1217, 1249-1250 (effect mods), 1314-1317,
+// 1398-1408 (trap and mine radii), 1336-1340 (stored uses), 1441-1445
+// (totem defences), 1527-1531, 1611-1617, 1626-1629 (durations).
+func skillTypeOutputs(actor *ModDB, s *activeSkill, out map[string]float64) {
+	list, cfg, data := s.mods, s.cfg, s.data
+	if s.types[stAura] {
+		names := []string{"AuraEffect"}
+		if !truthy(data.val("auraCannotAffectSelf")) && !s.types[stAuraAffectsEnemies] {
+			names = append(names, "SkillAuraEffectOnSelf")
+		}
+		out["AuraEffectMod"] = calcMod(list, cfg, names...)
+	}
+	if s.types[stHex] || s.types[stMark] {
+		out["CurseEffectMod"] = calcMod(list, cfg, "CurseEffect")
+	}
+	if s.types[stBuff] && s.types[stHerald] {
+		out["HeraldBuffEffectMod"] = calcMod(list, cfg, "BuffEffect", "BuffEffectOnSelf")
+	}
+	if s.flags["trap"] {
+		r := calcRadius(trapTriggerRadiusBase, areaModOf(list, cfg, "TrapTriggerAreaOfEffect"), 1)
+		out["TrapTriggerRadius"], out["TrapTriggerRadiusMetre"] = r, r/10
+	}
+	if v, ok := data.storedUses.get(); ok {
+		out["StoredUses"] = v + list.SumCfg(cfg, "BASE", "AdditionalCooldownUses", "AdditionalUses")
+	}
+	if s.flags["mine"] {
+		r := calcRadius(mineDetonationRadiusBase, areaModOf(list, cfg, "MineDetonationAreaOfEffect"), 1)
+		out["MineDetonationRadius"], out["MineDetonationRadiusMetre"] = r, r/10
+		if s.types[stAura] {
+			r = calcRadius(mineAuraRadiusBase, out["AreaOfEffectMod"], 1)
+			out["MineAuraRadius"], out["MineAuraRadiusMetre"] = r, r/10
+		}
+	}
+	if s.flags["totem"] {
+		out["TotemLifeMod"] = calcMod(list, cfg, "TotemLife")
+		out["TotemEnergyShield"] = list.SumCfg(cfg, "BASE", "TotemEnergyShield")
+		out["TotemBlockChance"] = list.SumCfg(cfg, "BASE", "TotemBlockChance")
+		out["TotemArmour"] = list.SumCfg(cfg, "BASE", "TotemArmour")
+	}
+	skillDurations(actor, s, out)
+}
+
+// areaModOf is calcAreaMod(calcLib.mods(list, cfg, name)): calcLib.mods
+// gives 1 + INC/100 and MORE.
+func areaModOf(list *ModDB, cfg *Cfg, name string) float64 {
+	return calcAreaMod(1+list.SumCfg(cfg, "INC", name)/100, list.MoreCfg(cfg, name))
+}
+
+// skillDurations is the secondary, soul gain prevention and totem
+// durations of the "Skill duration" block (CalcOffence.lua:1527-1629).
+func skillDurations(actor *ModDB, s *activeSkill, out map[string]float64) {
+	list, cfg, data := s.mods, s.cfg, s.data
+	mine := truthy(data.val("mineDurationAppliesToSkill"))
+	with := func(names []string, extra string, ok bool) []string {
+		if ok {
+			return append(names, extra)
+		}
+		return names
+	}
+	sec, _ := num(data.val("durationSecondary"))
+	if base := sec + list.SumCfg(cfg, "BASE", "Duration", "SecondaryDuration"); base > 0 {
+		mod := math.Max(calcMod(list, cfg, with([]string{"Duration", "SecondaryDuration"}, "MineDuration", mine)...), 0)
+		out["DurationSecondary"] = base * mod
+		if truthy(data.val("debuffSecondary")) && modeEffective(actor) {
+			out["DurationSecondary"] /= math.Max(0.25, calcMod(actor.enemy, cfg, "BuffExpireFaster"))
+		}
+		out["DurationSecondary"] = math.Ceil(out["DurationSecondary"]*serverTickRate) / serverTickRate
+	}
+	if base, _ := num(data.val("soulPreventionDuration")); base > 0 {
+		names := with([]string{"SoulGainPreventionDuration"}, "Duration",
+			truthy(data.val("skillEffectAppliesToSoulGainPrevention")))
+		mod := math.Max(calcMod(list, cfg, with(names, "MineDuration", mine)...), 0)
+		out["SoulGainPreventionDuration"] = math.Max(math.Ceil(base*mod*serverTickRate), 1) / serverTickRate
+	}
+	out["TotemDurationMod"] = math.Max(calcMod(list, cfg, "TotemDuration"), 0)
+	out["TotemDuration"] = math.Ceil(list.SumCfg(cfg, "BASE", "TotemDuration")*out["TotemDurationMod"]*
+		serverTickRate) / serverTickRate
+}

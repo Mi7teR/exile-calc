@@ -20,6 +20,7 @@ func projectileStats(s *activeSkill, out map[string]float64) {
 			Tags: []map[string]any{{"type": "DistanceRamp", "ramp": []any{[]any{10.0, -0.2}, []any{25.0, 0.0}, []any{70.0, 0.6}}}}})
 	}
 	out["ProjectileSpeedMod"] = calcMod(list, cfg, "ProjectileSpeed")
+	defer splitStats(s, out)
 	if list.FlagCfg(cfg, "NoAdditionalProjectiles") || list.FlagCfg(cfg, "SingleProjectile") {
 		out["ProjectileCount"] = 1
 		return
@@ -48,14 +49,21 @@ func pierceForkStats(actor *ModDB, s *activeSkill, out map[string]float64) {
 			limit = 2
 		}
 		out["ForkCountMax"] = math.Min(list.SumCfg(cfg, "BASE", "ForkCountMax"), limit)
+		// CalcOffence.lua:1130-1132 (ForkCountString is the same number).
+		out["ForkedCount"] = math.Min(out["ForkCountMax"], list.SumCfg(cfg, "BASE", "ForkedCount"))
+		out["ForkCountString"] = out["ForkCountMax"]
+		out["ForkRemaining"] = math.Max(0, out["ForkCountMax"]-out["ForkedCount"])
 	}
 	if list.FlagCfg(cfg, "CannotPierce") {
 		out["PierceCount"] = 0
 		return
 	}
 	pierce := list.SumCfg(cfg, "BASE", "PierceCount")
-	if list.FlagCfg(cfg, "PierceAllTargets") || actor.enemy.Flag("AlwaysPierceSelf") {
+	allTargets := list.FlagCfg(cfg, "PierceAllTargets") || actor.enemy.Flag("AlwaysPierceSelf")
+	if allTargets {
 		pierce = 100
+	} else {
+		out["PierceCountString"] = pierce // "All targets" otherwise
 	}
 	out["PierceCount"] = pierce
 	if pierce > 0 {
@@ -90,6 +98,24 @@ func chainStats(actor *ModDB, s *activeSkill, out map[string]float64) {
 	for _, o := range []map[string]float64{out, actor.output} {
 		o["ChainMax"], o["Chain"], o["ChainRemaining"] = chainMax, chain, math.Max(0, chainMax-chain)
 	}
+	out["ChainMaxString"] = chainMax // CalcOffence.lua:1076
+}
+
+// splitStats is CalcOffence.lua:1103-1119: SplitCount and, when it is a
+// number, SplitCountString ("Cannot split" is a string PoB shows).
+func splitStats(s *activeSkill, out map[string]float64) {
+	list, cfg, enemy := s.mods, s.cfg, s.mods.enemy
+	if list.FlagCfg(cfg, "CannotSplit") || s.types[stProjectileNumber] {
+		return
+	}
+	split := list.SumCfg(cfg, "BASE", "SplitCount") + enemy.SumCfg(cfg, "BASE", "SelfSplitCount")
+	if list.FlagCfg(cfg, "AdditionalProjectilesAddSplitsInstead") && !list.FlagCfg(cfg, "SingleProjectile") {
+		split += math.Floor((list.SumCfg(cfg, "BASE", "ProjectileCount") - 1) * list.MoreCfg(cfg, "ProjectileCount"))
+	}
+	if list.FlagCfg(cfg, "AdditionalChainsAddSplitsInstead") {
+		split += list.SumCfg(cfg, "BASE", "ChainCountMax")
+	}
+	out["SplitCount"], out["SplitCountString"] = split, split
 }
 
 // valCfg is calcLib.val with a cfg: BASE * (1 + INC) * MORE.

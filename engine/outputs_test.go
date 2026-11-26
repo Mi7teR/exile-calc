@@ -66,3 +66,18 @@ func TestEHPOutputs(t *testing.T) {
 	}
 	oracleStats(t, false, keys...)
 }
+
+// TestSkillTypeOutputs: CalcOffence.lua:1068-1138 (chain, split, fork and
+// pierce counts; the *String outputs only when PoB's value is a number),
+// 1190-1250 (effect mods), 1314-1408 (trap and mine radii, stored uses),
+// 1441-1445 (totem defences), 1527-1629 (secondary, soul gain prevention
+// and totem durations), with the level fields of CalcActiveSkill.lua:
+// 557-565, 615-622.
+func TestSkillTypeOutputs(t *testing.T) {
+	oracleStats(t, false, "ChainMaxString", "SplitCount", "SplitCountString", "ForkedCount", "ForkRemaining",
+		"ForkCountString", "PierceCountString", "AuraEffectMod", "CurseEffectMod", "HeraldBuffEffectMod",
+		"TrapTriggerRadius", "TrapTriggerRadiusMetre", "StoredUses", "MineDetonationRadius",
+		"MineDetonationRadiusMetre", "MineAuraRadius", "MineAuraRadiusMetre", "TotemLifeMod", "TotemEnergyShield",
+		"TotemBlockChance", "TotemArmour", "DurationSecondary", "SoulGainPreventionDuration", "TotemDurationMod",
+		"TotemDuration")
+}

@@ -451,6 +451,11 @@ func (c *Calculator) buildSkillMods(db *ModDB, s *activeSkill, res *Result) {
 			if lv.ManaReservationPercent != 0 {
 				s.data.set("manaReservationPercent", lv.ManaReservationPercent)
 			}
+			// CalcActiveSkill.lua:557-565.
+			if lv.PvPDamageMultiplier != 0 {
+				list.NewMod("PvpDamageMultiplier", "MORE", lv.PvPDamageMultiplier, "Skill:"+e.id)
+			}
+			levelStoredUses(s, lv)
 		}
 	}
 	a := s.active
@@ -504,8 +509,9 @@ func (c *Calculator) buildSkillMods(db *ModDB, s *activeSkill, res *Result) {
 		if lv.AttackSpeedMultiplier != 0 {
 			s.data.set("attackSpeedMultiplier", lv.AttackSpeedMultiplier)
 		}
-		if lv.StoredUses != 0 {
-			s.data.storedUses = optF{lv.StoredUses, true}
+		levelStoredUses(s, lv) // CalcActiveSkill.lua:615-620
+		if lv.SoulPreventionDuration != 0 {
+			s.data.set("soulPreventionDuration", lv.SoulPreventionDuration)
 		}
 	}
 	for _, e := range list.List(s.cfg, "ExtraSkillMod") {
@@ -582,4 +588,16 @@ func upperFirst(s string) string {
 		return s
 	}
 	return strings.ToUpper(s[:1]) + s[1:]
+}
+
+// levelStoredUses is the storedUses / vaalStoredUses part of a level
+// (CalcActiveSkill.lua:560-565). "storedUses or 0 + vaalStoredUses" parses
+// as storedUses or (0 + vaalStoredUses): an existing count is kept.
+func levelStoredUses(s *activeSkill, lv *gamedata.SkillLevel) {
+	if lv.StoredUses != 0 {
+		s.data.storedUses = optF{lv.StoredUses, true}
+	}
+	if lv.VaalStoredUses != 0 && !s.data.storedUses.set {
+		s.data.storedUses = optF{lv.VaalStoredUses, true}
+	}
 }
