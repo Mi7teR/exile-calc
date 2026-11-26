@@ -387,8 +387,8 @@ func stepItems(c *Calculator, st *calcState) error {
 				}
 				ringItems[slot.Name] = b.Item(slot.ItemID)
 			}
-			scale := bonusScale(b.Item(slot.ItemID))
-			it, mods := c.addItem(db, res, b.Item(slot.ItemID), scale, slot.Name, scale != 1)
+			scale, mode := bonusScale(b.Item(slot.ItemID))
+			it, mods := c.addItem(db, res, b.Item(slot.ItemID), scale, slot.Name, mode)
 			if it != nil {
 				gearMods[slot.Name] = mods
 				gear = append(gear, equipped{slot.Name, it})
@@ -439,7 +439,7 @@ func stepItems(c *Calculator, st *calcState) error {
 			if parent == nil || abyssalSockets(parent) < a.num {
 				continue
 			}
-			if it, _ := c.addItem(db, res, a.item, 1+jewelEffect[a.parent]/100, "", false); it != nil {
+			if it, _ := c.addItem(db, res, a.item, 1+jewelEffect[a.parent]/100, "", scaleEach); it != nil {
 				db.items[a.slot] = it
 				abyssCounts(db, it, a.parent)
 			}
@@ -465,16 +465,16 @@ func stepJewelSockets(c *Calculator, st *calcState) error {
 			scale := 1.0
 			// CalcSetup.lua merges the item's mods before scaling them
 			// only in the corrupted-jewel-effect branch.
-			merge := false
+			mode := scaleEach
 			if it := c.peekItem(b.Item(s.ItemID)); it != nil && it.Corrupted && it.Base != nil &&
 				it.Base.Type == "Jewel" && it.Base.SubType != "Charm" {
 				if v, ok := corruptedEffect[it.Rarity]; ok {
 					scale += v
-					merge = true
+					mode = scaleMerged
 				}
 			}
 			scale += c.classStartJewelEffect(b.Item(s.ItemID), s.NodeID, allocated, spec.ClassID, st.clusterLinks, res)
-			if it, _ := c.addItem(db, res, b.Item(s.ItemID), scale, "", merge); it != nil {
+			if it, _ := c.addItem(db, res, b.Item(s.ItemID), scale, "", mode); it != nil {
 				db.items["Jewel "+strconv.Itoa(s.NodeID)] = it
 				abyssCounts(db, it, "")
 			}

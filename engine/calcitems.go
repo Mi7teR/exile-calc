@@ -11,13 +11,30 @@ import (
 	"github.com/Mi7teR/poe-lib/pobcode"
 )
 
-// equipmentBonusScale returns the scale of an equipped item's mods
-// (CalcSetup.lua): quivers with Widowhail or EffectOfBonusesFromQuiver on
-// passives, gloves and boots with EffectOfBonusesFromGloves/Boots (passives
-// and custom mods); 1 otherwise. For these addItem merges the item's same
-// mods before scaling them, as PoB does (combinedList:MergeMod), so two
-// "Adds 13 to 27" and "Adds 23 to 39" lines round once.
-func (c *Calculator) equipmentBonusScale(db *ModDB, b *pobcode.Build, set *pobcode.ItemSet, res *Result) func(*pobcode.Item) float64 {
+// itemScaling is how addItem applies an item's scale (CalcSetup.lua
+// 1255-1305).
+type itemScaling int
+
+const (
+	// scaleEach scales each mod line (env.itemModDB:ScaleAddList(srcList, scale)).
+	scaleEach itemScaling = iota
+	// scaleMerged merges the item's same mods first, then scales them
+	// (quivers, corrupted jewel effect: combinedList:MergeMod, ScaleAddList).
+	scaleMerged
+	// scaleAddPart merges the item's same mods and adds each additive mod's
+	// scaled (scale - 1) part back (gloves and boots, CalcSetup.lua
+	// 1278-1302): v + trunc(v * (scale - 1)); LIST and FLAG mods stay
+	// unscaled (MergeMod(mod, true) skips non-additive mods).
+	scaleAddPart
+)
+
+// equipmentBonusScale returns the scale of an equipped item's mods and how
+// to apply it (CalcSetup.lua): quivers with Widowhail or
+// EffectOfBonusesFromQuiver on passives, gloves and boots with
+// EffectOfBonusesFromGloves/Boots (passives and custom mods); 1 otherwise.
+func (c *Calculator) equipmentBonusScale(
+	db *ModDB, b *pobcode.Build, set *pobcode.ItemSet, res *Result,
+) func(*pobcode.Item) (float64, itemScaling) {
 	gloves := (1 + db.Sum("INC", "EffectOfBonusesFromGloves")/100) * db.More("EffectOfBonusesFromGloves")
 	boots := (1 + db.Sum("INC", "EffectOfBonusesFromBoots")/100) * db.More("EffectOfBonusesFromBoots")
 	nodeQuiver := db.Sum("INC", "EffectOfBonusesFromQuiver")
@@ -45,20 +62,20 @@ func (c *Calculator) equipmentBonusScale(db *ModDB, b *pobcode.Build, set *pobco
 	if quiver != 1 {
 		db.NewMod("WidowHailMultiplier", "BASE", quiver, "Widowhail")
 	}
-	return func(item *pobcode.Item) float64 {
+	return func(item *pobcode.Item) (float64, itemScaling) {
 		it := c.peekItem(item)
 		if it == nil || it.Base == nil {
-			return 1
+			return 1, scaleEach
 		}
-		switch it.Base.Type {
-		case "Quiver":
-			return quiver
-		case "Gloves":
-			return gloves
-		case "Boots":
-			return boots
+		switch {
+		case it.Base.Type == "Quiver" && quiver != 1:
+			return quiver, scaleMerged
+		case it.Base.Type == "Gloves" && gloves != 1:
+			return gloves, scaleAddPart
+		case it.Base.Type == "Boots" && boots != 1:
+			return boots, scaleAddPart
 		}
-		return 1
+		return 1, scaleEach
 	}
 }
 
@@ -391,7 +408,9 @@ func itemSource(item *pobcode.Item, it *itemtext.Item) string {
 
 // addItem adds an item's global mods, scaled (abyss jewels), and returns
 // the parsed item and all its mods.
-func (c *Calculator) addItem(db *ModDB, res *Result, item *pobcode.Item, scale float64, slot string, merge bool) (*itemtext.Item, []modparser.Mod) {
+func (c *Calculator) addItem(
+	db *ModDB, res *Result, item *pobcode.Item, scale float64, slot string, mode itemScaling,
+) (*itemtext.Item, []modparser.Mod) {
 	if item == nil {
 		return nil, nil
 	}
@@ -418,15 +437,19 @@ func (c *Calculator) addItem(db *ModDB, res *Result, item *pobcode.Item, scale f
 			if isWeapon {
 				sm = weaponHandLocal(sm, m, slotNumber(it, slot))
 			}
-			if merge {
-				list = mergeMod(list, sm)
-			} else {
+			if mode == scaleEach {
 				list = append(list, sm)
+			} else {
+				list = mergeMod(list, sm)
 			}
 		}
 	}
 	for _, m := range list {
-		db.Add(scaleMod(m, scale))
+		if mode == scaleAddPart {
+			db.Add(addScaledPart(m, scale-1))
+		} else {
+			db.Add(scaleMod(m, scale))
+		}
 	}
 	// Item.lua: each Grand Spectrum counts for itself and for minions.
 	if it.Base != nil && it.Base.Type == "Jewel" && strings.Contains(it.Name, "Grand Spectrum") {
@@ -586,4 +609,19 @@ func mergeMod(list []Mod, m Mod) []Mod {
 		}
 	}
 	return append(list, m)
+}
+
+// addScaledPart is the gloves/boots branch of CalcSetup.lua (1286-1302):
+// scaledList:ScaleAddList(combinedList, part) then combinedList:MergeMod(mod,
+// true): an additive mod gains its scaled part (ScaleAddMod: unscaled for an
+// unscalable mod); a non-additive mod is left as it is.
+func addScaledPart(m Mod, part float64) Mod {
+	v, ok := m.Value.(float64)
+	if !ok || (m.Type != "BASE" && m.Type != "INC" && m.Type != "MORE") {
+		return m
+	}
+	if add, isNum := scaleMod(m, part).Value.(float64); isNum {
+		m.Value = v + add
+	}
+	return m
 }

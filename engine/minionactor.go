@@ -122,7 +122,7 @@ func (c *Calculator) minionPlayerGear(db, mdb *ModDB, s *activeSkill, typ string
 		return
 	}
 	add := func(slot string, scale float64) {
-		c.addItem(mdb, res, b.Item(b.ActiveItems().SlotItem(slot)), scale, slot, false)
+		c.addItem(mdb, res, b.Item(b.ActiveItems().SlotItem(slot)), scale, slot, scaleEach)
 	}
 	baseType := func(slot string) string {
 		if it := db.items[slot]; it != nil && it.Base != nil {
@@ -189,7 +189,7 @@ func (c *Calculator) minionItems(db, mdb *ModDB, s *activeSkill, res *Result) ma
 		case b.ActiveItems() != nil:
 			id = b.ActiveItems().SlotItem(slot)
 		}
-		if it, mods := c.addItem(mdb, res, b.Item(id), 1, slot, false); it != nil {
+		if it, mods := c.addItem(mdb, res, b.Item(id), 1, slot, scaleEach); it != nil {
 			mdb.items[slot] = it
 			gear[slot] = mods
 		}
