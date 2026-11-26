@@ -479,7 +479,7 @@ func (p *Parser) Parse(text string) (*Item, error) {
 		case influenceLines[line] != "":
 			it.Influences = append(it.Influences, influenceLines[line])
 			continue
-		case reminderRe.MatchString(line):
+		case strings.HasPrefix(line, "(") && reminderRe.MatchString(line):
 			for l < len(lines) && !strings.HasSuffix(lines[l], ")") {
 				l++
 			}
@@ -538,7 +538,8 @@ func (p *Parser) Parse(text string) (*Item, error) {
 		}
 
 		specName, specVal := "", ""
-		if m := specRe.FindStringSubmatch(line); m != nil {
+		// The strings.Contains checks skip regexps that need that text.
+		if m := matchIf(specRe, line, ": "); m != nil {
 			specName, specVal = m[1], m[2]
 			if specName == "Class:" {
 				specName = "Requires Class"
@@ -655,7 +656,7 @@ func (p *Parser) Parse(text string) (*Item, error) {
 		}
 
 		mod := ModLine{}
-		line = tokenRe.ReplaceAllStringFunc(line, func(tok string) string {
+		line = replaceIf(tokenRe, line, "{", func(tok string) string {
 			m := tokenRe.FindStringSubmatch(tok)
 			k, val := m[1], m[2]
 			switch {
@@ -689,7 +690,7 @@ func (p *Parser) Parse(text string) (*Item, error) {
 			}
 			return ""
 		})
-		line = flagSuffixRe.ReplaceAllStringFunc(line, func(tok string) string {
+		line = replaceIf(flagSuffixRe, line, " (", func(tok string) string {
 			if k := flagSuffixRe.FindStringSubmatch(tok)[1]; lineFlags[k] {
 				setFlag(&mod, k)
 			}
@@ -849,9 +850,33 @@ var (
 )
 
 func escapeGGG(s string) string {
-	s = escapeMarkupRe.ReplaceAllString(s, "$1")
+	// Each pattern needs its "<" or "["; markup removal never adds one.
+	if strings.Contains(s, "<") {
+		s = escapeMarkupRe.ReplaceAllString(s, "$1")
+	}
+	if !strings.Contains(s, "[") {
+		return s
+	}
 	s = escapeKeyRe.ReplaceAllString(s, "$1")
 	return escapeShownRe.ReplaceAllString(s, "$1")
+}
+
+// matchIf is re.FindStringSubmatch(s), skipped when s lacks text that
+// every match of re contains.
+func matchIf(re *regexp.Regexp, s, text string) []string {
+	if !strings.Contains(s, text) {
+		return nil
+	}
+	return re.FindStringSubmatch(s)
+}
+
+// replaceIf is re.ReplaceAllStringFunc(s, f), skipped when s lacks text
+// that every match of re contains.
+func replaceIf(re *regexp.Regexp, s, text string, f func(string) string) string {
+	if !strings.Contains(s, text) {
+		return s
+	}
+	return re.ReplaceAllStringFunc(s, f)
 }
 
 func setFlag(m *ModLine, k string) {
@@ -933,6 +958,9 @@ func (p *Parser) isBaseTypeLine(it *Item, line string) bool {
 // advancedValues turns advanced copy values into plain ones and records the
 // roll: "5(5)" -> "5", "+48(40-49)" -> "+48" with Range (48-40)/9.
 func advancedValues(line string, mod *ModLine) string {
+	if !strings.Contains(line, "(") {
+		return line // all three patterns need a "("
+	}
 	line = fixedValueRe.ReplaceAllString(line, "$1")
 	line = enumRangeRe.ReplaceAllString(line, "")
 	bestDelta := -1.0
