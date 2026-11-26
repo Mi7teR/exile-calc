@@ -54,3 +54,24 @@ func BenchmarkFullDPS(b *testing.B) {
 		})
 	}
 }
+
+// BenchmarkCompareItem is one Comparer.Item call, a rare ring in Ring 1,
+// with the base computed once outside the loop.
+func BenchmarkCompareItem(b *testing.B) {
+	c := newCalc(b)
+	for _, id := range benchBuilds() {
+		cp, err := c.NewComparer(corpusBuild(b, id))
+		if err != nil {
+			b.Fatal(err)
+		}
+		b.Run(id, func(b *testing.B) {
+			b.ReportAllocs()
+			b.ResetTimer()
+			for range b.N {
+				if _, ierr := cp.Item("Ring 1", gameRing); ierr != nil {
+					b.Fatal(ierr)
+				}
+			}
+		})
+	}
+}

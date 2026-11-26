@@ -57,6 +57,32 @@ not parse are in `res.Unparsed`, parts it could not compute are in
 `calc.FullDPS(b)` is PoB's Full DPS: `FullDPS`, `FullDotDPS` and the
 per-skill entries over the groups marked "Include in Full DPS".
 
+### Compare an item against a build
+
+Like PoB's item tooltip: compute the build once, then ask what an item
+copied from the game would change in a slot.
+
+```go
+cmp, err := calc.NewComparer(b) // one Calc; keep it while the build is loaded
+if err != nil {
+	return err
+}
+r, err := cmp.Item("Ring 1", clipboardText) // game Ctrl+C text or PoB item text
+if err != nil {
+	return err // unknown slot or item text that is not an item
+}
+for _, stat := range []string{"Life", "FireResist", "ColdResist", "LightningResist", "TotalEHP", "CombinedDPS", "FullDPS"} {
+	if d, ok := r.Delta[stat]; ok {
+		fmt.Printf("%s %+.0f (%.0f -> %.0f)\n", stat, d, r.Before[stat], r.After[stat])
+	}
+}
+```
+
+`Delta` holds only the stats that changed; `FullDPS` is there when the
+build has skills in Full DPS. A two-hander in `"Weapon 1"` empties
+`"Weapon 2"` (`r.Replaced` says so). `Item` is safe to call from several
+goroutines; the build must not be changed while the Comparer is in use.
+
 ### Combat DPS against a boss and a pack
 
 `Combat` takes PoB's single-target numbers and lays the main skill's shape

@@ -60,6 +60,12 @@ func (c *Calculator) FullDPS(b *pobcode.Build) (*FullDPSResult, error) {
 	if err != nil {
 		return nil, err
 	}
+	return c.fullDPSFrom(b, base)
+}
+
+// fullDPSFrom is FullDPS on base, b's Calc result.
+func (c *Calculator) fullDPSFrom(b *pobcode.Build, base *Result) (*FullDPSResult, error) {
+	var err error
 	acc := &fullDPSAcc{}
 	// calcs.calcFullDPS: for _, activeSkill in ipairs(fullEnv.player.activeSkillList).
 	for i, s := range base.DB.activeSkills {
