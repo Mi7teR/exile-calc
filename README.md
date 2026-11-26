@@ -17,12 +17,16 @@ go get github.com/Mi7teR/poe-lib
 | `pobcode` | PoB export code ↔ `Build`: items by slot, gems, passive trees, config | done |
 | `gamedata` | Embedded game data: bases, mods with tiers, gems, uniques, passive tree, minions | done |
 | `itemtext` | Item text (game Ctrl+C, Ctrl+Alt+C, PoB format) → base, sockets, enchants, implicits, explicits | done |
-| `modparser` | Mod line → ModDB modifiers, using PoB's own pattern tables; 97.8% of PoB's ModCache lines, 0 wrong | in progress |
+| `modparser` | Mod line → ModDB modifiers, using PoB's own pattern tables; 99.1% of the lines in PoB's ModCache (19089 of 19265), 0 wrong | in progress |
 | `engine` | PoB's `calcs`: attributes, life, mana, resists, EHP, main skill DPS, ailments, minions, plus combat DPS against a boss and a pack | matches PoB on the golden corpus |
 
 The engine is checked against headless PoB on a [golden corpus](testdata/golden)
-of 89 real 3.30 builds: every compared defence stat and the main skill's DPS
-stats match within 0.5% on all 89, minions on all 119. Where PoB is wrong
+of 140 real 3.30 builds (135 public, 5 synthetic: two Party-tab, one
+linked-minion and two Oak-bandit variants of public builds). Every compared
+defence stat matches within 0.5% on all 140; the main skill's DPS stats on
+139 (the miss is a tree-granted skill group), minion stats on all 213 oracle
+minions, and Full DPS on 127. The remaining Full DPS gaps are listed in the
+corpus README. Where PoB is wrong
 and the engine follows the game instead, the difference is recorded in
 [quirks.json](testdata/golden/quirks.json).
 
@@ -54,8 +58,25 @@ not parse are in `res.Unparsed`, parts it could not compute are in
 
 `res.Skills` lists the active skills with gem level, quality and buffs;
 `calc.CalcMinions(b)` computes each minion skill as the main skill.
-`calc.FullDPS(b)` is PoB's Full DPS: `FullDPS`, `FullDotDPS` and the
-per-skill entries over the groups marked "Include in Full DPS".
+The first `Calc` of a process parses mod lines; later calls reuse a
+process-wide parse cache and are much faster.
+
+### Full DPS
+
+`calc.FullDPS(b)` is PoB's Full DPS over the socket groups marked "Include in
+Full DPS": `FullDPS`, `FullDotDPS` and one `SkillDPS` per skill, minion,
+mirage and DoT total (a build with no such group gives 0 and no entries).
+
+```go
+fd, err := calc.FullDPS(b)
+if err != nil {
+	return err
+}
+fmt.Printf("Full DPS %.0f (DoT %.0f)\n", fd.FullDPS, fd.FullDotDPS)
+for _, s := range fd.Skills {
+	fmt.Printf("  %s x%.0f: %.0f\n", s.Name, s.Count, s.DPS)
+}
+```
 
 ### Compare an item against a build
 
@@ -79,8 +100,9 @@ for _, stat := range []string{"Life", "FireResist", "ColdResist", "LightningResi
 ```
 
 `Delta` holds only the stats that changed, unrounded; `FullDPS` is there
-when the build has skills in Full DPS. `r.Unparsed` lists the item's mod
-lines the engine did not understand. A two-hander in `"Weapon 1"` empties
+when the build has skills in Full DPS. `r.Unparsed` and `r.Incomplete` list
+the item's mod lines the engine did not understand and the parts it left
+out (`After` and `Delta` may then be incomplete). A two-hander in `"Weapon 1"` empties
 `"Weapon 2"` (`r.Replaced` says so). `Item` is safe to call from several
 goroutines; the build must not be changed while the Comparer is in use.
 
