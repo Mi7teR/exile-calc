@@ -346,6 +346,14 @@ func TestHooks(t *testing.T) {
 		// "base (%a+) duration is ([%d%.]+) seconds?"
 		"Base Ignite Duration is 1 second": `[{"flags":0,"keywordFlags":0,"name":"IgniteDurationBase","type":"OVERRIDE","value":1}]`,
 
+		// 5226: a skill gemIdLookup does not know becomes skillId "Unknown"
+		"Grants Level 5 Nonexistent Curse Aura during Effect": `[{"@list":[{"type":"Condition","var":"UsingFlask"}],"flags":0,"keywordFlags":0,
+			"name":"ExtraCurse","type":"LIST","value":{"level":5,"skillId":"Unknown"}}]`,
+		// 5539: gemIdLookup[name] is nil, so the SkillId tag has no skillId
+		"Travel Skills other than Nonexistent are Disabled": `[{"@list":[{"skillType":79,"type":"SkillType"}],"flags":0,"keywordFlags":0,
+			"name":"DisableSkill","type":"FLAG","value":true},
+			{"@list":[{"type":"SkillId"}],"flags":0,"keywordFlags":0,"name":"EnableSkill","type":"FLAG","value":true}]`,
+
 		// m_huge (ModParser.lua:12) resolves to +Inf, which ModCache writes as {"$ref":"math.huge"}.
 		"Your Hexes have infinite Duration": `[{"@list":[{"skillType":69,"type":"SkillType"}],"flags":0,"keywordFlags":0,"name":"Duration","type":"BASE",
 			"value":{"$ref":"math.huge"}}]`,
@@ -356,6 +364,15 @@ func TestHooks(t *testing.T) {
 	p, err := PoE1()
 	if err != nil {
 		t.Fatal(err)
+	}
+	// Lines whose Lua function returns nil: PoB leaves them unparsed.
+	for _, line := range []string{
+		"Base Chill Duration is 2 seconds", // 3785: only bleed, ignite and poison
+	} {
+		if got, extra := p.parseRaw(line); got != nil && extra == "" {
+			gj, _ := json.Marshal(got)
+			t.Errorf("%q: parsed as %s, want unparsed", line, gj)
+		}
 	}
 	for line, wantJSON := range hookCases {
 		var want any

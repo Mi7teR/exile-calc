@@ -477,7 +477,7 @@ linters:
       # why: the themed modparser hook files port ModParser.lua specialModList functions: PoB's literal numbers
       # and mod name/type strings stay inline like hooks.go, and each file registers its ports from init() into
       # the package-level hooks map.
-      - path: 'modparser/hooks_[a-z]+\.go'
+      - path: 'modparser/hooks_(common|curses|defence|eyejewels|flasks|minions|offence|recovery|setitems)\.go'
         linters: [ mnd, goconst, gochecknoinits ]
       # why: calcsteps.go is the old Calc body cut into steps verbatim: PoB's base values (block caps, bandit
       # numbers, Alchemist's Genius) and mod name/type strings stay inline like the rest of the port, and the
