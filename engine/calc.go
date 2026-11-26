@@ -59,17 +59,27 @@ type Result struct {
 // Build is the calculated build: the input build after CalcSetup.lua's
 // granted skill block, which gives every skill granted by the passive
 // tree, an item or a Config tab modifier a socket group (appended to the
-// active skill set) and removes saved granted groups that nothing grants
-// any more. It is the input build itself when that changes nothing;
-// otherwise a copy that shares all but the active skill set's group list.
-// It must not be modified.
+// active skill set), builds the "Explode" group, and removes saved granted
+// groups that nothing grants any more. When a removed group was before
+// the main socket group, MainSocketGroup is moved with its group (the
+// game's choice, not PoB's; see applyGrantedSkills). It is the input
+// build itself when nothing changes; otherwise a copy that shares all but
+// the active skill set's group list. It must not be modified.
 //
 // SkillInfo.Group and SkillDPS.Group are indexes into its active skill
-// set, PoB's socketGroupList. pobcode.Build.MainSocketGroup is read in the
-// same space: PoB does not adjust it when a group before it is removed,
-// so setting the input build's MainSocketGroup to a SkillInfo.Group
-// selects that skill's group.
+// set, PoB's socketGroupList; WithMainSkill makes one the main skill.
 func (r *Result) Build() *pobcode.Build { return r.build }
+
+// WithMainSkill returns a copy of Build whose main skill is the n-th active
+// skill of socket group g (both 1-based, as SkillInfo.Group and
+// GroupSkill), for Calc, FullDPS or NewComparer; nil when Build has no
+// group g. Build is not changed.
+func (r *Result) WithMainSkill(g, n int) *pobcode.Build {
+	if r.build == nil || r.build.ActiveSkills() == nil || g < 1 || g > len(r.build.ActiveSkills().Groups) {
+		return nil
+	}
+	return withMainSkill(r.build, g, n)
+}
 
 // SkillInfo describes one active skill: its effective gem level and
 // quality, its buffs ("Aura:Purity of Elements") and the aura effect its

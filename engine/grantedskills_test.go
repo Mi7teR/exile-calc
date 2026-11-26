@@ -1,7 +1,9 @@
 package engine
 
 import (
+	"math"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/Mi7teR/poe-lib/gamedata"
@@ -25,7 +27,7 @@ func TestTreeGrantedSkillGroups(t *testing.T) {
 	if len(grants) != 1 {
 		t.Fatalf("tree grants %+v, want only the node's", grants)
 	}
-	got := applyGrantedSkills(b, grants, nil)
+	got := applyGrantedSkills(b, grants, nil, nil)
 	groups := got.ActiveSkills().Groups
 	if len(groups) != 2 {
 		t.Fatalf("got %d groups, want the saved one and the tree group", len(groups))
@@ -41,7 +43,7 @@ func TestTreeGrantedSkillGroups(t *testing.T) {
 	if len(b.ActiveSkills().Groups) != 1 {
 		t.Error("the input build was changed")
 	}
-	if again := applyGrantedSkills(got, grants, nil); again != got {
+	if again := applyGrantedSkills(got, grants, nil, nil); again != got {
 		t.Error("a build with the group gets another one")
 	}
 
@@ -57,12 +59,12 @@ func TestTreeGrantedSkillGroups(t *testing.T) {
 			Gems:    []pobcode.Gem{{SkillID: "S", Level: 2, EnableGlobal1: true}},
 		},
 	)
-	if kept := applyGrantedSkills(b, tree7, skills); kept != b {
+	if kept := applyGrantedSkills(b, tree7, nil, skills); kept != b {
 		t.Errorf("saved group at the validated level not matched: %+v", kept.ActiveSkills().Groups)
 	}
 	// Another level makes a new group, as in PoB, and the stale one goes.
 	b.SkillSets[0].Groups[1].Gems[0].Level = 1
-	more := applyGrantedSkills(b, tree7, skills).ActiveSkills().Groups
+	more := applyGrantedSkills(b, tree7, nil, skills).ActiveSkills().Groups
 	if len(more) != 2 || more[1].Source != "Tree:7" || more[1].Gems[0].Level != 2 {
 		t.Errorf("groups %+v, want the saved one and a new Tree:7 group at level 2", more)
 	}
@@ -78,7 +80,7 @@ func TestGrantedGroupUpdate(t *testing.T) {
 	}}
 	b := &pobcode.Build{ActiveSkillSetID: 1, MainSocketGroup: 1,
 		SkillSets: []pobcode.SkillSet{{ID: 1, Groups: []pobcode.SocketGroup{g}}}}
-	got := applyGrantedSkills(b, []grantedSkill{{source: "Item:1:Ring", slot: "Ring 1", id: "S", level: 1}}, nil)
+	got := applyGrantedSkills(b, []grantedSkill{{source: "Item:1:Ring", slot: "Ring 1", id: "S", level: 1}}, nil, nil)
 	groups := got.ActiveSkills().Groups
 	if len(groups) != 1 {
 		t.Fatalf("groups %+v", groups)
@@ -103,46 +105,134 @@ func staleBuild(source, slot string) *pobcode.Build {
 		}}}}
 }
 
-// CalcSetup.lua:1607-1619 removes a granted group nothing grants, tree or
-// item, and leaves build.mainSocketGroup alone (1652-1653 only clamp it):
-// the saved index 3 now points past the list (setupSkills clamps it to 2).
+// CalcSetup.lua:1607-1619 removes a granted group nothing grants (tree,
+// item, or Explode without explode sources). MainSocketGroup moves with
+// its group, the game's choice (PoB keeps the index).
 func TestStaleGrantedGroupRemoved(t *testing.T) {
-	for _, tc := range []struct{ source, slot string }{{"Tree:1", ""}, {"Item:9:Ring", "Ring 1"}} {
+	for _, tc := range []struct{ source, slot string }{{"Tree:1", ""}, {"Item:9:Ring", "Ring 1"}, {"Explode", ""}} {
 		b := staleBuild(tc.source, tc.slot)
-		got := applyGrantedSkills(b, nil, nil)
+		b.MainSocketGroup = 2 // Arc
+		got := applyGrantedSkills(b, nil, nil, nil)
 		groups := got.ActiveSkills().Groups
 		if len(groups) != 2 || groups[0].Gems[0].SkillID != "Arc" || groups[1].Gems[0].SkillID != "Fireball" {
 			t.Fatalf("%s: groups %+v, want Arc and Fireball", tc.source, groups)
 		}
-		if got.MainSocketGroup != 3 {
-			t.Errorf("%s: MainSocketGroup %d, want 3 (PoB does not adjust it)", tc.source, got.MainSocketGroup)
+		if got.MainSocketGroup != 1 {
+			t.Errorf("%s: MainSocketGroup %d, want 1 (Arc's group)", tc.source, got.MainSocketGroup)
 		}
-		if len(b.ActiveSkills().Groups) != 3 {
+		if len(b.ActiveSkills().Groups) != 3 || b.MainSocketGroup != 2 {
 			t.Errorf("%s: the input build was changed", tc.source)
 		}
 	}
-	// An Explode group stays (its block is not ported).
-	b := staleBuild("Explode", "")
-	if got := applyGrantedSkills(b, nil, nil); got != b {
-		t.Error("an Explode group was removed")
+	// The main group itself removed: the index is kept, as in PoB, and
+	// clamped later (setupSkills).
+	b := staleBuild("Tree:1", "")
+	b.MainSocketGroup = 1
+	if got := applyGrantedSkills(b, nil, nil, nil); got.MainSocketGroup != 1 || len(got.ActiveSkills().Groups) != 2 {
+		t.Errorf(
+			"removed main group: MainSocketGroup %d, %d groups",
+			got.MainSocketGroup,
+			len(got.ActiveSkills().Groups),
+		)
+	}
+	// A stale group after the main group: the index stays.
+	b = staleBuild("Tree:1", "")
+	g := b.SkillSets[0].Groups
+	b.SkillSets[0].Groups = []pobcode.SocketGroup{g[1], g[2], g[0]}
+	b.MainSocketGroup = 2
+	if got := applyGrantedSkills(b, nil, nil, nil); got.MainSocketGroup != 2 {
+		t.Errorf("stale group after main: MainSocketGroup %d, want 2", got.MainSocketGroup)
+	}
+}
+
+// CalcSetup.lua:1564-1605: with explode sources, the first Explode group
+// (or a new one, appended) holds one new EnemyExplode gem per source; a
+// second Explode group is removed, and so is the group with no sources.
+func TestExplodeGroup(t *testing.T) {
+	newGem := pobcode.Gem{SkillID: "EnemyExplode", Level: 1, Enabled: true}
+	src := []string{"Tree:5", "Item:3:Ring"}
+	b := staleBuild("Tree:1", "")
+	b.SkillSets[0].Groups = b.SkillSets[0].Groups[1:] // Arc, Fireball
+	got := applyGrantedSkills(b, nil, src, nil)
+	groups := got.ActiveSkills().Groups
+	if len(groups) != 3 {
+		t.Fatalf("groups %+v, want Arc, Fireball and Explode", groups)
+	}
+	g := groups[2]
+	if g.Source != "Explode" || g.Label != "On Kill Monster Explosion" || !g.Enabled ||
+		!slices.Equal(g.Gems, []pobcode.Gem{newGem, newGem}) {
+		t.Errorf("explode group %+v", g)
+	}
+	if again := applyGrantedSkills(got, nil, src, nil); again != got {
+		t.Error("an Explode group with its gems changed again")
+	}
+
+	// Saved groups: the first one's gems are rebuilt (a disabled gem, a
+	// third gem), the second one goes.
+	saved := pobcode.SocketGroup{Enabled: false, Label: "mine", Source: "Explode", Gems: []pobcode.Gem{
+		{SkillID: "EnemyExplode", Level: 1}, newGem, newGem,
+	}}
+	arc := b.SkillSets[0].Groups[0]
+	b.SkillSets[0].Groups = []pobcode.SocketGroup{saved, saved, arc}
+	groups = applyGrantedSkills(b, nil, []string{"Tree:5"}, nil).ActiveSkills().Groups
+	if len(groups) != 2 || groups[0].Label != "mine" || groups[0].Enabled ||
+		!slices.Equal(groups[0].Gems, []pobcode.Gem{newGem}) || groups[1].Gems[0].SkillID != "Arc" {
+		t.Errorf("groups %+v, want the first Explode group with one gem, then Arc", groups)
+	}
+	if none := applyGrantedSkills(b, nil, nil, nil).ActiveSkills().Groups; len(none) != 1 {
+		t.Errorf("groups %+v, want only Arc without explode sources", none)
+	}
+}
+
+// The Explode group of a corpus build holds one gem per explode source,
+// and each gem reads its own source.
+func TestExplodeGroupCorpus(t *testing.T) {
+	if testing.Short() {
+		t.Skip("corpus builds")
+	}
+	c := newCalc(t)
+	res, err := c.Calc(corpusBuild(t, "AtHqFK3vAk5P")) // a saved Explode group of three gems
+	if err != nil {
+		t.Fatal(err)
+	}
+	srcs := res.DB.explodeSources
+	if len(srcs) < 2 {
+		t.Fatalf("explode sources %v", srcs)
+	}
+	groups := res.Build().ActiveSkills().Groups
+	i := slices.IndexFunc(groups, func(g pobcode.SocketGroup) bool { return g.Source == "Explode" })
+	if i < 0 || len(groups[i].Gems) != len(srcs) {
+		t.Fatalf("explode group %d, sources %v", i, srcs)
+	}
+	var got []string
+	for _, s := range res.DB.activeSkills {
+		if s.active.id == "EnemyExplode" {
+			got = append(got, explodeSource(s))
+		}
+	}
+	if !slices.Equal(got, srcs) {
+		t.Errorf("gem sources %v, want %v", got, srcs)
 	}
 }
 
 // withStaleGroup returns a copy of b with a stale tree group (no node
-// grants it) first in the active skill set. MainSocketGroup is not
-// changed: once PoB removes that group, it names the same group again.
+// grants it) first in the active skill set; MainSocketGroup still names
+// the same group.
 func withStaleGroup(b *pobcode.Build) *pobcode.Build {
 	cp := *b
 	cp.SkillSets = slices.Clone(b.SkillSets)
 	set := cp.ActiveSkills()
 	set.Groups = append([]pobcode.SocketGroup{{Enabled: true, Source: "Tree:1",
 		Gems: []pobcode.Gem{{SkillID: "SummonSpectralTiger", Level: 20, Enabled: true}}}}, set.Groups...)
+	cp.MainSocketGroup = min(max(len(set.Groups)-1, 1), max(b.MainSocketGroup, 1)) + 1
 	return &cp
 }
 
-// A stale group before the main group: Calc removes it, so the skills and
-// Result.Build are the original build's, and FullDPS and CalcMinions,
-// which calculate each skill on Result.Build, give the same skills.
+// A stale group before the main group: Calc removes it and the main skill
+// stays the one chosen (the game's choice; PoB's moves to the next group),
+// so the skills and Result.Build are the original build's, and FullDPS
+// and CalcMinions, which calculate each skill on Result.Build, give the
+// same skills.
 func TestStaleGroupBeforeMain(t *testing.T) {
 	if testing.Short() {
 		t.Skip("corpus builds")
@@ -162,6 +252,10 @@ func TestStaleGroupBeforeMain(t *testing.T) {
 		}
 		if len(r2.Build().ActiveSkills().Groups) != len(r1.Build().ActiveSkills().Groups) {
 			t.Fatalf("%s: stale group not removed", id)
+		}
+		if r1.main == nil || r2.main == nil || r1.main.active.ge.Name != r2.main.active.ge.Name ||
+			r2.Build().MainSocketGroup != r1.Build().MainSocketGroup {
+			t.Errorf("%s: main skill %v, with a stale group %v", id, r1.main, r2.main)
 		}
 		if !slices.EqualFunc(r1.Skills, r2.Skills, func(a, b SkillInfo) bool {
 			return a.Name == b.Name && a.Group == b.Group && a.GroupSkill == b.GroupSkill
@@ -203,37 +297,37 @@ func TestStaleGroupBeforeMain(t *testing.T) {
 	}
 }
 
-// SkillInfo.Group indexes Result.Build's groups, the space PoB reads
-// mainSocketGroup in: setting the input build's MainSocketGroup to it
-// makes that skill the main skill, also when a group before it is removed.
-func TestSkillGroupSelectsMainOnInputBuild(t *testing.T) {
+// SkillInfo.Group indexes Result.Build's groups; Result.WithMainSkill
+// makes that skill the main skill, also when a group before it was
+// removed.
+func TestResultWithMainSkill(t *testing.T) {
 	if testing.Short() {
 		t.Skip("corpus builds")
 	}
 	c := newCalc(t)
-	b := withStaleGroup(corpusBuild(t, "3uy_tEm_vqpB"))
-	res, err := c.Calc(b)
+	res, err := c.Calc(withStaleGroup(corpusBuild(t, "3uy_tEm_vqpB")))
 	if err != nil {
 		t.Fatal(err)
 	}
 	tried := 0
 	for _, s := range res.Skills {
-		if s.Disabled || s.GroupSkill != 1 {
+		if s.Disabled {
 			continue
 		}
-		cp := *b
-		cp.MainSocketGroup = s.Group
-		r, calcErr := c.Calc(&cp)
+		r, calcErr := c.Calc(res.WithMainSkill(s.Group, s.GroupSkill))
 		if calcErr != nil {
 			t.Fatal(calcErr)
 		}
 		if r.main == nil || r.main.active.ge.Name != s.Name {
-			t.Errorf("MainSocketGroup %d: main skill %v, want %s", s.Group, r.main, s.Name)
+			t.Errorf("group %d skill %d: main skill %v, want %s", s.Group, s.GroupSkill, r.main, s.Name)
 		}
 		tried++
 	}
 	if tried < 2 {
 		t.Fatalf("only %d skills tried", tried)
+	}
+	if res.WithMainSkill(0, 1) != nil || res.WithMainSkill(len(res.Build().ActiveSkills().Groups)+1, 1) != nil {
+		t.Error("WithMainSkill of a group Build does not have")
 	}
 }
 
@@ -299,28 +393,62 @@ func TestItemGrantedSkillGroup(t *testing.T) {
 	}
 }
 
-// getMiscCalculator's override pass (CALCULATOR mode) skips the granted
-// skill block: a removed item's granted group stays, as in PoB's item
-// comparison; a MAIN Calc removes it.
-func TestCalculatorModeKeepsGroups(t *testing.T) {
+// Comparer.Item runs the granted skill block, as the game counts skills
+// granted by items: the compared item's skill gets its group and the
+// replaced item's group goes (PoB's CALCULATOR-mode tooltip does neither).
+func TestCompareItemGrantedSkill(t *testing.T) {
 	if testing.Short() {
 		t.Skip("corpus builds")
 	}
 	c := newCalc(t)
 	b := corpusBuild(t, "cl7sZKsLjQUB") // Oskarm's Assassin's Mark in Gloves
-	nb := editSlots(b, map[string]string{"Gloves": ""})
+	oskarm := slotRaw(t, b, "Gloves")
+	var lines []string
+	for l := range strings.SplitSeq(oskarm, "\n") {
+		if !strings.Contains(l, "Assassin's Mark") {
+			lines = append(lines, l)
+		}
+	}
+	plain := strings.Join(lines, "\n")
+	if plain == oskarm {
+		t.Fatal("no Assassin's Mark line")
+	}
 	has := func(r *Result) bool {
 		return slices.ContainsFunc(r.Skills, func(s SkillInfo) bool { return s.Name == "Assassin's Mark" })
 	}
-	main, err := c.Calc(nb)
+	// Replacing Oskarm: Item's build loses the group.
+	cp := newComparer(t, c, b)
+	without, _, err := cp.withItem("Gloves", plain, "Gloves")
 	if err != nil {
 		t.Fatal(err)
 	}
-	calc, err := c.calc(nb, true)
+	if r, calcErr := c.Calc(without); calcErr != nil || has(r) {
+		t.Errorf("replacing Oskarm keeps Assassin's Mark (%v)", calcErr)
+	}
+	removed, err := cp.Item("Gloves", plain)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if has(main) || !has(calc) {
-		t.Errorf("Assassin's Mark in MAIN %v, in CALCULATOR %v; want false, true", has(main), has(calc))
+	// Comparing Oskarm on the build without it: the group is added, and
+	// the change is the opposite of removing it.
+	cp = newComparer(t, c, without)
+	with, _, err := cp.withItem("Gloves", oskarm, "Gloves")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r, calcErr := c.Calc(with); calcErr != nil || !has(r) {
+		t.Errorf("comparing Oskarm adds no Assassin's Mark (%v)", calcErr)
+	}
+	added, err := cp.Item("Gloves", oskarm)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(removed.Delta) == 0 || len(added.Delta) != len(removed.Delta) {
+		t.Fatalf("removing changes %d stats, adding %d", len(removed.Delta), len(added.Delta))
+	}
+	for k, d := range removed.Delta {
+		if e := added.Delta[k]; math.Abs(e+d) > 1e-9*math.Max(1, math.Abs(d)) {
+			t.Errorf("%s: removing %v, adding %v", k, d, e)
+		}
 	}
 }

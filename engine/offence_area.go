@@ -2,7 +2,6 @@ package engine
 
 import (
 	"math"
-	"strings"
 )
 
 // projectileStats is the projectile part of calcs.offence's skill type
@@ -214,7 +213,7 @@ func enemyExplode(s *activeSkill, out map[string]float64) {
 	}
 	chance := 0.0
 	if s.part != 3 {
-		src := explodeSource(s, entries)
+		src := explodeSource(s)
 		for _, e := range entries {
 			if e.Mod == nil || e.Mod.Source != src {
 				continue
@@ -272,25 +271,15 @@ func enemyExplode(s *activeSkill, out map[string]float64) {
 	out["ExplodeChance"] = math.Min(chance*100, 100)
 }
 
-// explodeSource is activeEffect.srcInstance.explodeSource's mod source: the
-// n-th of env.explodeSources (CalcSetup: allocated nodes, then items), n
-// being this gem's place among the group's EnemyExplode gems.
-func explodeSource(s *activeSkill, entries []ListEntry) string {
-	// Tree sources first, then the rest.
-	var sources, items []string
-	seen := map[string]bool{}
-	for _, e := range entries {
-		if e.Mod == nil || seen[e.Mod.Source] {
-			continue
-		}
-		seen[e.Mod.Source] = true
-		if strings.HasPrefix(e.Mod.Source, "Tree:") {
-			sources = append(sources, e.Mod.Source)
-		} else {
-			items = append(items, e.Mod.Source)
-		}
+// explodeSource is activeEffect.srcInstance.explodeSource's mod source
+// (Data/Skills/other.lua: explodeSource.modSource or "Tree:"..id): the
+// n-th of env.explodeSources, n being this gem's place among the group's
+// EnemyExplode gems, which CalcSetup.lua:1586-1601 creates one per source.
+func explodeSource(s *activeSkill) string {
+	db := s.mods
+	for db != nil && db.parent != nil {
+		db = db.parent
 	}
-	sources = append(sources, items...)
 	n := 0
 	if s.group != nil {
 		for i := range s.group.Gems {
@@ -303,8 +292,8 @@ func explodeSource(s *activeSkill, entries []ListEntry) string {
 			}
 		}
 	}
-	if n < len(sources) {
-		return sources[n]
+	if db != nil && n < len(db.explodeSources) {
+		return db.explodeSources[n]
 	}
 	return ""
 }

@@ -101,6 +101,14 @@ func (cp *Comparer) stats(res *Result, full *FullDPSResult) map[string]float64 {
 // an empty Delta (PoB's tooltip shows "Removing this item" for it
 // instead, ItemsTab.lua AddItemTooltip).
 //
+// Skills granted by items count as in the game, not as in PoB's tooltip:
+// the item's granted skills get socket groups and those of the item it
+// replaces lose theirs (CalcSetup.lua's granted skill block runs for the
+// compared build). PoB computes the tooltip with getMiscCalculator in
+// CALCULATOR mode, which skips that block (CalcSetup.lua:1506), so there a
+// new "Curse Enemies with ... on Hit" ring adds no curse and a replaced
+// one keeps its curse.
+//
 // As CalcSetup.lua's override.repSlotName/repItem (calcs.initEnv), a
 // Staff or two-handed sword, axe or mace in a "Weapon 1" slot empties the
 // set's "Weapon 2", and so does a bow unless "Weapon 2" holds a quiver.
@@ -120,10 +128,10 @@ func (cp *Comparer) Item(slot string, itemText string) (*ItemComparison, error) 
 	if err != nil {
 		return nil, err
 	}
-	// getMiscCalculator's override pass runs in CALCULATOR mode: the
-	// socket groups are the base build's, so an item granting a skill
-	// gets no new group and a replaced item's granted group stays.
-	res, err := cp.c.calc(b, true)
+	// A full (MAIN) Calc, not getMiscCalculator's CALCULATOR pass: the
+	// granted skill block runs, so the item's granted skills count (see
+	// the Item doc).
+	res, err := cp.c.Calc(b)
 	if err != nil {
 		return nil, err
 	}

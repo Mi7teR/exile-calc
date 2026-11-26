@@ -60,6 +60,9 @@ type ModDB struct {
 	party            *partyActor                                // the player's: env.partyMembers (Party tab)
 	partyMembers     *ModDB                                     // the player's: env.partyMembers.modDB (its output from PartyMemberStats)
 	minionFlasks     struct{ any, nonUnique, quicksilver bool } // the player's active flasks that could reach a minion
+	// explodeSources is the player's env.explodeSources as mod sources
+	// (grantedskills.go), in the order of the Explode group's gems.
+	explodeSources []string
 
 	// incomplete holds the actor's notes for Result.Incomplete from skill
 	// hooks (noteIncomplete).

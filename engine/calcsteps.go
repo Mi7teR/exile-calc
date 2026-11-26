@@ -379,6 +379,11 @@ func stepItems(c *Calculator, st *calcState) error {
 				(strings.HasPrefix(slot.Name, "Wickerman ") && !strings.Contains(tree, "3_30")) {
 				continue
 			}
+			// CalcSetup.lua:825: Ring 3 counts only with AdditionalRingSlot
+			// from the allocated nodes (The Unseen Hand).
+			if slot.Name == "Ring 3" && !additionalRingSlot(db) {
+				continue
+			}
 			// CalcSetup.lua: the active swap set's slots lose " Swap".
 			if set.UseSecondWeaponSet {
 				slot.Name = strings.Replace(slot.Name, " Swap", "", 1)
@@ -646,8 +651,11 @@ func stepSkills(c *Calculator, st *calcState) error {
 	// CalcSetup.lua:1506-1620 creates and removes the groups of granted
 	// skills before the active skills are built (MAIN mode only); later
 	// steps see the result too.
+	// env.explodeSources is gathered in every mode; the EnemyExplode gems
+	// read their source from it (enemyExplode).
+	db.explodeSources = c.explodeSources(st)
 	if !st.calculator {
-		st.b = c.withGrantedSkills(st)
+		st.b = c.withGrantedSkills(st, db.explodeSources)
 	}
 	db.build, res.build = st.b, st.b
 	skills := c.setupSkills(db, st.b, st.useSwap, res)

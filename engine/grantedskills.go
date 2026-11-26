@@ -33,22 +33,11 @@ type grantedSkill struct {
 
 // withGrantedSkills ports CalcSetup.lua's "Process extra skills granted by
 // items or tree nodes" (1506-1620, MAIN mode only) on the active skill set
-// of st.b: every granted skill gets a socket group, and saved groups with a
-// source that no grant matched are removed. b is returned unchanged when
-// nothing changes; otherwise the copy has its own skill set and group
-// slices and shares the rest.
-//
-// Removing a group shifts the groups after it, and PoB does not adjust
-// build.mainSocketGroup for it: CalcSetup.lua:1607-1619 only clears
-// skillsTab.displayGroup, and 1652-1653 clamps mainSocketGroup to the new
-// list's length. The saved main socket group index is kept here as well,
-// so it selects the group at that index in the returned build.
-//
-// The "Explode" group (1564-1605, the EnemyExplode gems of
-// env.explodeSources) is not built: a saved Explode group is kept as it is,
-// as when env.explodeSources is not empty.
-func (c *Calculator) withGrantedSkills(st *calcState) *pobcode.Build {
-	return applyGrantedSkills(st.b, c.grantedSkills(st), c.data.Skills.Effects)
+// of st.b (applyGrantedSkills): every granted skill gets a socket group,
+// so does a non-empty explodeSources (the "Explode" group), and saved
+// groups with a source that nothing took are removed.
+func (c *Calculator) withGrantedSkills(st *calcState, explode []string) *pobcode.Build {
+	return applyGrantedSkills(st.b, c.grantedSkills(st), explode, c.data.Skills.Effects)
 }
 
 // grantedSkills is env.grantedSkills: the nodes' grants, then the items',
@@ -189,17 +178,17 @@ func orderedSlotItems(b *pobcode.Build) []slotItem {
 	return out
 }
 
-// itemGrantedSkills is env.grantedSkillsItems (CalcSetup.lua:811-849): the
-// grantedSkills of the item in every slot of ItemsTab's orderedSlots, read
-// before the weapon set and jewel socket checks, so the inactive weapon
-// set's items and the jewels of unallocated sockets grant theirs too. Graft
-// slots count only on a 3.27 tree, slots named "Wickerman ..." only on a
-// 3.30 tree (816-823), and Ring 3 only with AdditionalRingSlot from the
-// allocated nodes (825).
-func (c *Calculator) itemGrantedSkills(st *calcState) []grantedSkill {
+// itemSlotsUsed is ItemsTab's orderedSlots as the item loop of
+// CalcSetup.lua:811-849 reads them for env.grantedSkillsItems and
+// env.explodeSources: before the weapon set and jewel socket checks, so the
+// inactive weapon set's items and the jewels of unallocated sockets count
+// too. Graft slots count only on a 3.27 tree, slots named "Wickerman ..."
+// only on a 3.30 tree (816-823), and Ring 3 only with AdditionalRingSlot
+// from the allocated nodes (825).
+func itemSlotsUsed(st *calcState) []slotItem {
 	tree := st.spec.TreeVersion
 	ringSlot := additionalRingSlot(st.db)
-	var out []grantedSkill
+	var out []slotItem
 	for _, si := range orderedSlotItems(st.b) {
 		name := si.slot
 		if (strings.HasPrefix(name, "Graft ") && !strings.Contains(tree, "3_27")) ||
@@ -207,55 +196,106 @@ func (c *Calculator) itemGrantedSkills(st *calcState) []grantedSkill {
 			(name == "Ring 3" && !ringSlot) || si.item == nil {
 			continue
 		}
-		out = append(out, c.itemGrants(si)...)
+		out = append(out, si)
 	}
 	return out
 }
 
-// itemGrants is item.grantedSkills (Item.lua:2666-2679) with the slot
-// (CalcSetup.lua:841-848): the item's ExtraSkill mods, baseList:List(nil,
-// "ExtraSkill"), where a mod with tags does not evaluate without a cfg.
-func (c *Calculator) itemGrants(si slotItem) []grantedSkill {
-	key := grantKey(si.item)
-	list, ok := c.grants.load(key)
-	if !ok {
-		list = c.parseItemGrants(si.item)
-		c.grants.store(key, list)
-	}
-	out := slices.Clone(list)
-	for i := range out {
-		out[i].slot = si.slot
+// itemGrantedSkills is env.grantedSkillsItems (CalcSetup.lua:841-848): the
+// grantedSkills of the items of itemSlotsUsed, with their slot names.
+func (c *Calculator) itemGrantedSkills(st *calcState) []grantedSkill {
+	var out []grantedSkill
+	for _, si := range itemSlotsUsed(st) {
+		for _, g := range c.itemInfo(si.item).grants {
+			g.slot = si.slot
+			out = append(out, g)
+		}
 	}
 	return out
 }
 
-// parseItemGrants is itemGrants without the slot, from the parsed item.
-func (c *Calculator) parseItemGrants(item *pobcode.Item) []grantedSkill {
+// explodeSources is env.explodeSources as mod sources (the key the
+// EnemyExplode gems match ExplodeMod by, Data/Skills/other.lua
+// explodeSource.modSource or "Tree:"..id): the allocated nodes with
+// CanExplode (buildModListForNodeList, CalcSetup.lua:283-290 and 1462-1464;
+// env.allocNodes is walked with pairs, node id order here), then the items
+// of itemSlotsUsed whose baseModList has CanExplode (851-853).
+func (c *Calculator) explodeSources(st *calcState) []string {
+	var nodes []int
+	seen := map[int]bool{}
+	for _, m := range st.db.mods["CanExplode"] {
+		idStr, ok := strings.CutPrefix(m.Source, "Tree:")
+		if !ok || m.Value != true || len(m.Tags) > 0 {
+			continue
+		}
+		if id, err := strconv.Atoi(idStr); err == nil && !seen[id] {
+			seen[id] = true
+			nodes = append(nodes, id)
+		}
+	}
+	sort.Ints(nodes)
+	var out []string
+	for _, id := range nodes {
+		out = append(out, "Tree:"+strconv.Itoa(id))
+	}
+	for _, si := range itemSlotsUsed(st) {
+		if info := c.itemInfo(si.item); info.canExplode {
+			out = append(out, info.source)
+		}
+	}
+	return out
+}
+
+// itemGrantInfo is what the granted skill block reads of an item.
+type itemGrantInfo struct {
+	source     string         // item.modSource
+	grants     []grantedSkill // item.grantedSkills, without slot names
+	canExplode bool           // item.baseModList:Flag(nil, "CanExplode")
+}
+
+// itemInfo is itemGrantInfo for item, from the cache when it is there.
+// The result is shared: callers must not modify it.
+func (c *Calculator) itemInfo(item *pobcode.Item) itemGrantInfo {
+	key := grantKey(item)
+	if info, ok := c.grants.load(key); ok {
+		return info
+	}
+	info := c.parseItemInfo(item)
+	c.grants.store(key, info)
+	return info
+}
+
+// parseItemInfo parses item for itemGrantInfo. item.grantedSkills is
+// Item.lua:2666-2679: baseList:List(nil, "ExtraSkill") (no item line PoB
+// parses gives ExtraSkill tags, so every one counts), with nameSpec the
+// skill's name (CalcSetup.lua:844).
+func (c *Calculator) parseItemInfo(item *pobcode.Item) itemGrantInfo {
 	it, mods := c.itemMods(item, &Result{})
 	if it == nil {
-		return nil
+		return itemGrantInfo{}
 	}
-	var out []grantedSkill
+	info := itemGrantInfo{source: itemSource(item, it)}
 	for _, m := range mods {
-		if m.Name != extraSkill || len(m.Tags) > 0 {
-			continue
+		switch m.Name {
+		case "CanExplode":
+			info.canExplode = info.canExplode || (m.Value == true && len(m.Tags) == 0)
+		case extraSkill:
+			v, _ := m.Value.(map[string]any)
+			g := extraSkillGrant(v, info.source, "")
+			if g.id == "" {
+				continue
+			}
+			if ge := c.data.Skills.Effects[g.id]; ge != nil {
+				g.nameSpec = ge.Name
+			}
+			info.grants = append(info.grants, g)
 		}
-		v, _ := m.Value.(map[string]any)
-		g := extraSkillGrant(v, itemSource(item, it), "")
-		if g.id == "" {
-			continue
-		}
-		// nameSpec = skillData and skillData.name or nil.
-		if ge := c.data.Skills.Effects[g.id]; ge != nil {
-			g.nameSpec = ge.Name
-		}
-		out = append(out, g)
 	}
-	return out
+	return info
 }
 
-// grantKey is what parseItemGrants reads of an item: its id (in the
-// source), variants, mod ranges and text.
+// grantKey is what parseItemInfo reads of an item: its id (in the source),
+// variants, mod ranges and text.
 func grantKey(item *pobcode.Item) string {
 	var sb strings.Builder
 	fmt.Fprintf(&sb, "%d %d %v %v\n", item.ID, item.Variant, item.VariantAlt, item.ModRanges)
@@ -263,12 +303,11 @@ func grantKey(item *pobcode.Item) string {
 	return sb.String()
 }
 
-// grantCache maps grantKey to parseItemGrants' result. Every Calc reads
-// the grants of all the build's items, and FullDPS, CalcMinions and the
-// Comparer calculate the same items many times. Entries are never handed
-// out: itemGrants returns a copy.
+// grantCache maps grantKey to parseItemInfo's result. Every Calc reads
+// all the build's items, and FullDPS, CalcMinions and the Comparer
+// calculate the same items many times.
 type grantCache struct {
-	m      sync.Map // string -> []grantedSkill
+	m      sync.Map // string -> itemGrantInfo
 	cached atomic.Int64
 }
 
@@ -276,18 +315,18 @@ type grantCache struct {
 // a long-running consumer that sees arbitrary items.
 const grantCacheCap = 10_000
 
-func (gc *grantCache) load(key string) ([]grantedSkill, bool) {
+func (gc *grantCache) load(key string) (itemGrantInfo, bool) {
 	v, ok := gc.m.Load(key)
 	if !ok {
-		return nil, false
+		return itemGrantInfo{}, false
 	}
-	list, _ := v.([]grantedSkill)
-	return list, true
+	info, _ := v.(itemGrantInfo)
+	return info, true
 }
 
-// store caches list unless the cache is full; a slot is reserved before
+// store caches info unless the cache is full; a slot is reserved before
 // the insert, so concurrent misses never take the count past the cap.
-func (gc *grantCache) store(key string, list []grantedSkill) {
+func (gc *grantCache) store(key string, info itemGrantInfo) {
 	if gc.cached.Load() >= grantCacheCap {
 		return
 	}
@@ -295,7 +334,7 @@ func (gc *grantCache) store(key string, list []grantedSkill) {
 		gc.cached.Add(-1)
 		return
 	}
-	if _, loaded := gc.m.LoadOrStore(key, list); loaded {
+	if _, loaded := gc.m.LoadOrStore(key, info); loaded {
 		gc.cached.Add(-1)
 	}
 }
@@ -304,76 +343,142 @@ func (gc *grantCache) store(key string, list []grantedSkill) {
 // (CalcSetup.lua:825): the flag from an allocated node.
 func additionalRingSlot(db *ModDB) bool {
 	for _, m := range db.mods["AdditionalRingSlot"] {
-		if strings.HasPrefix(m.Source, "Tree:") && m.Value == true {
+		if strings.HasPrefix(m.Source, "Tree:") && m.Value == true && len(m.Tags) == 0 {
 			return true
 		}
 	}
 	return false
 }
 
-// applyGrantedSkills is CalcSetup.lua:1523-1562 and 1607-1619 on the active
-// skill set of b: each grant takes the first group with its source, slot
-// and skill at its level (raw or validated, getNormalizedSkillLevel), or a
-// new group appended to the list (t_insert); that group's gem list becomes
-// its first gem (or a new one) at the granted level; then every group with
-// a source that no grant took is removed. "Explode" groups are kept (see
-// withGrantedSkills).
-func applyGrantedSkills(b *pobcode.Build, grants []grantedSkill, skills map[string]*gamedata.Skill) *pobcode.Build {
+// explodeGroupLabel is the label of the group CalcSetup.lua:1576 creates.
+const explodeGroupLabel = "On Kill Monster Explosion"
+
+// applyGrantedSkills is CalcSetup.lua:1523-1619 on the active skill set of
+// b:
+//   - each grant takes the first group with its source, slot and skill at
+//     its level (raw or validated, getNormalizedSkillLevel), or a new group
+//     appended to the list (t_insert); that group's gem list becomes its
+//     first gem (or a new one) at the granted level (1523-1562);
+//   - with explode sources, the first "Explode" group, or a new one, holds
+//     one EnemyExplode gem per source (1564-1605);
+//   - every group with a source that neither took is removed (1607-1619).
+//
+// It returns b unchanged when nothing changes; otherwise a copy with its
+// own skill set and group slices that shares the rest.
+//
+// Quirk (follows the game, not PoB): when groups before the main socket
+// group are removed, MainSocketGroup moves with its group, so the main
+// skill stays the one the player chose. PoB does not adjust it
+// (CalcSetup.lua:1607-1619 only clears skillsTab.displayGroup, and
+// 1652-1653 clamp build.mainSocketGroup to the new length), so its main
+// skill moves to a later group. When the main group itself is removed,
+// MainSocketGroup is kept and clamped as PoB does.
+func applyGrantedSkills(
+	b *pobcode.Build,
+	grants []grantedSkill,
+	explode []string,
+	skills map[string]*gamedata.Skill,
+) *pobcode.Build {
 	set := b.ActiveSkills()
 	if set == nil {
 		return b
 	}
-	groups := slices.Clone(set.Groups)
-	marked := slices.Repeat([]bool{false}, len(groups))
-	changed := false
+	l := &groupList{groups: slices.Clone(set.Groups), marked: slices.Repeat([]bool{false}, len(set.Groups))}
 	for _, gr := range grants {
-		idx := slices.IndexFunc(groups, func(g pobcode.SocketGroup) bool {
-			return grantMatches(&g, gr, skills)
-		})
-		if idx < 0 {
-			// group = { label = "", enabled = true, gemList = { }, source = ..., slot = ... }
-			groups = append(groups, pobcode.SocketGroup{Enabled: true, Source: gr.source, Slot: gr.slot})
-			marked = append(marked, true)
-			idx = len(groups) - 1
-		}
-		marked[idx] = true
-		g := &groups[idx]
-		// activeGemInstance = group.gemList[1] or { skillId, nameSpec,
-		// quality = 0, enabled = true }; gemId = nil; level =
-		// grantedSkill.level; enableGlobal1 = true; the gem list is wiped
-		// and holds only this gem (1546-1561).
-		gem := pobcode.Gem{SkillID: gr.id, NameSpec: gr.nameSpec, Enabled: true}
-		if len(g.Gems) > 0 {
-			gem = g.Gems[0]
-		}
-		gem.GemID = ""
-		gem.Level = gr.level
-		// build.skillsTab:ProcessSocketGroup(group) (1562) validates the
-		// level (SkillsTab.lua:1235).
-		if ge := skills[gem.SkillID]; ge != nil {
-			gem.Level = validateLevel(gem.Level, ge, nil)
-		}
-		gem.EnableGlobal1 = true
-		if len(g.Gems) != 1 || g.Gems[0] != gem {
-			g.Gems = []pobcode.Gem{gem}
-			changed = true
-		}
+		l.grant(gr, skills)
+	}
+	if len(explode) > 0 {
+		l.explode(len(explode))
 	}
 	// "Remove any socket groups that no longer have a matching item".
-	kept := make([]pobcode.SocketGroup, 0, len(groups))
-	for i, g := range groups {
-		if g.Source != "" && g.Source != "Explode" && !marked[i] {
+	main := min(max(len(set.Groups), 1), max(b.MainSocketGroup, 1)) // setupSkills' mainGroup
+	newMain := b.MainSocketGroup
+	kept := make([]pobcode.SocketGroup, 0, len(l.groups))
+	for i, g := range l.groups {
+		if g.Source != "" && !l.marked[i] {
 			continue
 		}
 		kept = append(kept, g)
+		if i+1 == main && len(kept) != main {
+			newMain = len(kept) // the quirk above
+		}
 	}
-	if !changed && len(kept) == len(set.Groups) {
+	if !l.changed && len(kept) == len(set.Groups) {
 		return b
 	}
 	cp := *b
 	cp.SkillSets = slices.Clone(b.SkillSets)
 	cp.ActiveSkills().Groups = kept
+	cp.MainSocketGroup = newMain
 	return &cp
+}
+
+// groupList is build.skillsTab.socketGroupList while applyGrantedSkills
+// works on it: marked is markList, changed whether a group changed.
+type groupList struct {
+	groups  []pobcode.SocketGroup
+	marked  []bool
+	changed bool
+}
+
+// add appends a new group (t_insert) and marks it.
+func (l *groupList) add(g pobcode.SocketGroup) int {
+	l.groups = append(l.groups, g)
+	l.marked = append(l.marked, true)
+	return len(l.groups) - 1
+}
+
+// grant is one grantedSkill of CalcSetup.lua:1523-1562.
+func (l *groupList) grant(gr grantedSkill, skills map[string]*gamedata.Skill) {
+	idx := slices.IndexFunc(l.groups, func(g pobcode.SocketGroup) bool {
+		return grantMatches(&g, gr, skills)
+	})
+	if idx < 0 {
+		// group = { label = "", enabled = true, gemList = { }, source = ..., slot = ... }
+		idx = l.add(pobcode.SocketGroup{Enabled: true, Source: gr.source, Slot: gr.slot})
+	}
+	l.marked[idx] = true
+	g := &l.groups[idx]
+	// activeGemInstance = group.gemList[1] or { skillId, nameSpec,
+	// quality = 0, enabled = true }; gemId = nil; level =
+	// grantedSkill.level; enableGlobal1 = true; the gem list is wiped and
+	// holds only this gem (1546-1561).
+	gem := pobcode.Gem{SkillID: gr.id, NameSpec: gr.nameSpec, Enabled: true}
+	if len(g.Gems) > 0 {
+		gem = g.Gems[0]
+	}
+	gem.GemID = ""
+	gem.Level = gr.level
+	// build.skillsTab:ProcessSocketGroup(group) (1562) validates the level
+	// (SkillsTab.lua:1235).
+	if ge := skills[gem.SkillID]; ge != nil {
+		gem.Level = validateLevel(gem.Level, ge, nil)
+	}
+	gem.EnableGlobal1 = true
+	if len(g.Gems) != 1 || g.Gems[0] != gem {
+		g.Gems = []pobcode.Gem{gem}
+		l.changed = true
+	}
+}
+
+// explode is CalcSetup.lua:1564-1605 for n explode sources: the first
+// "Explode" group, or a new one, holds one EnemyExplode gem per source.
+func (l *groupList) explode(n int) {
+	idx := slices.IndexFunc(l.groups, func(g pobcode.SocketGroup) bool { return g.Source == "Explode" })
+	if idx < 0 {
+		// { label = "On Kill Monster Explosion", enabled = true, gemList = { }, source = "Explode", noSupports = true }
+		idx = l.add(pobcode.SocketGroup{Label: explodeGroupLabel, Enabled: true, Source: "Explode"})
+	}
+	l.marked[idx] = true
+	// gemsBySource reuses gems by their explodeSource, which a saved build
+	// does not carry (SkillsTab.lua saves no explodeSource), so every gem
+	// is a new { skillId = "EnemyExplode", quality = 0, enabled = true,
+	// level = 1, triggered = true } (1586-1600).
+	gems := slices.Repeat([]pobcode.Gem{{SkillID: "EnemyExplode", Level: 1, Enabled: true}}, n)
+	if !slices.Equal(l.groups[idx].Gems, gems) {
+		l.groups[idx].Gems = gems
+		l.changed = true
+	}
 }
 
 // grantMatches is CalcSetup.lua:1527-1528: the group has the grant's source

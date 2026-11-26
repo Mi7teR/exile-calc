@@ -108,6 +108,12 @@ When the build uses Full DPS, each `Item` call runs one Calc per Full DPS
 skill, so it is slower for builds with many of them. `Item` is safe to call from several
 goroutines; the build must not be changed while the Comparer is in use.
 
+Skills granted by items count as they do in the game: a compared item that
+grants a skill (a "Curse Enemies with ... on Hit" ring, say) adds it, and the
+skill of the item it replaces goes. PoB's tooltip differs here: it skips the
+granted skill block, so a new item's skill is not added and the replaced
+item's skill stays.
+
 ### Combat DPS against a boss and a pack
 
 `Combat` takes PoB's single-target numbers and lays the main skill's shape
