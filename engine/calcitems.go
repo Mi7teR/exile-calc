@@ -398,13 +398,19 @@ func (c *Calculator) itemMods(item *pobcode.Item, res *Result) (*itemtext.Item, 
 
 // itemSource is PoB's modSource: "Item:<id>:<name>", where the name of a
 // rare or unique is "<title>, <base>" and a normal or magic name includes
-// the base already.
+// the base already. Item.lua drops a base's variant suffix from the name
+// (gsub(" %(.+%)", ""): "Two-Stone Ring (Cold/Lightning)" names
+// "Two-Stone Ring"), at 1005 for normal and magic items and at 1622 for
+// the others.
 func itemSource(item *pobcode.Item, it *itemtext.Item) string {
 	if it.Rarity == itemtext.Normal || it.Rarity == itemtext.Magic {
-		return fmt.Sprintf("Item:%d:%s", item.ID, it.Name)
+		return fmt.Sprintf("Item:%d:%s", item.ID, baseVariantRe.ReplaceAllString(it.Name, ""))
 	}
-	return fmt.Sprintf("Item:%d:%s, %s", item.ID, it.Name, it.BaseName)
+	return fmt.Sprintf("Item:%d:%s, %s", item.ID, it.Name, baseVariantRe.ReplaceAllString(it.BaseName, ""))
 }
+
+// baseVariantRe is Item.lua's " %(.+%)": a base's variant suffix.
+var baseVariantRe = regexp.MustCompile(` \(.+\)`)
 
 // addItem adds an item's global mods, scaled (abyss jewels), and returns
 // the parsed item and all its mods.

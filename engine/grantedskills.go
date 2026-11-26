@@ -35,8 +35,10 @@ type grantedSkill struct {
 // items or tree nodes" (1506-1620, MAIN mode only) on the active skill set
 // of st.b (applyGrantedSkills): every granted skill gets a socket group,
 // so does a non-empty explodeSources (the "Explode" group), and saved
-// groups with a source that nothing took are removed.
-func (c *Calculator) withGrantedSkills(st *calcState, explode []string) *pobcode.Build {
+// groups with a source that nothing took are removed. It also returns
+// each resulting group's index in st.b (callerGroups), nil when b is
+// unchanged.
+func (c *Calculator) withGrantedSkills(st *calcState, explode []string) (*pobcode.Build, []int) {
 	return applyGrantedSkills(st.b, c.grantedSkills(st), explode, c.data.Skills.Effects)
 }
 
@@ -191,6 +193,8 @@ func itemSlotsUsed(st *calcState) []slotItem {
 	var out []slotItem
 	for _, si := range orderedSlotItems(st.b) {
 		name := si.slot
+		// The "^Wickerman " test is dead in PoB too: the Wickerman slots
+		// are named "Head", "Body", "Arm" and "Leg" (ItemsTab.lua:208).
 		if (strings.HasPrefix(name, "Graft ") && !strings.Contains(tree, "3_27")) ||
 			(strings.HasPrefix(name, "Wickerman ") && !strings.Contains(tree, "3_30")) ||
 			(name == "Ring 3" && !ringSlot) || si.item == nil {
@@ -206,7 +210,7 @@ func itemSlotsUsed(st *calcState) []slotItem {
 func (c *Calculator) itemGrantedSkills(st *calcState) []grantedSkill {
 	var out []grantedSkill
 	for _, si := range itemSlotsUsed(st) {
-		for _, g := range c.itemInfo(si.item).grants {
+		for _, g := range c.itemInfo(si.item, st.compared).grants {
 			g.slot = si.slot
 			out = append(out, g)
 		}
@@ -239,7 +243,7 @@ func (c *Calculator) explodeSources(st *calcState) []string {
 		out = append(out, "Tree:"+strconv.Itoa(id))
 	}
 	for _, si := range itemSlotsUsed(st) {
-		if info := c.itemInfo(si.item); info.canExplode {
+		if info := c.itemInfo(si.item, st.compared); info.canExplode {
 			out = append(out, info.source)
 		}
 	}
@@ -254,8 +258,13 @@ type itemGrantInfo struct {
 }
 
 // itemInfo is itemGrantInfo for item, from the cache when it is there.
-// The result is shared: callers must not modify it.
-func (c *Calculator) itemInfo(item *pobcode.Item) itemGrantInfo {
+// The result is shared: callers must not modify it. The Comparer's
+// compared item (id compared, 0 = none) is parsed and never cached: each
+// comparison is a one-off key that would fill the cache.
+func (c *Calculator) itemInfo(item *pobcode.Item, compared int) itemGrantInfo {
+	if compared != 0 && item.ID == compared {
+		return c.parseItemInfo(item)
+	}
 	key := grantKey(item)
 	if info, ok := c.grants.load(key); ok {
 		return info
@@ -366,24 +375,35 @@ const explodeGroupLabel = "On Kill Monster Explosion"
 // It returns b unchanged when nothing changes; otherwise a copy with its
 // own skill set and group slices that shares the rest.
 //
-// Quirk (follows the game, not PoB): when groups before the main socket
-// group are removed, MainSocketGroup moves with its group, so the main
-// skill stays the one the player chose. PoB does not adjust it
+// The second result maps each resulting group to its index in b (both
+// 1-based, callerGroups[i-1] for group i): a kept group has its own index,
+// the k-th appended group len(b's groups)+k. It is nil when b is returned
+// unchanged (the identity).
+//
+// Quirk (follows the game, not PoB): b.MainSocketGroup is read in b's own
+// list, a kept group's index or len+k for the k-th appended group, and
+// moved to where that group ends up, so the main skill stays the one the
+// player chose when groups before it are removed. PoB does not adjust it
 // (CalcSetup.lua:1607-1619 only clears skillsTab.displayGroup, and
 // 1652-1653 clamp build.mainSocketGroup to the new length), so its main
-// skill moves to a later group. When the main group itself is removed,
-// MainSocketGroup is kept and clamped as PoB does.
+// skill moves to a later group. When the main group itself is removed, or
+// the index names no group, MainSocketGroup is kept and clamped as PoB
+// does.
 func applyGrantedSkills(
 	b *pobcode.Build,
 	grants []grantedSkill,
 	explode []string,
 	skills map[string]*gamedata.Skill,
-) *pobcode.Build {
+) (*pobcode.Build, []int) {
 	set := b.ActiveSkills()
 	if set == nil {
-		return b
+		return b, nil
 	}
-	l := &groupList{groups: slices.Clone(set.Groups), marked: slices.Repeat([]bool{false}, len(set.Groups))}
+	n := len(set.Groups)
+	l := &groupList{groups: slices.Clone(set.Groups), marked: slices.Repeat([]bool{false}, n)}
+	for i := range n {
+		l.caller = append(l.caller, i+1)
+	}
 	for _, gr := range grants {
 		l.grant(gr, skills)
 	}
@@ -391,26 +411,27 @@ func applyGrantedSkills(
 		l.explode(len(explode))
 	}
 	// "Remove any socket groups that no longer have a matching item".
-	main := min(max(len(set.Groups), 1), max(b.MainSocketGroup, 1)) // setupSkills' mainGroup
 	newMain := b.MainSocketGroup
 	kept := make([]pobcode.SocketGroup, 0, len(l.groups))
+	caller := make([]int, 0, len(l.groups))
 	for i, g := range l.groups {
 		if g.Source != "" && !l.marked[i] {
 			continue
 		}
 		kept = append(kept, g)
-		if i+1 == main && len(kept) != main {
+		caller = append(caller, l.caller[i])
+		if l.caller[i] == b.MainSocketGroup {
 			newMain = len(kept) // the quirk above
 		}
 	}
-	if !l.changed && len(kept) == len(set.Groups) {
-		return b
+	if !l.changed && len(kept) == n {
+		return b, nil
 	}
 	cp := *b
 	cp.SkillSets = slices.Clone(b.SkillSets)
 	cp.ActiveSkills().Groups = kept
 	cp.MainSocketGroup = newMain
-	return &cp
+	return &cp, caller
 }
 
 // groupList is build.skillsTab.socketGroupList while applyGrantedSkills
@@ -418,6 +439,7 @@ func applyGrantedSkills(
 type groupList struct {
 	groups  []pobcode.SocketGroup
 	marked  []bool
+	caller  []int // each group's index in the input build
 	changed bool
 }
 
@@ -425,6 +447,7 @@ type groupList struct {
 func (l *groupList) add(g pobcode.SocketGroup) int {
 	l.groups = append(l.groups, g)
 	l.marked = append(l.marked, true)
+	l.caller = append(l.caller, len(l.caller)+1)
 	return len(l.groups) - 1
 }
 
@@ -490,4 +513,50 @@ func grantMatches(g *pobcode.SocketGroup, gr grantedSkill, skills map[string]*ga
 	}
 	lvl := g.Gems[0].Level
 	return lvl == gr.level || (skills[gr.id] != nil && lvl == validateLevel(gr.level, skills[gr.id], nil))
+}
+
+// carryGrantedGroups gives the Comparer's new item (next, in slot) the
+// granted skill groups of the item it replaces (old): each group of old's
+// source in slot whose skill next grants too takes next's source and
+// granted level, so the granted skill block matches it and the group
+// keeps its settings (enabled, label, Full DPS, count, main skill and the
+// main socket group's index). The game ties a skill to the item that
+// grants it, and the same item gives the same skill; without this the
+// compared item, which has a new id and so a new source, would get a new
+// group and the old one would be removed. b is returned unchanged when no
+// group carries over; otherwise a copy with its own skill set and group
+// slices.
+func (c *Calculator) carryGrantedGroups(b *pobcode.Build, slot string, old, next *pobcode.Item) *pobcode.Build {
+	set := b.ActiveSkills()
+	if set == nil || old == nil || next == nil {
+		return b
+	}
+	from := c.itemInfo(old, 0)
+	to := c.parseItemInfo(next) // a compared item: not cached
+	if from.source == "" || to.source == "" || len(to.grants) == 0 {
+		return b
+	}
+	var groups []pobcode.SocketGroup
+	for i, g := range set.Groups {
+		if g.Source != from.source || g.Slot != slot || len(g.Gems) == 0 {
+			continue
+		}
+		k := slices.IndexFunc(to.grants, func(gr grantedSkill) bool { return gr.id == g.Gems[0].SkillID })
+		if k < 0 {
+			continue
+		}
+		if groups == nil {
+			groups = slices.Clone(set.Groups)
+		}
+		groups[i].Source = to.source
+		groups[i].Gems = slices.Clone(g.Gems)
+		groups[i].Gems[0].Level = to.grants[k].level
+	}
+	if groups == nil {
+		return b
+	}
+	cp := *b
+	cp.SkillSets = slices.Clone(b.SkillSets)
+	cp.ActiveSkills().Groups = groups
+	return &cp
 }

@@ -124,14 +124,14 @@ func (cp *Comparer) Item(slot string, itemText string) (*ItemComparison, error) 
 	if it.Base == nil {
 		return nil, errors.New("engine: item: unknown item base")
 	}
-	b, replaced, err := cp.withItem(slot, normaliseItemText(text), it.Base.Type)
+	b, replaced, err := cp.compareBuild(slot, normaliseItemText(text), it.Base.Type)
 	if err != nil {
 		return nil, err
 	}
 	// A full (MAIN) Calc, not getMiscCalculator's CALCULATOR pass: the
 	// granted skill block runs, so the item's granted skills count (see
 	// the Item doc).
-	res, err := cp.c.Calc(b)
+	res, err := cp.c.calc(b, calcOpts{compared: b.Items[len(b.Items)-1].ID})
 	if err != nil {
 		return nil, err
 	}
@@ -179,6 +179,30 @@ func newEntries(after, base []string) []string {
 		out = append(out, e)
 	}
 	return out
+}
+
+// compareBuild is withItem with the replaced item's granted skill groups
+// carried to the new item (carryGrantedGroups): a group of a skill the new
+// item grants too keeps its settings, as the same item in the game gives
+// the same skill.
+func (cp *Comparer) compareBuild(slot, raw, baseType string) (*pobcode.Build, []string, error) {
+	var old *pobcode.Item
+	if node, ok := strings.CutPrefix(slot, "Jewel "); ok {
+		if spec := cp.b.ActiveSpec(); spec != nil {
+			for _, s := range spec.Sockets {
+				if strconv.Itoa(s.NodeID) == node {
+					old = cp.b.Item(s.ItemID)
+				}
+			}
+		}
+	} else if set := cp.b.ActiveItems(); set != nil {
+		old = cp.b.Item(set.SlotItem(slot))
+	}
+	b, replaced, err := cp.withItem(slot, raw, baseType)
+	if err != nil {
+		return nil, nil, err
+	}
+	return cp.c.carryGrantedGroups(b, slot, old, &b.Items[len(b.Items)-1]), replaced, nil
 }
 
 // withItem returns a copy of the build with a new item of that text in

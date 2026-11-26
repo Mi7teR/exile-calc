@@ -15,7 +15,7 @@ import (
 // "Raise Zombie (Raised Zombie: Default Attack)".
 type SkillDPS struct {
 	Name              string  // skill name as PoB shows it (with part name when the skill has parts)
-	Group, GroupSkill int     // 1-based, as SkillInfo (Result.Build's groups)
+	Group, GroupSkill int     // 1-based, as SkillInfo (the input build's groups)
 	Count             float64 // PoB fullDPS.skills[i].count
 	DPS               float64 // combined DPS of one instance
 	Trigger           string  // PoB trigger label, "" if none
@@ -65,8 +65,9 @@ func (c *Calculator) FullDPS(b *pobcode.Build) (*FullDPSResult, error) {
 
 // fullDPSFrom is FullDPS on base, a Calc result. calcs.calcFullDPS runs in
 // CALCULATOR mode on the build's socket groups as the MAIN pass left them,
-// so each skill is calculated on base.build, the calculated build its
-// Group indexes refer to, without the granted skill block again.
+// so each skill is calculated on base.build, the calculated build (Group
+// mapped to its index), without the granted skill block again: that
+// block would change nothing on base.build.
 func (c *Calculator) fullDPSFrom(base *Result) (*FullDPSResult, error) {
 	var err error
 	b := base.build
@@ -83,7 +84,8 @@ func (c *Calculator) fullDPSFrom(base *Result) (*FullDPSResult, error) {
 		info := base.Skills[i]
 		r := base
 		if !s.main {
-			if r, err = c.calc(keepMainGroup(b, withMainSkill(b, info.Group, info.GroupSkill)), true); err != nil {
+			cp := withMainSkill(b, base.buildGroup(info.Group), info.GroupSkill)
+			if r, err = c.calc(keepMainGroup(b, cp), calcOpts{calculator: true, compared: base.compared}); err != nil {
 				return nil, err
 			}
 		}

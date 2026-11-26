@@ -2,6 +2,7 @@ package engine
 
 import (
 	"math"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -54,31 +55,57 @@ type Result struct {
 	main *activeSkill
 	// build is the calculated build (Build).
 	build *pobcode.Build
+	// callerGroups maps build's groups to the input build's (the second
+	// result of applyGrantedSkills); nil is the identity.
+	callerGroups []int
+	// compared is calcState.compared, for the Full DPS passes.
+	compared int
+}
+
+// callerGroup is the input build's index of build's group g (both
+// 1-based); g itself when there is no mapping or g is out of range.
+func (r *Result) callerGroup(g int) int {
+	if r.callerGroups == nil || g < 1 || g > len(r.callerGroups) {
+		return g
+	}
+	return r.callerGroups[g-1]
+}
+
+// buildGroup is build's index of the input build's group g (as
+// SkillInfo.Group), 0 when build has no such group.
+func (r *Result) buildGroup(g int) int {
+	if r.callerGroups == nil {
+		if set := r.build.ActiveSkills(); set == nil || g < 1 || g > len(set.Groups) {
+			return 0
+		}
+		return g
+	}
+	return slices.Index(r.callerGroups, g) + 1
 }
 
 // Build is the calculated build: the input build after CalcSetup.lua's
 // granted skill block, which gives every skill granted by the passive
 // tree, an item or a Config tab modifier a socket group (appended to the
 // active skill set), builds the "Explode" group, and removes saved granted
-// groups that nothing grants any more. When a removed group was before
-// the main socket group, MainSocketGroup is moved with its group (the
-// game's choice, not PoB's; see applyGrantedSkills). It is the input
-// build itself when nothing changes; otherwise a copy that shares all but
-// the active skill set's group list. It must not be modified.
+// groups that nothing grants any more. It is the input build itself when
+// nothing changes; otherwise a copy that shares all but the active skill
+// set's group list. It must not be modified.
 //
-// SkillInfo.Group and SkillDPS.Group are indexes into its active skill
-// set, PoB's socketGroupList; WithMainSkill makes one the main skill.
+// Its group indexes are its own: SkillInfo.Group and SkillDPS.Group index
+// the input build instead (see SkillInfo). WithMainSkill takes those.
 func (r *Result) Build() *pobcode.Build { return r.build }
 
 // WithMainSkill returns a copy of Build whose main skill is the n-th active
-// skill of socket group g (both 1-based, as SkillInfo.Group and
-// GroupSkill), for Calc, FullDPS or NewComparer; nil when Build has no
-// group g. Build is not changed.
+// skill of the input build's socket group g (both 1-based, as
+// SkillInfo.Group and GroupSkill), for Calc, FullDPS or NewComparer; nil
+// when Build has no such group. Build is not changed. Setting the input
+// build's MainSocketGroup to g selects the same group.
 func (r *Result) WithMainSkill(g, n int) *pobcode.Build {
-	if r.build == nil || r.build.ActiveSkills() == nil || g < 1 || g > len(r.build.ActiveSkills().Groups) {
+	p := r.buildGroup(g)
+	if p == 0 {
 		return nil
 	}
-	return withMainSkill(r.build, g, n)
+	return withMainSkill(r.build, p, n)
 }
 
 // SkillInfo describes one active skill: its effective gem level and
@@ -92,9 +119,12 @@ type SkillInfo struct {
 	Buffs          []string
 	AuraEffectInc  float64
 	AuraEffectMore float64
-	// Group and GroupSkill locate the skill: its socket group in
-	// Result.Build's active skill set and its index among the group's
-	// active skills (both 1-based).
+	// Group and GroupSkill locate the skill: its socket group in the
+	// input build's active skill set and its index among the group's
+	// active skills (both 1-based). A group the calculation appended (a
+	// granted skill the build had no group for) is len(groups)+k for the
+	// k-th one, as it would be once added. Setting the input build's
+	// MainSocketGroup to Group makes the group the main one.
 	Group, GroupSkill int
 	HasMinion         bool
 }

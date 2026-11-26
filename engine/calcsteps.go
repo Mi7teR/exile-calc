@@ -29,6 +29,9 @@ type calcState struct {
 	// calcFullDPS run in "CALCULATOR" mode): b's socket groups are used as
 	// they are, without CalcSetup.lua's granted skill block (1506).
 	calculator bool
+	// compared is the id of the Comparer's compared item (0 = none),
+	// whose grants are not cached (itemInfo).
+	compared int
 
 	// Passive tree.
 	allocated    map[int]bool
@@ -115,14 +118,20 @@ var calcSteps = []calcStep{
 
 // Calc computes a build (PoB's calcs.initEnv and calcs.perform).
 func (c *Calculator) Calc(b *pobcode.Build) (*Result, error) {
-	return c.calc(b, false)
+	return c.calc(b, calcOpts{})
 }
 
-// calc is Calc in MAIN mode, or in CALCULATOR mode with calculator set
-// (calcState.calculator).
-func (c *Calculator) calc(b *pobcode.Build, calculator bool) (*Result, error) {
+// calcOpts are the calcState settings Calc leaves at zero.
+type calcOpts struct {
+	calculator bool // calcState.calculator: CALCULATOR mode
+	compared   int  // calcState.compared
+}
+
+// calc is Calc with opts: MAIN mode, or CALCULATOR mode with
+// opts.calculator.
+func (c *Calculator) calc(b *pobcode.Build, opts calcOpts) (*Result, error) {
 	// The steps of calcSteps run in order over a fresh calcState.
-	st := &calcState{b: b, calculator: calculator}
+	st := &calcState{b: b, calculator: opts.calculator, compared: opts.compared}
 	for _, step := range calcSteps {
 		if err := step.run(c, st); err != nil {
 			return nil, err
@@ -655,9 +664,9 @@ func stepSkills(c *Calculator, st *calcState) error {
 	// read their source from it (enemyExplode).
 	db.explodeSources = c.explodeSources(st)
 	if !st.calculator {
-		st.b = c.withGrantedSkills(st, db.explodeSources)
+		st.b, res.callerGroups = c.withGrantedSkills(st, db.explodeSources)
 	}
-	db.build, res.build = st.b, st.b
+	db.build, res.build, res.compared = st.b, st.b, st.compared
 	skills := c.setupSkills(db, st.b, st.useSwap, res)
 	db.activeSkills = skills
 	for _, s := range skills {
@@ -857,6 +866,9 @@ func stepActorMisc(_ *Calculator, st *calcState) error {
 // stepSkillInfo fills Result.Skills (no PoB counterpart; the skills tab).
 func stepSkillInfo(_ *Calculator, st *calcState) error {
 	st.res.Skills = skillInfo(st.skills, st.b.ActiveSkills())
+	for i := range st.res.Skills {
+		st.res.Skills[i].Group = st.res.callerGroup(st.res.Skills[i].Group)
+	}
 	return nil
 }
 

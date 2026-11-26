@@ -58,6 +58,13 @@ not parse are in `res.Unparsed`, parts it could not compute are in
 
 `res.Skills` lists the active skills with gem level, quality and buffs;
 `calc.CalcMinions(b)` computes each minion skill as the main skill.
+Like PoB, `Calc` gives skills granted by the tree or items a socket group
+when the build has none and drops granted groups nothing grants any more.
+`SkillInfo.Group` (and `SkillDPS.Group`) still index your build's groups:
+an added group is `len(groups)+k`, so `b.MainSocketGroup = info.Group`
+selects that skill. `res.WithMainSkill(info.Group, info.GroupSkill)` returns
+a ready copy with that main skill; `res.Build()` is the build with those
+groups added and removed (its own indexes differ from `Group`).
 The first `Calc` of a process parses mod lines; later calls reuse a
 process-wide parse cache and are much faster.
 

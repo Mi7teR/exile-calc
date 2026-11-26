@@ -2,6 +2,7 @@ package engine
 
 import (
 	"math"
+	"os"
 	"slices"
 	"strings"
 	"testing"
@@ -27,7 +28,7 @@ func TestTreeGrantedSkillGroups(t *testing.T) {
 	if len(grants) != 1 {
 		t.Fatalf("tree grants %+v, want only the node's", grants)
 	}
-	got := applyGrantedSkills(b, grants, nil, nil)
+	got := applyGranted(b, grants, nil, nil)
 	groups := got.ActiveSkills().Groups
 	if len(groups) != 2 {
 		t.Fatalf("got %d groups, want the saved one and the tree group", len(groups))
@@ -43,7 +44,7 @@ func TestTreeGrantedSkillGroups(t *testing.T) {
 	if len(b.ActiveSkills().Groups) != 1 {
 		t.Error("the input build was changed")
 	}
-	if again := applyGrantedSkills(got, grants, nil, nil); again != got {
+	if again := applyGranted(got, grants, nil, nil); again != got {
 		t.Error("a build with the group gets another one")
 	}
 
@@ -59,12 +60,12 @@ func TestTreeGrantedSkillGroups(t *testing.T) {
 			Gems:    []pobcode.Gem{{SkillID: "S", Level: 2, EnableGlobal1: true}},
 		},
 	)
-	if kept := applyGrantedSkills(b, tree7, nil, skills); kept != b {
+	if kept := applyGranted(b, tree7, nil, skills); kept != b {
 		t.Errorf("saved group at the validated level not matched: %+v", kept.ActiveSkills().Groups)
 	}
 	// Another level makes a new group, as in PoB, and the stale one goes.
 	b.SkillSets[0].Groups[1].Gems[0].Level = 1
-	more := applyGrantedSkills(b, tree7, nil, skills).ActiveSkills().Groups
+	more := applyGranted(b, tree7, nil, skills).ActiveSkills().Groups
 	if len(more) != 2 || more[1].Source != "Tree:7" || more[1].Gems[0].Level != 2 {
 		t.Errorf("groups %+v, want the saved one and a new Tree:7 group at level 2", more)
 	}
@@ -80,7 +81,7 @@ func TestGrantedGroupUpdate(t *testing.T) {
 	}}
 	b := &pobcode.Build{ActiveSkillSetID: 1, MainSocketGroup: 1,
 		SkillSets: []pobcode.SkillSet{{ID: 1, Groups: []pobcode.SocketGroup{g}}}}
-	got := applyGrantedSkills(b, []grantedSkill{{source: "Item:1:Ring", slot: "Ring 1", id: "S", level: 1}}, nil, nil)
+	got := applyGranted(b, []grantedSkill{{source: "Item:1:Ring", slot: "Ring 1", id: "S", level: 1}}, nil, nil)
 	groups := got.ActiveSkills().Groups
 	if len(groups) != 1 {
 		t.Fatalf("groups %+v", groups)
@@ -112,7 +113,7 @@ func TestStaleGrantedGroupRemoved(t *testing.T) {
 	for _, tc := range []struct{ source, slot string }{{"Tree:1", ""}, {"Item:9:Ring", "Ring 1"}, {"Explode", ""}} {
 		b := staleBuild(tc.source, tc.slot)
 		b.MainSocketGroup = 2 // Arc
-		got := applyGrantedSkills(b, nil, nil, nil)
+		got := applyGranted(b, nil, nil, nil)
 		groups := got.ActiveSkills().Groups
 		if len(groups) != 2 || groups[0].Gems[0].SkillID != "Arc" || groups[1].Gems[0].SkillID != "Fireball" {
 			t.Fatalf("%s: groups %+v, want Arc and Fireball", tc.source, groups)
@@ -128,7 +129,7 @@ func TestStaleGrantedGroupRemoved(t *testing.T) {
 	// clamped later (setupSkills).
 	b := staleBuild("Tree:1", "")
 	b.MainSocketGroup = 1
-	if got := applyGrantedSkills(b, nil, nil, nil); got.MainSocketGroup != 1 || len(got.ActiveSkills().Groups) != 2 {
+	if got := applyGranted(b, nil, nil, nil); got.MainSocketGroup != 1 || len(got.ActiveSkills().Groups) != 2 {
 		t.Errorf(
 			"removed main group: MainSocketGroup %d, %d groups",
 			got.MainSocketGroup,
@@ -140,7 +141,7 @@ func TestStaleGrantedGroupRemoved(t *testing.T) {
 	g := b.SkillSets[0].Groups
 	b.SkillSets[0].Groups = []pobcode.SocketGroup{g[1], g[2], g[0]}
 	b.MainSocketGroup = 2
-	if got := applyGrantedSkills(b, nil, nil, nil); got.MainSocketGroup != 2 {
+	if got := applyGranted(b, nil, nil, nil); got.MainSocketGroup != 2 {
 		t.Errorf("stale group after main: MainSocketGroup %d, want 2", got.MainSocketGroup)
 	}
 }
@@ -153,7 +154,7 @@ func TestExplodeGroup(t *testing.T) {
 	src := []string{"Tree:5", "Item:3:Ring"}
 	b := staleBuild("Tree:1", "")
 	b.SkillSets[0].Groups = b.SkillSets[0].Groups[1:] // Arc, Fireball
-	got := applyGrantedSkills(b, nil, src, nil)
+	got := applyGranted(b, nil, src, nil)
 	groups := got.ActiveSkills().Groups
 	if len(groups) != 3 {
 		t.Fatalf("groups %+v, want Arc, Fireball and Explode", groups)
@@ -163,7 +164,7 @@ func TestExplodeGroup(t *testing.T) {
 		!slices.Equal(g.Gems, []pobcode.Gem{newGem, newGem}) {
 		t.Errorf("explode group %+v", g)
 	}
-	if again := applyGrantedSkills(got, nil, src, nil); again != got {
+	if again := applyGranted(got, nil, src, nil); again != got {
 		t.Error("an Explode group with its gems changed again")
 	}
 
@@ -174,12 +175,12 @@ func TestExplodeGroup(t *testing.T) {
 	}}
 	arc := b.SkillSets[0].Groups[0]
 	b.SkillSets[0].Groups = []pobcode.SocketGroup{saved, saved, arc}
-	groups = applyGrantedSkills(b, nil, []string{"Tree:5"}, nil).ActiveSkills().Groups
+	groups = applyGranted(b, nil, []string{"Tree:5"}, nil).ActiveSkills().Groups
 	if len(groups) != 2 || groups[0].Label != "mine" || groups[0].Enabled ||
 		!slices.Equal(groups[0].Gems, []pobcode.Gem{newGem}) || groups[1].Gems[0].SkillID != "Arc" {
 		t.Errorf("groups %+v, want the first Explode group with one gem, then Arc", groups)
 	}
-	if none := applyGrantedSkills(b, nil, nil, nil).ActiveSkills().Groups; len(none) != 1 {
+	if none := applyGranted(b, nil, nil, nil).ActiveSkills().Groups; len(none) != 1 {
 		t.Errorf("groups %+v, want only Arc without explode sources", none)
 	}
 }
@@ -258,7 +259,7 @@ func TestStaleGroupBeforeMain(t *testing.T) {
 			t.Errorf("%s: main skill %v, with a stale group %v", id, r1.main, r2.main)
 		}
 		if !slices.EqualFunc(r1.Skills, r2.Skills, func(a, b SkillInfo) bool {
-			return a.Name == b.Name && a.Group == b.Group && a.GroupSkill == b.GroupSkill
+			return a.Name == b.Name && a.Group+1 == b.Group && a.GroupSkill == b.GroupSkill
 		}) || r1.Stats["TotalDPS"] != r2.Stats["TotalDPS"] {
 			t.Errorf("%s: skills or DPS differ with a stale group", id)
 		}
@@ -270,7 +271,12 @@ func TestStaleGroupBeforeMain(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if f1.FullDPS != f2.FullDPS || !slices.Equal(f1.Skills, f2.Skills) {
+		if f1.FullDPS != f2.FullDPS || !slices.EqualFunc(f1.Skills, f2.Skills, func(a, b SkillDPS) bool {
+			if a.Group != 0 {
+				a.Group++ // the stale group is the input's group 1
+			}
+			return a == b
+		}) {
 			t.Errorf("%s: FullDPS %v %+v, with a stale group %v %+v", id, f1.FullDPS, f1.Skills, f2.FullDPS, f2.Skills)
 		}
 		m1, err := c.CalcMinions(b)
@@ -297,15 +303,16 @@ func TestStaleGroupBeforeMain(t *testing.T) {
 	}
 }
 
-// SkillInfo.Group indexes Result.Build's groups; Result.WithMainSkill
-// makes that skill the main skill, also when a group before it was
-// removed.
+// Result.WithMainSkill takes SkillInfo.Group (the input build's index)
+// and makes that skill the main skill on Result.Build, also when a group
+// before it was removed.
 func TestResultWithMainSkill(t *testing.T) {
 	if testing.Short() {
 		t.Skip("corpus builds")
 	}
 	c := newCalc(t)
-	res, err := c.Calc(withStaleGroup(corpusBuild(t, "3uy_tEm_vqpB")))
+	b := withStaleGroup(corpusBuild(t, "3uy_tEm_vqpB"))
+	res, err := c.Calc(b)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -326,8 +333,11 @@ func TestResultWithMainSkill(t *testing.T) {
 	if tried < 2 {
 		t.Fatalf("only %d skills tried", tried)
 	}
-	if res.WithMainSkill(0, 1) != nil || res.WithMainSkill(len(res.Build().ActiveSkills().Groups)+1, 1) != nil {
-		t.Error("WithMainSkill of a group Build does not have")
+	// 0, the removed stale group 1 and a group past the input's.
+	for _, g := range []int{0, 1, len(b.ActiveSkills().Groups) + 1} {
+		if res.WithMainSkill(g, 1) != nil {
+			t.Errorf("WithMainSkill(%d): want nil", g)
+		}
 	}
 }
 
@@ -450,5 +460,186 @@ func TestCompareItemGrantedSkill(t *testing.T) {
 		if e := added.Delta[k]; math.Abs(e+d) > 1e-9*math.Max(1, math.Abs(d)) {
 			t.Errorf("%s: removing %v, adding %v", k, d, e)
 		}
+	}
+}
+
+// The own item compared (Maw of Mischief grants the main skill, Death
+// Wish): the main skill and the Full DPS skills stay.
+func TestCompareOwnItemKeepsMain(t *testing.T) {
+	if testing.Short() {
+		t.Skip("corpus builds")
+	}
+	c := newCalc(t)
+	for _, tc := range []struct{ id, slot string }{{"Vq9VEs5haqZ-", "Helmet"}, {"cl7sZKsLjQUB", "Gloves"}} {
+		b := corpusBuild(t, tc.id)
+		r0, err := c.Calc(b)
+		if err != nil {
+			t.Fatal(err)
+		}
+		f0, err := c.FullDPS(b)
+		if err != nil {
+			t.Fatal(err)
+		}
+		nb, _, err := newComparer(t, c, b).compareBuild(tc.slot, slotRaw(t, b, tc.slot), "")
+		if err != nil {
+			t.Fatal(err)
+		}
+		r, err := c.calc(nb, calcOpts{compared: nb.Items[len(nb.Items)-1].ID})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if r0.main == nil || r.main == nil || r.main.active.ge.Name != r0.main.active.ge.Name {
+			t.Errorf("%s: main skill %v, compared %v", tc.id, r0.main, r.main)
+		}
+		f, err := c.fullDPSFrom(r)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if f.FullDPS != f0.FullDPS || !slices.EqualFunc(f.Skills, f0.Skills, func(a, b SkillDPS) bool {
+			return a.Name == b.Name && a.DPS == b.DPS && a.Count == b.Count
+		}) {
+			t.Errorf("%s: Full DPS %v %+v, compared %v %+v", tc.id, f0.FullDPS, f0.Skills, f.FullDPS, f.Skills)
+		}
+	}
+}
+
+// applyGranted is applyGrantedSkills without the group mapping.
+func applyGranted(
+	b *pobcode.Build,
+	grants []grantedSkill,
+	explode []string,
+	skills map[string]*gamedata.Skill,
+) *pobcode.Build {
+	got, _ := applyGrantedSkills(b, grants, explode, skills)
+	return got
+}
+
+// A MainSocketGroup past the input groups names an appended group (len+k)
+// and moves with it; the mapping gives every group its input index.
+func TestMainSocketGroupAppended(t *testing.T) {
+	b := staleBuild("Tree:1", "") // stale, Arc, Fireball
+	b.MainSocketGroup = 4         // the first appended group
+	got, caller := applyGrantedSkills(b, []grantedSkill{{source: "Tree:2", id: "Frostbolt", level: 20}}, nil, nil)
+	groups := got.ActiveSkills().Groups
+	if len(groups) != 3 || groups[2].Gems[0].SkillID != "Frostbolt" || got.MainSocketGroup != 3 {
+		t.Fatalf("groups %+v, MainSocketGroup %d; want Arc, Fireball, Frostbolt and 3", groups, got.MainSocketGroup)
+	}
+	if !slices.Equal(caller, []int{2, 3, 4}) {
+		t.Errorf("caller groups %v, want [2 3 4]", caller)
+	}
+	b.MainSocketGroup = 9 // no such group: kept, clamped later as in PoB
+	if kept := applyGranted(b, nil, nil, nil); kept.MainSocketGroup != 9 {
+		t.Errorf("MainSocketGroup %d, want 9", kept.MainSocketGroup)
+	}
+}
+
+// SkillInfo.Group is the input build's index: with groups [stale, X1, X2],
+// setting MainSocketGroup to X2's Group makes X2 the main skill, and
+// FullDPS selected that way gives the same Full DPS.
+func TestCallerSpaceGroups(t *testing.T) {
+	if testing.Short() {
+		t.Skip("corpus builds")
+	}
+	c := newCalc(t)
+	orig := corpusBuild(t, "3uy_tEm_vqpB")
+	b := withStaleGroup(orig)
+	res, err := c.Calc(b)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r0, err := c.Calc(orig)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i, s := range res.Skills {
+		if s.Group != r0.Skills[i].Group+1 {
+			t.Fatalf("skill %s: Group %d, want %d (the stale group is 1)", s.Name, s.Group, r0.Skills[i].Group+1)
+		}
+	}
+	f0, err := c.FullDPS(b)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tried := 0
+	for _, s := range res.Skills {
+		if s.Disabled || s.GroupSkill != 1 || s.Group == b.MainSocketGroup {
+			continue
+		}
+		cp := *b
+		cp.MainSocketGroup = s.Group
+		r, calcErr := c.Calc(&cp)
+		if calcErr != nil {
+			t.Fatal(calcErr)
+		}
+		if r.main == nil || r.main.active.ge.Name != s.Name {
+			t.Errorf("MainSocketGroup %d: main skill %v, want %s", s.Group, r.main, s.Name)
+		}
+		f, calcErr := c.FullDPS(&cp)
+		if calcErr != nil {
+			t.Fatal(calcErr)
+		}
+		if f.FullDPS != f0.FullDPS || !slices.Equal(f.Skills, f0.Skills) {
+			t.Errorf(
+				"MainSocketGroup %d: FullDPS %v %+v, want %v %+v",
+				s.Group,
+				f.FullDPS,
+				f.Skills,
+				f0.FullDPS,
+				f0.Skills,
+			)
+		}
+		tried++
+	}
+	if tried < 2 {
+		t.Fatalf("only %d skills tried", tried)
+	}
+}
+
+// Comparing a build's own item, granting the main or a Full DPS skill, in
+// its own slot changes nothing: its granted groups carry over.
+func TestCompareOwnGrantingItem(t *testing.T) {
+	if testing.Short() {
+		t.Skip("corpus builds")
+	}
+	c := newCalc(t)
+	ents, err := os.ReadDir("../testdata/golden/builds")
+	if err != nil {
+		t.Fatal(err)
+	}
+	n := 0
+	for _, e := range ents {
+		id, ok := strings.CutSuffix(e.Name(), ".code")
+		if !ok {
+			continue
+		}
+		b := corpusBuild(t, id)
+		set := b.ActiveSkills()
+		if set == nil || b.ActiveItems() == nil {
+			continue
+		}
+		var cp *Comparer
+		for i, g := range set.Groups {
+			if !strings.HasPrefix(g.Source, "Item:") || (i+1 != b.MainSocketGroup && !g.IncludeInFullDPS) {
+				continue
+			}
+			it := b.Item(b.ActiveItems().SlotItem(g.Slot))
+			if it == nil {
+				continue
+			}
+			if cp == nil {
+				cp = newComparer(t, c, b)
+			}
+			r, itemErr := cp.Item(g.Slot, it.Raw)
+			if itemErr != nil {
+				t.Fatalf("%s %s: %v", id, g.Slot, itemErr)
+			}
+			n++
+			if len(r.Delta) != 0 {
+				t.Errorf("%s group %d (%s in %s): delta %v", id, i+1, g.Gems[0].SkillID, g.Slot, r.Delta)
+			}
+		}
+	}
+	if n < 5 {
+		t.Fatalf("only %d cases", n)
 	}
 }
