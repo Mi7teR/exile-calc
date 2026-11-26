@@ -306,6 +306,8 @@ func (c *Calculator) setupSkills(db *ModDB, b *pobcode.Build, useSwap bool, res 
 	}
 
 	// Support gems, per group.
+	reqOverride := map[*pobcode.Gem]*float64{}
+	db.requirementGems = nil
 	supports := make([][]*skillEffect, len(set.Groups))
 	for i := range set.Groups {
 		g := &set.Groups[i]
@@ -356,6 +358,7 @@ func (c *Calculator) setupSkills(db *ModDB, b *pobcode.Build, useSwap bool, res 
 					continue
 				}
 				eff := newEffect(gc, gi, gm, gem, eid, ge)
+				reqOverride[gm] = effectReq(eff) // gemInstance.reqOverride = supportEffect.req (CalcSetup.lua:1779)
 				eff.level = validateLevel(eff.level, ge, gem)
 				if !disabled {
 					supports[i] = addBestSupport(eff, supports[i])
@@ -398,6 +401,9 @@ func (c *Calculator) setupSkills(db *ModDB, b *pobcode.Build, useSwap bool, res 
 					continue
 				}
 				eff := newEffect(gc, gi, gm, gem, eid, ge)
+				if gem != nil {
+					reqOverride[gm] = effectReq(eff) // gemInstance.reqOverride = activeEffect.req (CalcSetup.lua:1853)
+				}
 				gg := grantOf(grants, i)
 				src := gg.gem(gi)
 				eff.srcTriggered, eff.srcTriggerChance, eff.srcHasTriggerChance = src.triggered, src.triggerChance, src.hasTriggerChance
@@ -436,6 +442,11 @@ func (c *Calculator) setupSkills(db *ModDB, b *pobcode.Build, useSwap bool, res 
 				s.cfg = &Cfg{SlotName: gc.cfg.SlotName}
 				s.gem = gm
 				out = append(out, s)
+			}
+			// env.requirementsTableGems (CalcSetup.lua:1921-1929): every
+			// enabled gem of the group, with its requirement override.
+			if gem != nil {
+				db.requirementGems = append(db.requirementGems, gemRequirement{gem: gem, inst: gm, override: reqOverride[gm]})
 			}
 		}
 	}

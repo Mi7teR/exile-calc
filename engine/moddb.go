@@ -51,6 +51,9 @@ type ModDB struct {
 	minionData  *gamedata.Minion           // actor.minionData: a minion's monster data
 	// activeSkills is actor.activeSkillList.
 	activeSkills []*activeSkill
+	// requirementGems is env.requirementsTableGems: the player's enabled
+	// gems in active groups (setupSkills).
+	requirementGems []gemRequirement
 	// manaEfficiency is env.player.ManaEfficiency: the mana reservation
 	// efficiency of the last skill the reservation loop saw.
 	manaEfficiency float64

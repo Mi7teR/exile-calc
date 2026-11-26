@@ -2,10 +2,15 @@ package engine
 
 import (
 	"encoding/json"
+	"math"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/Mi7teR/poe-lib/itemtext"
+	"github.com/Mi7teR/poe-lib/modparser"
+	"github.com/Mi7teR/poe-lib/pobcode"
 )
 
 // TestBreakdownOnlyOutputs: outputs PoB sets only inside "if breakdown"
@@ -122,5 +127,59 @@ func TestManaCostPayablePool(t *testing.T) {
 			eb["ManaUnreserved"],
 			eb["EnergyShield"],
 		)
+	}
+}
+
+// TestAttributeRequirements: calcs.perform's attribute requirements
+// (CalcPerform.lua:2131-2196) over the items and gems match the oracle on
+// every corpus build.
+func TestAttributeRequirements(t *testing.T) {
+	oracleStats(t, false, "ReqStr", "ReqDex", "ReqInt", "ReqOmni")
+}
+
+// TestAttributeRequirementParts: the gem formula (CalcTools.lua:179-189),
+// item requirements (Item.lua:2652-2665), the GemProperty "req" override
+// (CalcSetup.lua:1925-1927) and Omniscience (CalcPerform.lua:2153-2158).
+func TestAttributeRequirementParts(t *testing.T) {
+	// Level 20 requirement 70, multi 100: round((20 + 67 * 3) * 0.7) = 155.
+	if got := gemStatRequirement(70, false, 100); got != 155 {
+		t.Errorf("active gem: %v, want 155", got)
+	}
+	if got := gemStatRequirement(1, true, 40); got != 0 {
+		t.Errorf("below 14: %v, want 0", got)
+	}
+	c := newCalc(t)
+	base := c.data.Bases["Vaal Regalia"]
+	it := &itemtext.Item{Base: base, Req: itemtext.Requirements{Int: 999}}
+	if got := itemRequirements(it, nil); got[2] != 999 {
+		t.Errorf("item Int %v, want the item's own 999", got[2])
+	}
+	it.Sockets = []itemtext.Socket{{}}
+	inc := []modparser.Mod{
+		{Name: "IntRequirement", Type: "INC", Value: -50.0},
+		{Name: "IntRequirement", Type: "BASE", Value: 10.0},
+	}
+	if got, want := itemRequirements(it, inc)[2], math.Floor(float64(base.Req.Int+10)*0.5); got != want {
+		t.Errorf("socketed item Int %v, want base %d + 10, halved = %v", got, base.Req.Int, want)
+	}
+	noReq := []modparser.Mod{{Name: "NoAttributeRequirements", Type: "FLAG", Value: true}}
+	if got := itemRequirements(it, noReq); got != (requirements{}) {
+		t.Errorf("NoAttributeRequirements: %v", got)
+	}
+	zero := 0.0
+	if got := c.gemRequirements(gemRequirement{override: &zero}); got != (requirements{}) {
+		t.Errorf("req override: %v", got)
+	}
+	// Omniscience: floor(floor(req * mult) / (omni - 1)) into ReqOmni.
+	db := NewModDB()
+	db.items = map[string]*itemtext.Item{"Body Armour": {Base: base, Req: itemtext.Requirements{Int: 194}}}
+	db.Add(Mod{Name: "OmniscienceRequirements", Type: "FLAG", Value: true, Source: "Test"})
+	db.NewMod("OmniAttributeRequirements", "INC", 100, "Test")
+	c.attributeRequirements(db, &pobcode.Build{})
+	if got := db.output["ReqOmni"]; got != 194 {
+		t.Errorf("ReqOmni %v, want 194", got)
+	}
+	if _, ok := db.output["ReqInt"]; ok {
+		t.Error("ReqInt set with Omniscience")
 	}
 }
