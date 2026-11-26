@@ -17,9 +17,10 @@ import (
 // calcs.getMiscCalculator, Modules/Calcs.lua): the build is computed once,
 // then each Item call computes it again with one slot replaced.
 //
-// A Comparer is safe for concurrent use. It keeps the build it was made
-// from and reads it on every Item call, so that build must not be
-// modified while the Comparer is in use.
+// A Comparer is safe for concurrent use. It keeps the calculated build
+// (Result.Build), which shares its parts with the build it was made from,
+// and reads it on every Item call, so that build must not be modified
+// while the Comparer is in use.
 type Comparer struct {
 	c      *Calculator
 	b      *pobcode.Build
@@ -55,12 +56,12 @@ func (c *Calculator) NewComparer(b *pobcode.Build) (*Comparer, error) {
 	if err != nil {
 		return nil, err
 	}
-	full, err := c.fullDPSFrom(b, res)
+	full, err := c.fullDPSFrom(res)
 	if err != nil {
 		return nil, err
 	}
 	cp := &Comparer{
-		c: c, b: b, usedFullDPS: len(full.Skills) > 0,
+		c: c, b: res.build, usedFullDPS: len(full.Skills) > 0,
 		unparsed: slices.Clone(res.Unparsed), incomplete: slices.Clone(res.Incomplete),
 	}
 	cp.before = cp.stats(res, full)
@@ -119,13 +120,16 @@ func (cp *Comparer) Item(slot string, itemText string) (*ItemComparison, error) 
 	if err != nil {
 		return nil, err
 	}
-	res, err := cp.c.Calc(b)
+	// getMiscCalculator's override pass runs in CALCULATOR mode: the
+	// socket groups are the base build's, so an item granting a skill
+	// gets no new group and a replaced item's granted group stays.
+	res, err := cp.c.calc(b, true)
 	if err != nil {
 		return nil, err
 	}
 	full := &FullDPSResult{}
 	if cp.usedFullDPS {
-		if full, err = cp.c.fullDPSFrom(b, res); err != nil {
+		if full, err = cp.c.fullDPSFrom(res); err != nil {
 			return nil, err
 		}
 	}

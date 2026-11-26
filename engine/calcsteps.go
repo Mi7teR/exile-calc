@@ -25,6 +25,11 @@ type calcState struct {
 	db     *ModDB
 	res    *Result
 
+	// calculator is env.mode ~= "MAIN" (getMiscCalculator and
+	// calcFullDPS run in "CALCULATOR" mode): b's socket groups are used as
+	// they are, without CalcSetup.lua's granted skill block (1506).
+	calculator bool
+
 	// Passive tree.
 	allocated    map[int]bool
 	clusterLinks map[int][]int
@@ -110,8 +115,14 @@ var calcSteps = []calcStep{
 
 // Calc computes a build (PoB's calcs.initEnv and calcs.perform).
 func (c *Calculator) Calc(b *pobcode.Build) (*Result, error) {
+	return c.calc(b, false)
+}
+
+// calc is Calc in MAIN mode, or in CALCULATOR mode with calculator set
+// (calcState.calculator).
+func (c *Calculator) calc(b *pobcode.Build, calculator bool) (*Result, error) {
 	// The steps of calcSteps run in order over a fresh calcState.
-	st := &calcState{b: b}
+	st := &calcState{b: b, calculator: calculator}
 	for _, step := range calcSteps {
 		if err := step.run(c, st); err != nil {
 			return nil, err
@@ -632,9 +643,12 @@ func stepConfig(c *Calculator, st *calcState) error {
 // calcs.buildActiveSkillModList for every active skill.
 func stepSkills(c *Calculator, st *calcState) error {
 	db, res := st.db, st.res
-	// CalcSetup.lua:1523-1564 creates the groups of tree-granted skills
-	// before the active skills are built; later steps see them too.
-	st.b = withTreeGrantedSkills(db, st.b, c.data.Skills.Effects)
+	// CalcSetup.lua:1506-1620 creates and removes the groups of granted
+	// skills before the active skills are built (MAIN mode only); later
+	// steps see the result too.
+	if !st.calculator {
+		st.b = c.withGrantedSkills(st)
+	}
 	db.build, res.build = st.b, st.b
 	skills := c.setupSkills(db, st.b, st.useSwap, res)
 	db.activeSkills = skills

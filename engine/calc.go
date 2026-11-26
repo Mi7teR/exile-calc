@@ -50,10 +50,24 @@ type Result struct {
 	Minion          *MinionResult // the main skill's minion (env.minion)
 	// main is env.player.mainSkill, nil when there is none.
 	main *activeSkill
-	// build is the calculated build: the input with its tree-granted skill
-	// groups (Skills' Group indexes refer to it).
+	// build is the calculated build (Build).
 	build *pobcode.Build
 }
+
+// Build is the calculated build: the input build after CalcSetup.lua's
+// granted skill block, which gives every skill granted by the passive
+// tree, an item or a Config tab modifier a socket group (appended to the
+// active skill set) and removes saved granted groups that nothing grants
+// any more. It is the input build itself when that changes nothing;
+// otherwise a copy that shares all but the active skill set's group list.
+// It must not be modified.
+//
+// SkillInfo.Group and SkillDPS.Group are indexes into its active skill
+// set, PoB's socketGroupList. pobcode.Build.MainSocketGroup is read in the
+// same space: PoB does not adjust it when a group before it is removed,
+// so setting the input build's MainSocketGroup to a SkillInfo.Group
+// selects that skill's group.
+func (r *Result) Build() *pobcode.Build { return r.build }
 
 // SkillInfo describes one active skill: its effective gem level and
 // quality, its buffs ("Aura:Purity of Elements") and the aura effect its
@@ -66,8 +80,9 @@ type SkillInfo struct {
 	Buffs          []string
 	AuraEffectInc  float64
 	AuraEffectMore float64
-	// Group and GroupSkill locate the skill: its socket group and its
-	// index among the group's active skills (both 1-based).
+	// Group and GroupSkill locate the skill: its socket group in
+	// Result.Build's active skill set and its index among the group's
+	// active skills (both 1-based).
 	Group, GroupSkill int
 	HasMinion         bool
 }

@@ -15,7 +15,7 @@ import (
 // "Raise Zombie (Raised Zombie: Default Attack)".
 type SkillDPS struct {
 	Name              string  // skill name as PoB shows it (with part name when the skill has parts)
-	Group, GroupSkill int     // 1-based, as SkillInfo
+	Group, GroupSkill int     // 1-based, as SkillInfo (Result.Build's groups)
 	Count             float64 // PoB fullDPS.skills[i].count
 	DPS               float64 // combined DPS of one instance
 	Trigger           string  // PoB trigger label, "" if none
@@ -60,12 +60,16 @@ func (c *Calculator) FullDPS(b *pobcode.Build) (*FullDPSResult, error) {
 	if err != nil {
 		return nil, err
 	}
-	return c.fullDPSFrom(b, base)
+	return c.fullDPSFrom(base)
 }
 
-// fullDPSFrom is FullDPS on base, b's Calc result.
-func (c *Calculator) fullDPSFrom(b *pobcode.Build, base *Result) (*FullDPSResult, error) {
+// fullDPSFrom is FullDPS on base, a Calc result. calcs.calcFullDPS runs in
+// CALCULATOR mode on the build's socket groups as the MAIN pass left them,
+// so each skill is calculated on base.build, the calculated build its
+// Group indexes refer to, without the granted skill block again.
+func (c *Calculator) fullDPSFrom(base *Result) (*FullDPSResult, error) {
 	var err error
+	b := base.build
 	acc := &fullDPSAcc{}
 	// calcs.calcFullDPS: for _, activeSkill in ipairs(fullEnv.player.activeSkillList).
 	for i, s := range base.DB.activeSkills {
@@ -79,7 +83,7 @@ func (c *Calculator) fullDPSFrom(b *pobcode.Build, base *Result) (*FullDPSResult
 		info := base.Skills[i]
 		r := base
 		if !s.main {
-			if r, err = c.Calc(keepMainGroup(b, withMainSkill(b, info.Group, info.GroupSkill))); err != nil {
+			if r, err = c.calc(keepMainGroup(b, withMainSkill(b, info.Group, info.GroupSkill)), true); err != nil {
 				return nil, err
 			}
 		}
