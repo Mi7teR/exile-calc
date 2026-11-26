@@ -92,14 +92,21 @@ func (c *Calculator) clusterGraph(spec *pobcode.Spec, b *pobcode.Build, res *Res
 	return c.clusterGraphLegacy(spec, b, res, nil)
 }
 
-// clusterNotablesByName returns PassiveTree.lua's cluster notables:
+// clusterNotablesByName returns PassiveTree.lua's clusterNodeMap:
 // notables and keystones without a group, by name. It is built once per
 // Calculator; callers must not modify it.
+// PassiveTree.lua:546,645 fills it in pairs(self.nodes) order, last one
+// wins, so PoB's pick between two nodes with one name is undefined; the
+// lowest id wins here. The 3.30 tree has one such name, Evil Eye (42305
+// and 57104), with the same stats.
 func (c *Calculator) clusterNotablesByName() map[string]*gamedata.Node {
 	c.clusterNotablesOnce.Do(func() {
 		c.clusterNotables = map[string]*gamedata.Node{}
 		for _, n := range c.data.Tree.Nodes {
-			if n.Group == 0 && (n.IsNotable || n.IsKeystone) {
+			if n.Group != 0 || (!n.IsNotable && !n.IsKeystone) {
+				continue
+			}
+			if prev := c.clusterNotables[n.Name]; prev == nil || n.ID < prev.ID {
 				c.clusterNotables[n.Name] = n
 			}
 		}

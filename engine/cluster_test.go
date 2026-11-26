@@ -90,3 +90,25 @@ func TestLegacyClusterSpecEmptySocket(t *testing.T) {
 		t.Errorf("jewel from 16218 lost: %v", got.Sockets)
 	}
 }
+
+// TestClusterNotablesLowestID: two cluster notables share the name Evil
+// Eye; the map keeps the lowest id on every Calculator (PoB's pairs order
+// is undefined).
+func TestClusterNotablesLowestID(t *testing.T) {
+	var ids []int
+	c := newCalc(t)
+	for _, n := range c.data.Tree.Nodes {
+		if n.Group == 0 && (n.IsNotable || n.IsKeystone) && n.Name == "Evil Eye" {
+			ids = append(ids, n.ID)
+		}
+	}
+	if len(ids) < 2 {
+		t.Skipf("Evil Eye is no longer a duplicate cluster notable (%v)", ids)
+	}
+	want := slices.Min(ids)
+	for range 5 {
+		if got := newCalc(t).clusterNotablesByName()["Evil Eye"].ID; got != want {
+			t.Fatalf("Evil Eye: id %d, want %d of %v", got, want, ids)
+		}
+	}
+}
