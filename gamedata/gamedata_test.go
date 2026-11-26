@@ -1,8 +1,13 @@
 package gamedata
 
 import (
+	"bytes"
+	"compress/gzip"
+	"encoding/json"
 	"strings"
 	"testing"
+
+	"github.com/google/go-cmp/cmp"
 )
 
 func TestPoE1Loads(t *testing.T) {
@@ -59,5 +64,32 @@ func TestPoE1IsCached(t *testing.T) {
 	b, _ := PoE1()
 	if a != b {
 		t.Error("PoE1 must return the same loaded data")
+	}
+}
+
+// TestParallelDecodeSame checks that the parallel decoders build the same
+// values as one plain Decode of the file.
+func TestParallelDecodeSame(t *testing.T) {
+	for name, pair := range map[string][2]any{
+		"mods":   {new(map[string]map[string]*Mod), new(map[string]map[string]*Mod)},
+		"skills": {new(*Skills), new(*Skills)},
+	} {
+		if err := decodeFile(poe1FS, "poe1", name, pair[0]); err != nil {
+			t.Fatal(err)
+		}
+		gz, err := poe1FS.ReadFile("poe1/" + name + ".json.gz")
+		if err != nil {
+			t.Fatal(err)
+		}
+		zr, err := gzip.NewReader(bytes.NewReader(gz))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if derr := json.NewDecoder(zr).Decode(pair[1]); derr != nil {
+			t.Fatal(derr)
+		}
+		if diff := cmp.Diff(pair[1], pair[0]); diff != "" {
+			t.Errorf("%s: parallel decode differs (-plain +parallel):\n%s", name, diff)
+		}
 	}
 }

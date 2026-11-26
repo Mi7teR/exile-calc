@@ -5,7 +5,9 @@ import (
 	"compress/gzip"
 	"embed"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"maps"
 	"sort"
 	"sync"
 )
@@ -101,8 +103,80 @@ func decodeFile(fsys embed.FS, dir, name string, dst any) error {
 	if err != nil {
 		return fmt.Errorf("gamedata: %s: %w", name, err)
 	}
-	if derr := json.NewDecoder(zr).Decode(dst); derr != nil {
+	dec := json.NewDecoder(zr)
+	var derr error
+	switch dst := dst.(type) {
+	case *map[string]map[string]*Mod:
+		// The largest file: its domains decode in parallel.
+		*dst, derr = decodeParallel[map[string]*Mod](dec)
+	case **Skills:
+		// The second largest: the effects decode in parallel.
+		*dst, derr = decodeSkills(dec)
+	default:
+		derr = dec.Decode(dst)
+	}
+	if derr != nil {
 		return fmt.Errorf("gamedata: %s: %w", name, derr)
 	}
 	return nil
+}
+
+// decodeSkills decodes a Skills object with its effects split into chunks
+// decoded in parallel.
+func decodeSkills(dec *json.Decoder) (*Skills, error) {
+	var raw struct {
+		Effects json.RawMessage     `json:"effects"`
+		StatMap map[string]*StatMap `json:"statMap"`
+	}
+	if err := dec.Decode(&raw); err != nil {
+		return nil, err
+	}
+	s := &Skills{StatMap: raw.StatMap}
+	if raw.Effects == nil {
+		return s, nil
+	}
+	var err error
+	s.Effects, err = decodeParallel[*Skill](json.NewDecoder(bytes.NewReader(raw.Effects)))
+	return s, err
+}
+
+// decodeParallel decodes a JSON object (or null) into a map, as Decode
+// would, with the values decoded by several goroutines.
+func decodeParallel[V any](dec *json.Decoder) (map[string]V, error) {
+	var raw map[string]json.RawMessage
+	if err := dec.Decode(&raw); err != nil || raw == nil {
+		return nil, err
+	}
+	keys := make([]string, 0, len(raw))
+	for k := range raw {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	const parts = 8
+	out := make([]map[string]V, parts)
+	errs := make([]error, parts)
+	var wg sync.WaitGroup
+	for p := range parts {
+		wg.Go(func() {
+			m := map[string]V{}
+			for i := p; i < len(keys); i += parts {
+				var v V
+				if err := json.Unmarshal(raw[keys[i]], &v); err != nil {
+					errs[p] = err
+					return
+				}
+				m[keys[i]] = v
+			}
+			out[p] = m
+		})
+	}
+	wg.Wait()
+	if err := errors.Join(errs...); err != nil {
+		return nil, err
+	}
+	all := make(map[string]V, len(raw))
+	for _, m := range out {
+		maps.Copy(all, m)
+	}
+	return all, nil
 }
