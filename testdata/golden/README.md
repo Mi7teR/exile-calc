@@ -17,16 +17,11 @@ s6VBtCrbXmk1 is compared through quirks.json: PoB counts its summoned
 totems before it computes attributes (Replica Iron Commander's "per 200
 Strength" totems are 0 there); the engine counts them, as the game does.
 
-Known player offence and Full DPS misses (all per-skill engine gaps):
-M0Gidxpivlwx
-(Summon Spectral Tiger from the Farrul bloodline: tree-granted skill
-groups are not created), and Full DPS of Kh5YfbuwGaG0 (Seismic Trap),
-KR_vSVUJvzBw (Rain of Arrows), s7Z32pDJEybO (Flame Surge of Combusting),
-g4xXbVNijaDQ (Blade Blast), maxrollED* (Bane), OfiBSbFrEHC_ and its party
-copy (minion poison), eI3KTLED5mcJ (Void Shockwave), Uj4J57WyPC4k
-(Tempest Shield), zKMTzbWQ2h1C (Storm Rain CoC + Manaforged),
-gzVTJCkWXFan (Manaforged Arrows) and phcouqzIsSYP (Cast when Damage
-Taken).
+Known player offence and Full DPS misses: the player offence of
+M0Gidxpivlwx (Summon Spectral Tiger from the Farrul bloodline: tree-granted
+skill groups are not created), and the Full DPS of gzVTJCkWXFan, whose
+Toxic Rain mirage keeps its +gem levels from items (the MirageDPS quirk)
+and so adds a larger DoT than PoB's.
 
 `party-<base id>` builds are synthetic: a corpus build with a Party tab
 (imported auras, curses, warcries, links, party member stats and enemy
