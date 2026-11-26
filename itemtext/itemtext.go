@@ -53,6 +53,7 @@ type ModLine struct {
 	Variants []int    // {variant:1,2}: shown only for those variants
 	Groups   []int    // {group:1}: variant groups the line belongs to
 	Versions []int    // {version:1}: versions the line exists in
+	ModGroup string   // {modGroup:x}: generated lines of one modifier
 
 	Crafted, Implicit, Enchant, Fractured, Scourge, Crucible, Custom,
 	Mutated, Synthesis, Eater, Exarch, Unscalable, Disabled bool
@@ -678,6 +679,8 @@ func (p *Parser) Parse(text string) (*Item, error) {
 					mod.Versions = append(mod.Versions, n)
 				}
 				it.UsesVariantGroups = true
+			case k == "modGroup":
+				mod.ModGroup = val
 			case k == "tags":
 				mod.Tags = append(mod.Tags, tagRe.FindAllString(val, -1)...)
 			case k == "range":

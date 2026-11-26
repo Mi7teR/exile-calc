@@ -172,6 +172,9 @@ func (c *Calculator) defence(db *ModDB, gearMods map[string][]modparser.Mod, key
 	// Primary defences.
 	ironReflexes := db.Flag("IronReflexes")
 	esToWard := db.Flag("EnergyShieldToWard")
+	// Each product is converted with float64() so the compiler does not
+	// fuse it into the sum (FMA on arm64): PoB adds the rounded products,
+	// and mKBO1UbFLlKF's 7103.4999999999991 must not become 7103.5.
 	var ward, es, arm, eva, gearEvasion float64
 	for _, slot := range defenceSlots {
 		d, ok := armour[slot]
@@ -199,78 +202,78 @@ func (c *Calculator) defence(db *ModDB, gearMods map[string][]modparser.Mod, key
 		}
 		if wardBase > 0 {
 			if esToWard {
-				ward += wardBase * (1 + db.SumCfg(cfg, "INC", "Ward", "Defences", "EnergyShield")/100) * db.MoreCfg(cfg, "Ward", "Defences")
+				ward += float64(wardBase * (1 + db.SumCfg(cfg, "INC", "Ward", "Defences", "EnergyShield")/100) * db.MoreCfg(cfg, "Ward", "Defences"))
 			} else {
-				ward += wardBase * calcMod(db, cfg, "Ward", "Defences")
+				ward += float64(wardBase * calcMod(db, cfg, "Ward", "Defences"))
 			}
 		}
 		if esBase > 0 {
 			if esToWard {
-				es += esBase * db.MoreCfg(cfg, "EnergyShield", "Defences")
+				es += float64(esBase * db.MoreCfg(cfg, "EnergyShield", "Defences"))
 			} else if !db.Flag("ConvertArmourESToLife") {
-				es += esBase * calcMod(db, cfg, "EnergyShield", "Defences", slot+"ESAndArmour")
+				es += float64(esBase * calcMod(db, cfg, "EnergyShield", "Defences", slot+"ESAndArmour"))
 			}
 		}
 		if armBase > 0 {
-			arm += armBase * calcMod(db, cfg, "Armour", "ArmourAndEvasion", "Defences", slot+"ESAndArmour")
+			arm += float64(armBase * calcMod(db, cfg, "Armour", "ArmourAndEvasion", "Defences", slot+"ESAndArmour"))
 		}
 		if evaBase > 0 {
 			gearEvasion += evaBase
 			if ironReflexes {
-				arm += evaBase * calcMod(db, cfg, "Armour", "Evasion", "ArmourAndEvasion", "Defences")
+				arm += float64(evaBase * calcMod(db, cfg, "Armour", "Evasion", "ArmourAndEvasion", "Defences"))
 			} else {
-				eva += evaBase * calcMod(db, cfg, "Evasion", "ArmourAndEvasion", "Defences")
+				eva += float64(evaBase * calcMod(db, cfg, "Evasion", "ArmourAndEvasion", "Defences"))
 			}
 		}
 	}
 	if b := db.Sum("BASE", "Ward"); b > 0 {
 		if esToWard {
-			ward += b * (1 + db.Sum("INC", "Ward", "Defences", "EnergyShield")/100) * db.More("Ward", "Defences")
+			ward += float64(b * (1 + db.Sum("INC", "Ward", "Defences", "EnergyShield")/100) * db.More("Ward", "Defences"))
 		} else {
-			ward += b * calcMod(db, nil, "Ward", "Defences")
+			ward += float64(b * calcMod(db, nil, "Ward", "Defences"))
 		}
 	}
 	if b := db.Sum("BASE", "EnergyShield"); b > 0 {
 		if esToWard {
-			es += b * db.More("EnergyShield", "Defences")
+			es += float64(b * db.More("EnergyShield", "Defences"))
 		} else {
-			es += b * calcMod(db, nil, "EnergyShield", "Defences")
+			es += float64(b * calcMod(db, nil, "EnergyShield", "Defences"))
 		}
 	}
 	if b := db.Sum("BASE", "Armour", "ArmourAndEvasion"); b > 0 {
-		arm += b * calcMod(db, nil, "Armour", "ArmourAndEvasion", "Defences")
+		arm += float64(b * calcMod(db, nil, "Armour", "ArmourAndEvasion", "Defences"))
 	}
 	if b := db.Sum("BASE", "Evasion", "ArmourAndEvasion"); b > 0 {
 		if ironReflexes {
-			arm += b * calcMod(db, nil, "Armour", "Evasion", "ArmourAndEvasion", "Defences")
+			arm += float64(b * calcMod(db, nil, "Armour", "Evasion", "ArmourAndEvasion", "Defences"))
 		} else {
-			eva += b * calcMod(db, nil, "Evasion", "ArmourAndEvasion", "Defences")
+			eva += float64(b * calcMod(db, nil, "Evasion", "ArmourAndEvasion", "Defences"))
 		}
 	}
 	if conv := db.Sum("BASE", "ManaConvertToArmour"); conv > 0 {
-		arm += 2 * db.Sum("BASE", "Mana") * conv / 100 * calcMod(db, nil, "Mana", "Armour", "ArmourAndEvasion", "Defences")
+		arm += float64(2 * db.Sum("BASE", "Mana") * conv / 100 * calcMod(db, nil, "Mana", "Armour", "ArmourAndEvasion", "Defences"))
 	}
 	if conv := db.Sum("BASE", "ManaGainAsEnergyShield"); conv > 0 {
-		es += db.Sum("BASE", "Mana") * conv / 100 * calcMod(db, nil, "Mana", "EnergyShield", "Defences")
+		es += float64(db.Sum("BASE", "Mana") * conv / 100 * calcMod(db, nil, "Mana", "EnergyShield", "Defences"))
 	}
 	ci := db.Flag("ChaosInoculation")
 	if conv := db.Sum("BASE", "LifeGainAsArmour"); conv > 0 {
 		if ci {
 			arm++
 		} else {
-			arm += db.Sum("BASE", "Life") * conv / 100 * calcMod(db, nil, "Life", "Armour", "ArmourAndEvasion", "Defences")
+			arm += float64(db.Sum("BASE", "Life") * conv / 100 * calcMod(db, nil, "Life", "Armour", "ArmourAndEvasion", "Defences"))
 		}
 	}
 	if conv := db.Sum("BASE", "LifeConvertToEnergyShield", "LifeGainAsEnergyShield"); conv > 0 {
 		if ci {
 			es++
 		} else {
-			es += db.Sum("BASE", "Life") * conv / 100 * calcMod(db, nil, "Life", "EnergyShield", "Defences")
+			es += float64(db.Sum("BASE", "Life") * conv / 100 * calcMod(db, nil, "Life", "EnergyShield", "Defences"))
 		}
 	}
 	if conv := db.Sum("BASE", "EvasionGainAsArmour"); conv > 0 {
 		b := (db.Sum("BASE", "Evasion", "ArmourAndEvasion") + gearEvasion) * conv / 100
-		arm += b * calcMod(db, nil, "Evasion", "Armour", "ArmourAndEvasion", "Defences")
+		arm += float64(b * calcMod(db, nil, "Evasion", "Armour", "ArmourAndEvasion", "Defences"))
 	}
 	if o, ok := db.Override("EnergyShield"); ok {
 		out["EnergyShield"] = o

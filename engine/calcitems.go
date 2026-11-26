@@ -193,8 +193,14 @@ func (c *Calculator) itemLines(item *pobcode.Item, res *Result) (*itemtext.Item,
 	}
 	// ItemsTab:Load ignores the ModRange ids when there are more of them than
 	// saved mod lines (lines that stopped being mod lines).
+	groups := [][]itemtext.ModLine{it.Enchants, it.Scourge, it.Implicits, it.Explicits, it.Crucible}
+	saved := 0
+	for gi := range groups {
+		groups[gi] = c.mergeTwoLineMods(it, groups[gi])
+		saved += len(groups[gi])
+	}
 	ranges := map[int]float64{}
-	if len(item.ModRanges) <= len(it.Enchants)+len(it.Scourge)+len(it.Implicits)+len(it.Explicits)+len(it.Crucible) {
+	if len(item.ModRanges) <= saved {
 		for _, mr := range item.ModRanges {
 			ranges[mr.ID] = mr.Range
 		}
@@ -211,7 +217,7 @@ func (c *Calculator) itemLines(item *pobcode.Item, res *Result) (*itemtext.Item,
 	if it.Base != nil && it.Base.Flask != nil {
 		id = len(it.Base.Flask.Buff)
 	}
-	for gi, group := range [][]itemtext.ModLine{it.Enchants, it.Scourge, it.Implicits, it.Explicits, it.Crucible} {
+	for gi, group := range groups {
 		kind := []string{"enchant", "scourge", "implicit", "explicit", "crucible"}[gi]
 		for _, l := range group {
 			id++
@@ -362,6 +368,28 @@ var (
 	grantsLevelRe = regexp.MustCompile(`^grants level \d+ `)
 	grantsNameRe  = regexp.MustCompile(`^grants \D+$`)
 )
+
+// mergeTwoLineMods is the "Try to combine it with the next line" step
+// of ItemClass:ParseRaw (Item.lua:1198-1214): a line that does not parse
+// alone (at range 1) but does together with the next line of the same
+// modGroup becomes one mod line, keeping the first line's tags. The
+// merged list is what the saved ModRange ids and their count refer to.
+func (c *Calculator) mergeTwoLineMods(it *itemtext.Item, group []itemtext.ModLine) []itemtext.ModLine {
+	var out []itemtext.ModLine
+	for i := 0; i < len(group); i++ {
+		l := group[i]
+		if i+1 < len(group) && l.ModGroup == group[i+1].ModGroup &&
+			!c.parser.Parse(applyRange(l.Text, 1, catalystScalar(it, l))).Parsed() {
+			comb := l.Text + " " + group[i+1].Text
+			if c.parser.Parse(applyRange(comb, 1, catalystScalar(it, l))).Parsed() {
+				l.Text = comb
+				i++
+			}
+		}
+		out = append(out, l)
+	}
+	return out
+}
 
 // itemMods parses an item's active mod lines.
 func (c *Calculator) itemMods(item *pobcode.Item, res *Result) (*itemtext.Item, []modparser.Mod) {

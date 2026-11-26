@@ -332,14 +332,9 @@ func TestLeechStats(t *testing.T) {
 	keys = append(keys, "MaxLifeLeechRatePercent", "PvpAverageDamage", "PvpTotalDPS", "TotalMin", "TotalMax",
 		"EnemyLifeRegen", "EnemyManaRegen", "EnemyEnergyShieldRegen")
 	skip := map[string][]string{
-		// The engine's EnergyShield is 7104, PoB's 7103 (also before this
-		// port); the energy shield leech caps follow it.
-		"mKBO1UbFLlKF": {"MaxEnergyShieldLeechInstance", "MaxEnergyShieldLeechRate", "EnergyShieldLeechInstanceRate"},
-		// The engine reads Watcher's Eye "Gain (20-30) Life per Enemy Hit
-		// while affected by Vitality" as 25, PoB as 30 ({range:1}).
-		"phcouqzIsSYP": {"LifeOnHit", "LifeOnHitRate", "LifeLeechGainRate"},
-		// The active config has the map mod "of Congealment" (enemies cannot
-		// be leeched from, Data/ModMap.lua:213-220); map mods are not ported.
+		// Waiting for map mods (ported on the minion-rest branch): the active
+		// config has "of Congealment" (enemies cannot be leeched from,
+		// Data/ModMap.lua:213-220). Re-enable after that merge.
 		"zKMTzbWQ2h1C": {
 			"LifeLeechDuration", "LifeLeechGainRate", "LifeLeechInstances", "LifeLeechInstant",
 			"LifeLeechInstantRate", "LifeLeechPerHit", "LifeLeechRate", "ManaLeechDuration", "ManaLeechGainRate",
