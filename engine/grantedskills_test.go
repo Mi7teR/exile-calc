@@ -790,3 +790,47 @@ func TestCompareOwnGrantingItem(t *testing.T) {
 		t.Fatalf("only %d cases", n)
 	}
 }
+
+// CalcSetup.lua:847 names a granted skill's slot before the active swap
+// set's slots lose " Swap" (858): a swap item's group has slot "Weapon 2
+// Swap". Comparing the item in that slot carries the group's settings, in
+// the inactive and in the active swap set.
+func TestCompareSwapSlotCarriesGrantedGroup(t *testing.T) {
+	if testing.Short() {
+		t.Skip("corpus builds")
+	}
+	c := newCalc(t)
+	const slot = "Weapon 2 Swap"
+	for _, active := range []bool{false, true} {
+		b := corpusBuild(t, "J_Uzb2TmaVdw") // Voidfletcher's Void Shot in Weapon 2 Swap
+		i := slotGroup(b, slot, "VoidShot")
+		if i < 0 {
+			t.Fatal("no Void Shot group")
+		}
+		b.ActiveSkills().Groups[i].Label = "kept"
+		b.ActiveItems().UseSecondWeaponSet = active
+		cp := newComparer(t, c, b)
+		nb, _, err := cp.compareBuild(slot, slotRaw(t, b, slot), "")
+		if err != nil {
+			t.Fatal(err)
+		}
+		res, err := c.calc(nb, calcOpts{compared: nb.Items[len(nb.Items)-1].ID})
+		if err != nil {
+			t.Fatal(err)
+		}
+		groups := res.Build().ActiveSkills().Groups
+		g := groups[i]
+		if len(groups) != len(b.ActiveSkills().Groups) || g.Label != "kept" || g.Slot != slot ||
+			g.Source == b.ActiveSkills().Groups[i].Source {
+			t.Errorf("active %v: %d groups (want %d), group %d %+v", active, len(groups),
+				len(b.ActiveSkills().Groups), i+1, g)
+		}
+		r, err := cp.Item(slot, slotRaw(t, b, slot))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(r.Delta) != 0 {
+			t.Errorf("active %v: delta %v", active, r.Delta)
+		}
+	}
+}

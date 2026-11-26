@@ -9,7 +9,23 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/Mi7teR/poe-lib/gamedata"
+	"github.com/Mi7teR/poe-lib/itemtext"
 	"github.com/Mi7teR/poe-lib/pobcode"
+)
+
+// Errors Comparer.Item wraps when the item cannot be compared in the slot.
+var (
+	// ErrItemNotValidForSlot: the item cannot go in the slot
+	// (ItemsTabClass:IsItemValidForSlot, Classes/ItemsTab.lua:2639-2692),
+	// such as a ring in "Helmet", a two-hander in "Weapon 2" or a cluster
+	// jewel bigger than its socket.
+	ErrItemNotValidForSlot = errors.New("engine: item does not fit the slot")
+	// ErrSlotNotAvailable: the build has no such slot, as PoB hides it
+	// (Classes/ItemsTab.lua:178-185, 203-212): "Ring 3" without a "+1 Ring
+	// Slot" passive, "Graft 1"/"Graft 2" on a tree other than 3.27, the
+	// Wickerman slots on a tree other than 3.30.
+	ErrSlotNotAvailable = errors.New("engine: the build has no such slot")
 )
 
 // Comparer compares items against one build, like the stat comparison of
@@ -30,6 +46,9 @@ type Comparer struct {
 	// usedFullDPS is getMiscCalculator's usedFullDPS: the base Full DPS
 	// has skills, so every comparison computes Full DPS too.
 	usedFullDPS bool
+	// ringSlot is the base build's AdditionalRingSlot flag from the
+	// allocated nodes: whether "Ring 3" exists.
+	ringSlot bool
 }
 
 // ItemComparison is the change from putting one item in one slot.
@@ -61,7 +80,7 @@ func (c *Calculator) NewComparer(b *pobcode.Build) (*Comparer, error) {
 		return nil, err
 	}
 	cp := &Comparer{
-		c: c, b: res.build, usedFullDPS: len(full.Skills) > 0,
+		c: c, b: res.build, usedFullDPS: len(full.Skills) > 0, ringSlot: additionalRingSlot(res.DB),
 		unparsed: slices.Clone(res.Unparsed), incomplete: slices.Clone(res.Incomplete),
 	}
 	cp.before = cp.stats(res, full)
@@ -89,10 +108,24 @@ func (cp *Comparer) stats(res *Result, full *FullDPSResult) map[string]float64 {
 // "Ring 1".."Ring 3", "Belt", "Flask 1".."Flask 5", "Graft 1", "Graft 2",
 // the Wickerman slots ("Head", "Body", "Arm", "Leg"), "Weapon 1 Swap",
 // "Weapon 2 Swap", abyssal sockets ("Helmet Abyssal Socket 1") and tree
-// jewel sockets ("Jewel 26725"). A slot the build does not use (the
-// inactive weapon set, an unallocated jewel socket) gives no change, as
-// in PoB. The caller picks a slot that fits the item: the item type is
-// not checked against the slot.
+// jewel sockets ("Jewel 26725"), the jewel sockets a cluster jewel opens
+// included: those are tree nodes too, named by their node id as in PoB
+// (ItemsTab.lua:233-246). A slot the build does not use (the inactive
+// weapon set, an unallocated jewel socket, an abyssal socket the item in
+// its parent slot does not have) gives no change, as in PoB.
+//
+// The item must fit the slot as in PoB's slot lists
+// (ItemsTab.lua IsItemValidForSlot), or Item returns an error wrapping
+// ErrItemNotValidForSlot: the item type names the slot ("Ring" for
+// "Ring 1".."Ring 3"), a Tincture goes in a Flask slot, an abyss jewel in
+// an abyssal socket, any weapon in "Weapon 1"; "Weapon 2" takes what
+// the set's "Weapon 1" allows (a shield or one-hander with a one-hander or
+// nothing, wands only with a wand, a quiver only with a bow, nothing with
+// another two-hander); a jewel socket takes jewels, a charm socket only
+// charms, a cluster jewel only a cluster socket of its size or larger. A
+// slot PoB hides for the build ("Ring 3" without a "+1 Ring Slot"
+// passive, the Graft slots off a 3.27 tree, the Wickerman slots off a
+// 3.30 tree) gives an error wrapping ErrSlotNotAvailable.
 //
 // Gems socketed in the slot are kept, as in PoB, where socket groups are
 // tied to slot names, not items (CalcSetup.lua's socket group loop
@@ -113,8 +146,8 @@ func (cp *Comparer) stats(res *Result, full *FullDPSResult) map[string]float64 {
 // Staff or two-handed sword, axe or mace in a "Weapon 1" slot empties the
 // set's "Weapon 2", and so does a bow unless "Weapon 2" holds a quiver.
 func (cp *Comparer) Item(slot string, itemText string) (*ItemComparison, error) {
-	if !validSlot(slot) {
-		return nil, fmt.Errorf("engine: unknown item slot %q", slot)
+	if err := cp.checkSlot(slot); err != nil {
+		return nil, err
 	}
 	text := strings.ReplaceAll(itemText, "\r", "")
 	it, err := cp.c.items.Parse(text)
@@ -123,6 +156,9 @@ func (cp *Comparer) Item(slot string, itemText string) (*ItemComparison, error) 
 	}
 	if it.Base == nil {
 		return nil, errors.New("engine: item: unknown item base")
+	}
+	if !cp.itemValidForSlot(it, slot) {
+		return nil, fmt.Errorf("%w: %s in %q", ErrItemNotValidForSlot, it.BaseName, slot)
 	}
 	b, replaced, err := cp.compareBuild(slot, normaliseItemText(text), it.Base.Type)
 	if err != nil {
@@ -364,6 +400,178 @@ func validSlot(slot string) bool {
 		"Belt", "Graft 1", "Graft 2", "Flask 1", "Flask 2", "Flask 3", "Flask 4", "Flask 5",
 		slotWeapon1Swap, slotWeapon2Swap, "Head", "Body", "Arm", "Leg":
 		return true
+	}
+	return false
+}
+
+// checkSlot returns an error for a slot that is not one of PoB's slot
+// names (validSlot, socketNode) or that the build does not have
+// (slotShown).
+func (cp *Comparer) checkSlot(slot string) error {
+	if !validSlot(slot) || (strings.HasPrefix(slot, "Jewel ") && cp.socketNode(slot) == nil) {
+		return fmt.Errorf("engine: unknown item slot %q", slot)
+	}
+	if !cp.slotShown(slot) {
+		return fmt.Errorf("%w: %q", ErrSlotNotAvailable, slot)
+	}
+	return nil
+}
+
+// socketNode is the tree jewel socket of a "Jewel <node id>" slot, nil
+// when the slot names no jewel socket. ItemsTab.lua:233-246 makes a slot
+// for every "Socket" node of the tree, the sockets of the cluster jewel
+// subgraphs included (they are tree nodes of the proxy groups,
+// PassiveSpec.lua FindClusterSocket).
+func (cp *Comparer) socketNode(slot string) *gamedata.Node {
+	node, ok := strings.CutPrefix(slot, "Jewel ")
+	if !ok {
+		return nil
+	}
+	n, err := strconv.Atoi(node)
+	if tn := cp.c.data.Tree.Nodes[n]; err == nil && tn != nil && tn.IsJewelSocket {
+		return tn
+	}
+	return nil
+}
+
+// slotShown is the shown function of the slots ItemsTab.lua hides for a
+// build, which therefore cannot hold an item: "Ring 3" without
+// AdditionalRingSlot (182-185; CalcSetup.lua:824-827 ignores its item,
+// testing the flag on the allocated nodes, as ringSlot does), the Graft
+// slots off a 3.27 tree (178-181) and the Wickerman slots off a 3.30 tree
+// (203-212).
+func (cp *Comparer) slotShown(slot string) bool {
+	tree := ""
+	if spec := cp.b.ActiveSpec(); spec != nil {
+		tree = spec.TreeVersion
+	}
+	switch slot {
+	case "Ring 3":
+		return cp.ringSlot
+	case "Graft 1", "Graft 2":
+		return strings.Contains(tree, "3_27")
+	case "Head", "Body", "Arm", "Leg":
+		return strings.Contains(tree, "3_30")
+	}
+	return true
+}
+
+// itemValidForSlot is ItemsTabClass:IsItemValidForSlot
+// (Classes/ItemsTab.lua:2639-2692) for the base build's active item set.
+// item.type there is the base type (Item.lua).
+//
+//nolint:goconst // the type names as IsItemValidForSlot spells them
+func (cp *Comparer) itemValidForSlot(it *itemtext.Item, slot string) bool {
+	base := it.Base
+	slotType := slotTypeOf(slot)
+	switch {
+	case slotType == "Jewel":
+		return cp.jewelValidForSocket(it, cp.socketNode(slot))
+	case base.Type == slotType:
+		return true
+	case base.Type == "Viscera":
+		// item.base.tags["viscera_" .. (slotName:gsub("^%u", string.lower))]
+		return slices.Contains(base.Tags, "viscera_"+strings.ToLower(slot[:1])+slot[1:])
+	case base.Type == "Tincture" && slotType == "Flask":
+		return true
+	case base.Type == "Jewel" && base.SubType == "Abyss" && strings.Contains(slot, "Abyssal Socket"):
+		return true
+	case slot == slotWeapon1 || slot == slotWeapon1Swap:
+		return base.Weapon != nil
+	case slot == slotWeapon2 || slot == slotWeapon2Swap:
+		return cp.offhandValid(base.Type, slot)
+	}
+	return false
+}
+
+// slotTypeOf is IsItemValidForSlot's slotType: the name before a trailing
+// number (slotName:match("^([%a ]+) (%d+)$")), else the whole name. So
+// "Ring 3" is "Ring", "Weapon 2" is "Weapon" and "Jewel 26725" is
+// "Jewel", but "Weapon 1 Swap" and the abyssal sockets keep their names.
+func slotTypeOf(slot string) string {
+	i := strings.LastIndexByte(slot, ' ')
+	if i <= 0 || i == len(slot)-1 {
+		return slot
+	}
+	head, num := slot[:i], slot[i+1:]
+	for _, r := range num {
+		if r < '0' || r > '9' {
+			return slot
+		}
+	}
+	for _, r := range head {
+		if r != ' ' && (r < 'A' || r > 'Z') && (r < 'a' || r > 'z') {
+			return slot
+		}
+	}
+	return head
+}
+
+// jewelValidForSocket is IsItemValidForSlot's jewel socket branch
+// (ItemsTab.lua:2645-2668). A charm socket is a socket named "Charm
+// Socket" (PassiveTree.lua:704-705); a cluster jewel is an item whose
+// base is in data.clusterJewels (Item.lua:1063); expansion jewel size 0
+// is small, 1 medium, 2 large.
+//
+//nolint:goconst // the type names as IsItemValidForSlot spells them
+func (cp *Comparer) jewelValidForSocket(it *itemtext.Item, node *gamedata.Node) bool {
+	if node == nil || it.Base.Type != "Jewel" {
+		return false
+	}
+	sub, exp := it.Base.SubType, node.ExpansionJewel
+	var cluster *gamedata.ClusterJewel
+	if cp.c.data.Cluster != nil {
+		cluster = cp.c.data.Cluster.Jewels[it.BaseName]
+	}
+	switch charm := node.Name == "Charm Socket"; {
+	case charm || sub == "Charm":
+		// Charm sockets hold only charms, and charms go only there.
+		return charm && sub == "Charm"
+	case sub == "Blightcore":
+		// Putrid Seed grows passives only from large jewel sockets.
+		return exp != nil && exp.Size == 2
+	case cluster != nil && exp == nil:
+		// No cluster jewels in inner sockets.
+		return false
+	case exp == nil || exp.Size == 2:
+		// Outer sockets fit anything.
+		return true
+	}
+	return cluster == nil || cluster.SizeIndex <= exp.Size
+}
+
+// offhandValid is IsItemValidForSlot's "Weapon 2" branch
+// (ItemsTab.lua:2681-2690): what the set's "Weapon 1" (of the same
+// weapon set) allows in the offhand. With no weapon, a shield or a
+// one-handed weapon; with a bow, a quiver; with a one-handed weapon, a
+// shield or a one-handed weapon, a wand only beside a wand; with anything
+// else (a two-hander), nothing. PoB errors on a "Weapon 1" item that is
+// not a weapon (weaponTypeInfo[weapon1Type] is nil); here it allows
+// nothing.
+//
+//nolint:goconst // the type names as IsItemValidForSlot spells them
+func (cp *Comparer) offhandValid(typ, slot string) bool {
+	main := slotWeapon1
+	if slot == slotWeapon2Swap {
+		main = slotWeapon1Swap
+	}
+	mainType := "None"
+	if set := cp.b.ActiveItems(); set != nil {
+		if w := cp.c.peekItem(cp.b.Item(set.SlotItem(main))); w != nil && w.Base != nil {
+			mainType = w.Base.Type
+		}
+	}
+	oneHand := func(t string) bool {
+		info, ok := weaponTypeInfo[t]
+		return ok && t != "None" && info.oneHand
+	}
+	switch {
+	case mainType == "None":
+		return typ == "Shield" || oneHand(typ)
+	case mainType == baseBow:
+		return typ == baseQuiver
+	case oneHand(mainType):
+		return typ == "Shield" || (oneHand(typ) && (mainType == "Wand") == (typ == "Wand"))
 	}
 	return false
 }

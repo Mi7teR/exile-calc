@@ -519,7 +519,10 @@ func grantMatches(g *pobcode.SocketGroup, gr grantedSkill, skills map[string]*ga
 // main socket group's index). The game ties a skill to the item that
 // grants it, and the same item gives the same skill; without this the
 // compared item, which has a new id and so a new source, would get a new
-// group and the old one would be removed. b is returned unchanged when no
+// group and the old one would be removed. slot is the item set's slot
+// name, " Swap" included: CalcSetup.lua:847 names a granted skill's slot
+// before the active swap set's slots lose " Swap" (858), so the groups of
+// a swap item have the swap slot. b is returned unchanged when no
 // group carries over; otherwise a copy with its own skill set and group
 // slices.
 func (c *Calculator) carryGrantedGroups(b *pobcode.Build, slot string, old, next *pobcode.Item) *pobcode.Build {

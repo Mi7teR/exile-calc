@@ -97,7 +97,7 @@ if err != nil {
 }
 r, err := comparer.Item("Ring 1", clipboardText) // game Ctrl+C text or PoB item text
 if err != nil {
-	return err // unknown slot or item text that is not an item
+	return err // unknown slot, item that does not fit the slot, or text that is not an item
 }
 for _, stat := range []string{"Life", "FireResist", "ColdResist", "LightningResist", "TotalEHP", "CombinedDPS", "FullDPS"} {
 	if d, ok := r.Delta[stat]; ok {
@@ -111,6 +111,21 @@ when the build has skills in Full DPS. `r.Unparsed` and `r.Incomplete` list
 the item's mod lines the engine did not understand and the parts it left
 out (`After` and `Delta` may then be incomplete). A two-hander in `"Weapon 1"`, or a bow
 unless `"Weapon 2"` holds a quiver, empties `"Weapon 2"` (`r.Replaced` says so).
+The slot is a PoB slot name: `"Weapon 1"`, `"Weapon 2"`, `"Weapon 1 Swap"`,
+`"Weapon 2 Swap"`, `"Helmet"`, `"Body Armour"`, `"Gloves"`, `"Boots"`,
+`"Amulet"`, `"Ring 1"`..`"Ring 3"`, `"Belt"`, `"Flask 1"`..`"Flask 5"`,
+`"Graft 1"`, `"Graft 2"`, the Wickerman slots (`"Head"`, `"Body"`, `"Arm"`,
+`"Leg"`), abyssal sockets (`"Helmet Abyssal Socket 1"`) and tree jewel
+sockets by node id (`"Jewel 26725"`), the sockets inside cluster jewels
+included. The item must fit the slot as in PoB's slot lists, or `Item`
+returns an error wrapping `engine.ErrItemNotValidForSlot`: a ring only in a
+ring slot, a shield or one-hander in `"Weapon 2"` only beside a one-hander
+(wands only beside a wand) or no weapon, a quiver only beside a bow, an
+abyss jewel in an abyssal or tree socket, a cluster jewel only in a cluster
+socket of its size or larger, flasks and tinctures in flask slots. A slot
+PoB hides for the build (`"Ring 3"` without a "+1 Ring Slot" passive, the
+Graft slots off a 3.27 tree, the Wickerman slots off a 3.30 tree) gives an
+error wrapping `engine.ErrSlotNotAvailable`.
 When the build uses Full DPS, each `Item` call runs one Calc per Full DPS
 skill, so it is slower for builds with many of them. `Item` is safe to call from several
 goroutines; the build must not be changed while the Comparer is in use.

@@ -2,15 +2,18 @@ package engine
 
 import (
 	"encoding/xml"
+	"errors"
 	"maps"
 	"reflect"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
 
+	"github.com/Mi7teR/poe-lib/gamedata"
 	"github.com/Mi7teR/poe-lib/pobcode"
 )
 
@@ -18,6 +21,13 @@ import (
 const gameRing = "Item Class: Rings\r\nRarity: Rare\r\nGale Coil\r\nCoral Ring\r\n--------\r\nRequirements:\r\nLevel: 45\r\n--------\r\n" +
 	"Item Level: 81\r\n--------\r\n+25 to maximum Life (implicit)\r\n--------\r\n+38 to maximum Life\r\n+40% to Fire Resistance\r\n" +
 	"+12% to Cold Resistance (crafted)\r\n--------\r\nCorrupted\r\n"
+
+// testJewel is a rare jewel and testAbyssJewel a rare abyss jewel, as
+// PoB writes them.
+const (
+	testJewel      = "Rarity: Rare\nGlyph Spark\nCobalt Jewel\n+12 to Intelligence\n7% increased maximum Life"
+	testAbyssJewel = "Rarity: Rare\nDread Eye\nSearching Eye Jewel\n+40 to maximum Life\n+15% to Cold Resistance"
+)
 
 // slotRaw is the raw text of the item in a slot of b's active item set.
 func slotRaw(t *testing.T, b *pobcode.Build, slot string) string {
@@ -212,7 +222,7 @@ func TestComparerDoesNotMutateBuild(t *testing.T) {
 	axe := slotRaw(t, corpusBuild(t, "vPuXJxFgodF9"), "Weapon 1")
 	for _, q := range []struct{ slot, text string }{
 		{"Ring 1", gameRing}, {"Ring 2", gameRing}, {"Weapon 1", axe}, {"Flask 1", slotRaw(t, b, "Flask 1")},
-		{"Helmet Abyssal Socket 1", gameRing}, {"Jewel 26725", gameRing}, {"Ring 1", gameRing},
+		{"Helmet Abyssal Socket 1", testAbyssJewel}, {"Jewel 26725", testJewel}, {"Ring 1", gameRing},
 	} {
 		if _, ierr := cp.Item(q.slot, q.text); ierr != nil {
 			t.Fatalf("%s: %v", q.slot, ierr)
@@ -252,18 +262,6 @@ func TestCompareItemErrors(t *testing.T) {
 	}
 }
 
-// firstJewel is the raw text of the first jewel in b's tree sockets.
-func firstJewel(t *testing.T, b *pobcode.Build) string {
-	t.Helper()
-	for _, s := range b.ActiveSpec().Sockets {
-		if it := b.Item(s.ItemID); it != nil {
-			return it.Raw
-		}
-	}
-	t.Fatal("no socketed jewel")
-	return ""
-}
-
 // Item calls from several goroutines, on different slots (a ring, a tree
 // jewel socket, a two-hander emptying the offhand), give the same results
 // as one call each.
@@ -273,7 +271,7 @@ func TestCompareConcurrent(t *testing.T) {
 	cp := newComparer(t, c, b)
 	queries := []struct{ slot, text string }{
 		{"Ring 1", gameRing},
-		{"Jewel 26725", firstJewel(t, corpusBuild(t, "3uy_tEm_vqpB"))},
+		{"Jewel 26725", testJewel},
 		{"Weapon 1", slotRaw(t, corpusBuild(t, "vPuXJxFgodF9"), "Weapon 1")}, // two-handed axe
 	}
 	want := make([]*ItemComparison, len(queries))
@@ -399,5 +397,205 @@ func TestNormaliseItemTextMatchesPobcode(t *testing.T) {
 	}
 	if len(b.Items) != 1 || b.Items[0].Raw != normaliseItemText(text) {
 		t.Errorf("pobcode items %+v, engine Raw %q", b.Items, normaliseItemText(text))
+	}
+}
+
+// treeSocket is the id of a tree jewel socket of that expansion size (-1
+// for a plain socket, not a charm socket), as "Jewel <id>".
+func treeSocket(t *testing.T, c *Calculator, size int) string {
+	t.Helper()
+	best := 0
+	for id, n := range c.data.Tree.Nodes {
+		if !n.IsJewelSocket || n.Name == "Charm Socket" {
+			continue
+		}
+		if (size < 0 && n.ExpansionJewel == nil) || (n.ExpansionJewel != nil && n.ExpansionJewel.Size == size) {
+			if best == 0 || id < best {
+				best = id
+			}
+		}
+	}
+	if best == 0 {
+		t.Fatalf("no jewel socket of size %d", size)
+	}
+	return "Jewel " + strconv.Itoa(best)
+}
+
+// clusterJewel is a cluster jewel of that size ("Small", "Medium", "Large").
+func clusterJewel(size string) string {
+	return "Rarity: Rare\nSol Spark\n" + size + " Cluster Jewel\nAdds 4 Passive Skills\n" +
+		"Added Small Passive Skills grant: 12% increased Fire Damage"
+}
+
+// ItemsTab.lua IsItemValidForSlot: an item that cannot go in the slot is
+// an error wrapping ErrItemNotValidForSlot; one that can is compared.
+func TestCompareItemSlotFit(t *testing.T) {
+	c := newCalc(t)
+	axe := slotRaw(t, corpusBuild(t, "vPuXJxFgodF9"), "Weapon 1")    // Two Handed Axe
+	bow := slotRaw(t, corpusBuild(t, "VFJTgt8AL50o"), "Weapon 1")    // Bow
+	quiver := slotRaw(t, corpusBuild(t, "2HB8-0xwYEA6"), "Weapon 2") // Quiver
+	wandShield := corpusBuild(t, "-fxcKCnOf7D2")
+	wand, shield := slotRaw(t, wandShield, "Weapon 1"), slotRaw(t, wandShield, "Weapon 2")
+	flask := slotRaw(t, corpusBuild(t, "3uy_tEm_vqpB"), "Flask 1")
+	const (
+		sword    = "Rarity: Rare\nGale Edge\nJewelled Foil\n+20 to Dexterity"
+		tincture = "Rarity: Normal\nPrismatic Tincture"
+		charm    = "Rarity: Normal\nUrsine Charm"
+		viscera  = "Rarity: Normal\nSevered Rhoa Head"
+	)
+	medium, small, plain := treeSocket(t, c, 1), treeSocket(t, c, 0), treeSocket(t, c, -1)
+	large := treeSocket(t, c, 2)
+
+	twoHanded := corpusBuild(t, "vPuXJxFgodF9")
+	bowQuiver := corpusBuild(t, "2HB8-0xwYEA6")
+	for _, q := range []struct {
+		name, build, slot, text string
+		ok                      bool
+	}{
+		{"ring in Helmet", "-fxcKCnOf7D2", "Helmet", gameRing, false},
+		{"ring in Ring 2", "-fxcKCnOf7D2", "Ring 2", gameRing, true},
+		{"ring in Amulet", "-fxcKCnOf7D2", "Amulet", gameRing, false},
+		{"ring in Weapon 1", "-fxcKCnOf7D2", "Weapon 1", gameRing, false},
+		{"shield in Weapon 1", "-fxcKCnOf7D2", "Weapon 1", shield, false},
+		{"two-hander in Weapon 1", "-fxcKCnOf7D2", "Weapon 1", axe, true},
+		{"two-hander in Weapon 2", "-fxcKCnOf7D2", "Weapon 2", axe, false},
+		{"bow in Weapon 2", "-fxcKCnOf7D2", "Weapon 2", bow, false},
+		{"shield beside a wand", "-fxcKCnOf7D2", "Weapon 2", shield, true},
+		{"wand beside a wand", "-fxcKCnOf7D2", "Weapon 2", wand, true},
+		{"sword beside a wand", "-fxcKCnOf7D2", "Weapon 2", sword, false},
+		{"quiver beside a wand", "-fxcKCnOf7D2", "Weapon 2", quiver, false},
+		{"quiver beside a bow", "2HB8-0xwYEA6", "Weapon 2", quiver, true},
+		{"shield beside a bow", "2HB8-0xwYEA6", "Weapon 2", shield, false},
+		{"shield beside a two-hander", "vPuXJxFgodF9", "Weapon 2", shield, false},
+		{"quiver beside a two-hander", "vPuXJxFgodF9", "Weapon 2", quiver, false},
+		{"ring in an abyssal socket", "3uy_tEm_vqpB", "Helmet Abyssal Socket 1", gameRing, false},
+		{"jewel in an abyssal socket", "3uy_tEm_vqpB", "Helmet Abyssal Socket 1", testJewel, false},
+		{"abyss jewel in an abyssal socket", "3uy_tEm_vqpB", "Helmet Abyssal Socket 1", testAbyssJewel, true},
+		{"abyss jewel in a tree socket", "3uy_tEm_vqpB", plain, testAbyssJewel, true},
+		{"abyss jewel in Ring 1", "3uy_tEm_vqpB", "Ring 1", testAbyssJewel, false},
+		{"ring in a tree socket", "3uy_tEm_vqpB", plain, gameRing, false},
+		{"cluster jewel in a plain socket", "3uy_tEm_vqpB", plain, clusterJewel("Small"), false},
+		{"large cluster in a large socket", "3uy_tEm_vqpB", large, clusterJewel("Large"), true},
+		{"small cluster in a large socket", "3uy_tEm_vqpB", large, clusterJewel("Small"), true},
+		{"large cluster in a medium socket", "3uy_tEm_vqpB", medium, clusterJewel("Large"), false},
+		{"medium cluster in a medium socket", "3uy_tEm_vqpB", medium, clusterJewel("Medium"), true},
+		{"small cluster in a medium socket", "3uy_tEm_vqpB", medium, clusterJewel("Small"), true},
+		{"medium cluster in a small socket", "3uy_tEm_vqpB", small, clusterJewel("Medium"), false},
+		{"small cluster in a small socket", "3uy_tEm_vqpB", small, clusterJewel("Small"), true},
+		{"jewel in a small socket", "3uy_tEm_vqpB", small, testJewel, true},
+		{"charm in a plain socket", "3uy_tEm_vqpB", plain, charm, false},
+		{"flask in Flask 3", "3uy_tEm_vqpB", "Flask 3", flask, true},
+		{"tincture in Flask 3", "3uy_tEm_vqpB", "Flask 3", tincture, true},
+		{"ring in Flask 3", "3uy_tEm_vqpB", "Flask 3", gameRing, false},
+		{"flask in Ring 1", "3uy_tEm_vqpB", "Ring 1", flask, false},
+		{"tincture in Ring 1", "3uy_tEm_vqpB", "Ring 1", tincture, false},
+		{"viscera in Head", "3uy_tEm_vqpB", "Head", viscera, true},
+		{"viscera in Arm", "3uy_tEm_vqpB", "Arm", viscera, false},
+		{"ring in Head", "3uy_tEm_vqpB", "Head", gameRing, false},
+	} {
+		var b *pobcode.Build
+		switch q.build {
+		case "vPuXJxFgodF9":
+			b = twoHanded
+		case "2HB8-0xwYEA6":
+			b = bowQuiver
+		case "-fxcKCnOf7D2":
+			b = wandShield
+		default:
+			b = corpusBuild(t, q.build)
+		}
+		_, err := newComparer(t, c, b).Item(q.slot, q.text)
+		switch {
+		case q.ok && err != nil:
+			t.Errorf("%s: %v", q.name, err)
+		case !q.ok && !errors.Is(err, ErrItemNotValidForSlot):
+			t.Errorf("%s: err %v, want ErrItemNotValidForSlot", q.name, err)
+		}
+	}
+
+	// Charm sockets hold charms only (PassiveTree.lua:704-705). The
+	// tree data has no charm socket (the Primalist's bloodline nodes are
+	// not in it), so the rule is checked on a made-up socket.
+	cp := newComparer(t, c, corpusBuild(t, "3uy_tEm_vqpB"))
+	socket := &gamedata.Node{Name: "Charm Socket", IsJewelSocket: true}
+	for _, q := range []struct {
+		text string
+		ok   bool
+	}{{charm, true}, {testJewel, false}, {testAbyssJewel, false}} {
+		it, err := c.items.Parse(q.text)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := cp.jewelValidForSocket(it, socket); got != q.ok {
+			t.Errorf("%s in a charm socket: %v, want %v", it.BaseName, got, q.ok)
+		}
+	}
+}
+
+// ItemsTab.lua hides "Ring 3" without AdditionalRingSlot and the Graft
+// slots off a 3.27 tree: Item gives ErrSlotNotAvailable there.
+func TestCompareSlotNotAvailable(t *testing.T) {
+	c := newCalc(t)
+	b := corpusBuild(t, "vPuXJxFgodF9") // no +1 Ring Slot
+	cp := newComparer(t, c, b)
+	if _, err := cp.Item("Ring 3", gameRing); !errors.Is(err, ErrSlotNotAvailable) {
+		t.Errorf("Ring 3 without the flag: err %v, want ErrSlotNotAvailable", err)
+	}
+	if !strings.Contains(b.ActiveSpec().TreeVersion, "3_27") {
+		if _, err := cp.Item("Graft 1", gameRing); !errors.Is(err, ErrSlotNotAvailable) {
+			t.Errorf("Graft 1 on tree %s: err %v, want ErrSlotNotAvailable", b.ActiveSpec().TreeVersion, err)
+		}
+	}
+	// With The Unseen Hand, Ring 3 holds a ring and counts.
+	b = corpusBuild(t, "EQsB5erKTnlJ")
+	r, err := newComparer(t, c, b).Item("Ring 3", gameRing)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r.Delta["FireResistTotal"] == 0 {
+		t.Errorf("Ring 3 with the flag: delta %v, want a FireResistTotal change", r.Delta)
+	}
+	if r, err = newComparer(t, c, b).Item("Ring 3", slotRaw(t, b, "Ring 3")); err != nil || len(r.Delta) != 0 {
+		t.Errorf("own Ring 3: err %v, delta %v", err, r.Delta)
+	}
+}
+
+// The jewel sockets a cluster jewel opens are tree nodes named "Jewel
+// <node id>" as in PoB: the same jewel gives no change, another one
+// changes stats.
+func TestCompareClusterSocket(t *testing.T) {
+	c := newCalc(t)
+	b := corpusBuild(t, "-s4JtJhUcgeE")
+	const node = 61305 // a small socket of a Medium Cluster Jewel
+	if exp := c.data.Tree.Nodes[node].ExpansionJewel; exp == nil || exp.Parent == 0 {
+		t.Fatalf("%d is not a cluster subgraph socket", node)
+	}
+	var own string
+	for _, s := range b.ActiveSpec().Sockets {
+		if s.NodeID == node {
+			own = b.Item(s.ItemID).Raw
+		}
+	}
+	if own == "" {
+		t.Fatalf("no jewel in socket %d", node)
+	}
+	cp := newComparer(t, c, b)
+	slot := "Jewel " + strconv.Itoa(node)
+	r, err := cp.Item(slot, own)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(r.Delta) != 0 || !slices.Equal(r.Replaced, []string{slot}) {
+		t.Errorf("same jewel: delta %v, Replaced %v", r.Delta, r.Replaced)
+	}
+	if r, err = cp.Item(slot, testJewel); err != nil {
+		t.Fatal(err)
+	}
+	if r.Delta["Int"] == 0 {
+		t.Errorf("other jewel: delta %v, want an Int change", r.Delta)
+	}
+	// A cluster jewel does not fit there (a small socket).
+	if _, err = cp.Item(slot, clusterJewel("Medium")); !errors.Is(err, ErrItemNotValidForSlot) {
+		t.Errorf("medium cluster: err %v, want ErrItemNotValidForSlot", err)
 	}
 }
