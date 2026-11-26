@@ -146,6 +146,10 @@ func (c *Calculator) applyConfig(db *ModDB, res *Result, set *pobcode.ConfigSet)
 	player, enemy := &modSink{db: db}, &modSink{db: db.enemy}
 	env := configEnv(c.parser.Table("SkillType"))
 	for _, o := range c.data.Config {
+		if o.MapAffix {
+			c.mapAffix(db, res, o, set, player, enemy, env)
+			continue
+		}
 		if o.Apply == "" {
 			continue
 		}
@@ -170,6 +174,107 @@ func (c *Calculator) applyConfig(db *ModDB, res *Result, set *pobcode.ConfigSet)
 		player.commit()
 		enemy.commit()
 	}
+}
+
+// mapAffix is mapAffixDropDownFunction (ConfigOptions.lua:116-131) for
+// a MapPrefix/MapSuffix option: the chosen affix's apply from
+// Data/ModMap.lua, with the map tier (4 - the tier list's index, Red
+// first) and 1 + multiplierMapModEffect / 100.
+func (c *Calculator) mapAffix(
+	db *ModDB, res *Result, o gamedata.ConfigOption, set *pobcode.ConfigSet,
+	player, enemy *modSink, env map[string]luadata.Value,
+) {
+	val, ok := configValue(o, set, db.enemyEnv)
+	name, isStr := val.(luadata.String)
+	if !ok || !isStr || name == "NONE" {
+		return
+	}
+	affix := c.data.MapMods[string(name)]
+	if affix == nil || affix.Apply == "" {
+		return
+	}
+	f := c.mapAffixes.get(string(name), affix.Apply)
+	if f == nil {
+		res.Incomplete = append(res.Incomplete, "map mod "+string(name)+": apply not supported")
+		return
+	}
+	effect := luadata.Number(1 + configNum(db, "multiplierMapModEffect")/100)
+	selIndex := 1 // varControls.multiplierMapModTier.selIndex
+	if set != nil {
+		if in, has := set.Input("multiplierMapModTier"); has && in.Kind == pobcode.KindString {
+			for i, v := range []string{"HIGH", "MED", "LOW"} {
+				if in.String == v {
+					selIndex = i + 1
+				}
+			}
+		}
+	}
+	tier := luadata.Number(4 - selIndex) //nolint:mnd // ConfigOptions.lua:124
+	values := toLuaTable(affix.Values)
+	pm, em := player.table(), enemy.table()
+	var args []luadata.Value
+	switch affix.Type {
+	case "check":
+		args = []luadata.Value{name, effect, pm, em}
+	case "list":
+		args = []luadata.Value{tier, effect, values, pm, em}
+	case "count":
+		roll := luadata.Number(100) //nolint:mnd // the top of the roll range, ConfigOptions.lua:126
+		args = []luadata.Value{tier, roll, effect, values, pm, em}
+	default:
+		return
+	}
+	if _, err := f.Call(args, env); err != nil {
+		res.Incomplete = append(res.Incomplete, fmt.Sprintf("map mod %s: %v", name, err))
+		return
+	}
+	player.commit()
+	enemy.commit()
+}
+
+// toLuaTable is plain JSON data (numbers, strings, nested lists) as a
+// Lua value.
+func toLuaTable(v any) luadata.Value {
+	switch x := v.(type) {
+	case []any:
+		t := &luadata.Table{}
+		for _, e := range x {
+			t.List = append(t.List, toLuaTable(e))
+		}
+		return t
+	case float64:
+		return luadata.Number(x)
+	case string:
+		return luadata.String(x)
+	case bool:
+		return luadata.Bool(x)
+	}
+	return nil
+}
+
+// mapAffixFuncs caches the parsed apply functions of Data/ModMap.lua.
+type mapAffixFuncs struct {
+	mu    sync.Mutex
+	funcs map[string]*luadata.Func
+}
+
+func (m *mapAffixFuncs) get(name, src string) *luadata.Func {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if f, ok := m.funcs[name]; ok {
+		return f
+	}
+	if m.funcs == nil {
+		m.funcs = map[string]*luadata.Func{}
+	}
+	var f *luadata.Func
+	if v, err := luadata.Eval("return { f = "+src+" }", nil); err == nil {
+		if t, isTable := v.(*luadata.Table); isTable {
+			f, _ = t.Get("f").(*luadata.Func)
+		}
+	}
+	m.funcs[name] = f
+	return f
 }
 
 // enemyIsBoss ports the mods of ConfigOptions.lua's enemyIsBoss apply.

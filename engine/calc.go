@@ -15,12 +15,13 @@ import (
 
 // Calculator holds the game data; it is safe for concurrent use.
 type Calculator struct {
-	data   *gamedata.Data
-	parser *modparser.Parser
-	items  *itemtext.Parser
-	luts   *timelessLUTs
-	config configApplies
-	gemIdx *gemIndex
+	data       *gamedata.Data
+	parser     *modparser.Parser
+	items      *itemtext.Parser
+	luts       *timelessLUTs
+	config     configApplies
+	mapAffixes mapAffixFuncs
+	gemIdx     *gemIndex
 
 	keystoneOnce sync.Once
 	keystones    map[string]keystone // PassiveTree.lua keystoneMap

@@ -25,7 +25,8 @@ type Data struct {
 	Tree      *Tree
 	Cluster   *ClusterJewels
 	Timeless  *Timeless
-	Config    []ConfigOption // ConfigOptions.lua varList, in order
+	Config    []ConfigOption       // ConfigOptions.lua varList, in order
+	MapMods   map[string]*MapAffix // Data/ModMap.lua AffixData, by affix
 	Skills    *Skills
 	Monster   *MonsterTables
 	Pantheons map[string]*Pantheon // Data/Pantheons.lua, by config key ("TheBrineKing")
@@ -63,7 +64,7 @@ func load(fsys embed.FS, dir string) (*Data, error) {
 	}
 	files := map[string]any{
 		"bases": &d.Bases, "mods": &d.Mods, "gems": &d.Gems, "uniques": &d.Uniques, "tree": &d.Tree,
-		"clusterjewels": &d.Cluster, "timeless": &d.Timeless, "config": &d.Config, "skills": &d.Skills,
+		"clusterjewels": &d.Cluster, "timeless": &d.Timeless, "config": &d.Config, "mapmods": &d.MapMods, "skills": &d.Skills,
 		"pantheons": &d.Pantheons, "monster": &d.Monster, "minions": &d.Minions,
 	}
 	// Each file decodes into its own field, so the files decode in
