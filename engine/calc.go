@@ -266,6 +266,7 @@ func (c *Calculator) lifeMana(db *ModDB) {
 		out["FullLifePercentage"] = 100 * v
 	}
 	if db.Flag("ChaosInoculation") {
+		out["ChaosInoculation"] = 1 // CalcPerform.lua:83: a Flag, nil when unset
 		out["Life"] = 1
 		db.conditions["FullLife"] = true
 	} else if o, ok := db.Override("Life"); ok {
@@ -279,12 +280,16 @@ func (c *Calculator) lifeMana(db *ModDB) {
 	}
 	manaConv := db.Sum("BASE", "ManaConvertToArmour")
 	out["Mana"] = round(val(db, "Mana")*(1-manaConv/100), 0)
+	// CalcPerform.lua:133-134.
+	out["LowestOfMaximumLifeAndMaximumMana"] = math.Min(out["Life"], out["Mana"])
+	out["MaximumLifeManaDifference"] = math.Abs(out["Life"] - out["Mana"])
 }
 
 // resistances ports calcs.resistances (Modules/CalcDefence.lua) without
 // resistance conversion and Melding of the Flesh.
 func (c *Calculator) resistances(db *ModDB) {
 	out := db.output
+	out["PhysicalResist"] = 0 // CalcDefence.lua:528
 	resistMax := func(elem string) float64 {
 		maxNames := []string{elem + "ResistMax"}
 		if elem != "Chaos" {
@@ -372,6 +377,7 @@ func (c *Calculator) resistances(db *ModDB) {
 		out[elem+"ResistOverCap"] = math.Max(0, total-max)
 		out[elem+"ResistOver75"] = math.Max(0, final-75)
 		out["Missing"+elem+"Resist"] = math.Max(0, max-final)
+		totemResist(db, elem)
 	}
 }
 

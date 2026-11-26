@@ -474,10 +474,10 @@ linters:
       # its hooks from init() into the package-level skillHookRegistry (switchCases is the test's fixture).
       - path: 'engine/(skills_(brands|channel|projectile|melee|misc|traps)|skillhooks(_test)?)\.go'
         linters: [ mnd, goconst, gochecknoinits, gochecknoglobals ]
-      # why: leech.go and buildoutput.go port the leech blocks of CalcOffence.lua / CalcDefence.lua and the
-      # MAIN-mode end of Calcs.lua buildOutput: PoB's percentages and output/mod name strings stay inline, and
-      # the pool tables are package-level like PoB's literal pairs tables.
-      - path: 'engine/(leech|buildoutput)\.go'
+      # why: leech.go, buildoutput.go and outputs_misc.go port CalcOffence / CalcDefence / CalcPerform output
+      # blocks and the MAIN-mode end of Calcs.lua buildOutput: PoB's percentages and output/mod name strings
+      # stay inline, and the pool tables are package-level like PoB's literal pairs tables.
+      - path: 'engine/(leech|buildoutput|outputs_misc)\.go'
         linters: [ mnd, goconst, gochecknoglobals ]
       # why: the themed modparser hook files port ModParser.lua specialModList functions: PoB's literal numbers
       # and mod name/type strings stay inline like hooks.go, and each file registers its ports from init() into

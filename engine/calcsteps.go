@@ -221,6 +221,9 @@ func stepBaseMods(_ *Calculator, st *calcState) error {
 	for _, r := range resistTypes {
 		db.NewMod(r+"ResistMax", "BASE", baseMaxResist, "Base")
 	}
+	for _, r := range resistTypes { // CalcSetup.lua:39-42
+		db.NewMod("Totem"+r+"ResistMax", "BASE", baseMaxResist, "Base")
+	}
 	chargeBaseMods(db)
 	db.NewMod("ManaRegen", "BASE", manaRegenBase, "Base", map[string]any{"type": "PerStat", "stat": "Mana", "div": 1.0})
 	db.NewMod("BlockChanceMax", "BASE", 75, "Base")      // characterConstants maximum_block_%
@@ -245,6 +248,11 @@ func stepBaseMods(_ *Calculator, st *calcState) error {
 	for _, r := range resistTypes {
 		db.NewMod(r+"Resist", "BASE", penalty, "Base")
 	}
+	// CalcSetup.lua:621-624.
+	for _, r := range resistTypes[:3] {
+		db.NewMod("Totem"+r+"Resist", "BASE", 40, "Base")
+	}
+	db.NewMod("TotemChaosResist", "BASE", 20, "Base")
 	return nil
 }
 
@@ -831,7 +839,9 @@ func stepSkillCounts(c *Calculator, st *calcState) error {
 	db, skills := st.db, st.skills
 	brandCounts(db, skills)
 	totemCounts(db, skills)
+	hexDoom(db, skills)
 	c.minionCounts(db, skills)
+	lootBonuses(db)
 	warcryExertMods(db, skills)
 	heraldAuraCounts(db, skills)
 	manaAppliesToShock(db)
@@ -1006,6 +1016,7 @@ func stepOffence(c *Calculator, st *calcState) error {
 		if debugPlayerSkill != nil {
 			debugPlayerSkill(s)
 		}
+		gemLevelQuality(db, s)
 	}
 	res.Incomplete = append(res.Incomplete, db.incomplete...)
 	return nil

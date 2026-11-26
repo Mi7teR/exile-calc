@@ -86,6 +86,8 @@ func avoidanceAndRecovery(db *ModDB) {
 	out["AttackDodgeChanceOverCap"] = math.Max(0, attackDodge-dodgeChanceCap)
 	out["SpellDodgeChanceOverCap"] = math.Max(0, spellDodge-spellDodgeMax)
 
+	missingUnreservedLife(db)
+
 	// Recovery rate modifiers.
 	out["LifeRecoveryRateMod"] = 1
 	if !db.Flag("CannotRecoverLifeOutsideLeech") {
@@ -176,6 +178,12 @@ func avoidanceAndRecovery(db *ModDB) {
 	// Energy shield recharge.
 	toLife := db.Flag("EnergyShieldRechargeAppliesToLife") && !db.Flag("CannotRecoverLifeOutsideLeech")
 	toES := !(db.Flag("NoEnergyShieldRecharge") || db.Flag("CannotGainEnergyShield") || toLife)
+	// CalcDefence.lua:1367-1368: Flag(...) and ... is nil (no key) when the
+	// first flag is unset.
+	if db.Flag("EnergyShieldRechargeAppliesToLife") {
+		out["EnergyShieldRechargeAppliesToLife"] = b2f(toLife)
+	}
+	out["EnergyShieldRechargeAppliesToEnergyShield"] = b2f(toES)
 	if toLife || toES {
 		inc, more := db.Sum("INC", "EnergyShieldRecharge"), db.More("EnergyShieldRecharge")
 		base, ok := db.Override("EnergyShieldRecharge")
@@ -230,6 +238,8 @@ func avoidanceAndRecovery(db *ModDB) {
 	}
 	out["EffectiveMovementSpeedMod"] = out["MovementSpeedMod"] * out["ActionSpeedMod"]
 
+	wardRechargeAndBlind(db)
+
 	// Recovery on block.
 	out["LifeOnBlock"], out["LifeOnSuppress"] = 0, 0
 	if !db.Flag("CannotRecoverLifeOutsideLeech") {
@@ -262,6 +272,12 @@ func avoidanceAndRecovery(db *ModDB) {
 	out["ImpaleAvoidChance"] = capped(db.Sum("BASE", "AvoidImpale"))
 	if immune("ImpaleImmune") {
 		out["ImpaleAvoidChance"] = 100
+	}
+	// CalcDefence.lua:1618-1621.
+	for _, x := range []string{"CorruptedBlood", "Maim", "Hinder", "Knockback"} {
+		if db.Flag(x + "Immune") { // a Flag: nil when unset
+			out[x+"Immunity"] = 1
+		}
 	}
 	if db.Flag("SpellSuppressionAppliesToAilmentAvoidance") {
 		pct := db.Sum("BASE", "SpellSuppressionAppliesToAilmentAvoidancePercent") / 100
@@ -296,10 +312,12 @@ func avoidanceAndRecovery(db *ModDB) {
 	}
 	ad, _ := maxSource(db, "", "ArmourDefense")
 	out["ArmourDefense"] = ad / 100
+	rawArmourDefense(out)
 	out["CritExtraDamageReduction"] = capped(db.Sum("BASE", "ReduceCritExtraDamage"))
 	out["CurseEffectOnSelf"] = math.Max(db.More("CurseEffectOnSelf")*(100+db.Sum("INC", "CurseEffectOnSelf")), 0)
 	out["ExposureEffectOnSelf"] = db.More("ExposureEffectOnSelf") * (100 + db.Sum("INC", "ExposureEffectOnSelf"))
 	out["WitherEffectOnSelf"] = db.More("WitherEffectOnSelf") * (100 + db.Sum("INC", "WitherEffectOnSelf"))
+	selfDebuffs(db)
 }
 
 // luckyRolls applies CalcDefence.lua's lucky/unlucky rolls to a chance in

@@ -201,6 +201,7 @@ type skillEffect struct {
 	level, quality   int
 	srcLevel         int // srcInstance.level and quality: the gem's own values
 	srcQuality       int
+	socketQuality    int // activeEffect.socketQuality: the matching socket bonus
 	srcPart          int // srcInstance.skillPart (0: not set)
 	hasSrc           bool
 	cfg              *Cfg // gemCfg

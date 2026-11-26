@@ -2,7 +2,9 @@ package engine
 
 import (
 	"fmt"
+	"maps"
 	"math"
+	"regexp"
 	"sort"
 	"strings"
 )
@@ -188,6 +190,7 @@ func (c *Calculator) applyBuffs(db *ModDB, skills []*activeSkill, res *Result) (
 				if db.Flag("AurasAffectEnemies") {
 					res.Incomplete = append(res.Incomplete, "auras affecting enemies: "+b.name)
 				}
+				totemAura(db, s, b, extra, skills, add)
 			case "Guard":
 				if s.flags["totem"] && !b.allowTotemBuff || b.applyNotPlayer {
 					continue
@@ -317,6 +320,7 @@ func (c *Calculator) applyBuffs(db *ModDB, skills []*activeSkill, res *Result) (
 		db.conditions["AffectedBy"+strings.ReplaceAll(name, " ", "")] = true
 		add(guards[name], name)
 	}
+	db.output["GuardSkillActive"] = b2f(db.conditions["AffectedByGuardSkill"]) // CalcPerform.lua:3375
 	for _, name := range order {
 		for _, m := range buffs[name] {
 			db.Add(m)
@@ -739,4 +743,76 @@ func minionDebuff(db *ModDB, ms *activeSkill, b *skillBuff, debuff func([]Mod, s
 		src = append(src, Mod{Name: "Multiplier:" + b.name + "Stack", Type: "BASE", Value: v, Source: b.name})
 	}
 	debuff(src, b.name)
+}
+
+// totemAuraMod is mod.name:match("Resist?M?a?x?$") of CalcPerform.lua:2566.
+var totemAuraMod = regexp.MustCompile(`Resist?M?a?x?$`)
+
+// totemAura is CalcPerform.lua:2551-2581: with a totem main skill, an
+// aura's defence and resistance mods also go to the totem as Totem<name>
+// mods, scaled by the aura's effect, and the main skill counts as
+// affected by the aura.
+func totemAura(db *ModDB, s *activeSkill, b *skillBuff, extra []Mod, skills []*activeSkill,
+	add func([]Mod, string),
+) {
+	var main *activeSkill
+	for _, x := range skills {
+		if x.main {
+			main = x
+		}
+	}
+	if main == nil || !main.flags["totem"] || db.Flag("SelfAurasCannotAffectAllies") ||
+		db.Flag("SelfAuraSkillsCannotAffectAllies") {
+		return
+	}
+	main.mods.conditions["AffectedBy"+strings.ReplaceAll(b.name, " ", "")] = true
+	main.mods.conditions["AffectedByAura"] = true
+	list, cfg := s.mods, s.cfg
+	names := []string{"AuraEffect", "BuffEffect", "AuraBuffEffect"}
+	scale := math.Max((1+list.SumCfg(cfg, "INC", names...)/100)*list.MoreCfg(cfg, names...), 0)
+	scaled := func(v float64) float64 {
+		if math.Floor(v) == v {
+			return modfInt(round(v*scale, 2))
+		}
+		return v * scale
+	}
+	var src []Mod
+	for _, ms := range [][]Mod{extra, b.mods} {
+		for _, m := range ms {
+			if m.Name != "EnergyShield" && m.Name != "Armour" && m.Name != "Evasion" && !totemAuraMod.MatchString(m.Name) {
+				continue
+			}
+			m.Name = "Totem" + m.Name
+			if scale != 1 {
+				m.Value = scaleTotemValue(m.Value, scaled)
+			}
+			src = append(src, m)
+		}
+	}
+	add(src, "Totem "+b.name)
+}
+
+// scaleTotemValue scales a totem aura mod's value: a number, or the inner
+// mod of a { mod = ... } value (CalcPerform.lua:2569-2575).
+func scaleTotemValue(v any, scaled func(float64) float64) any {
+	if f, isNum := v.(float64); isNum {
+		return scaled(f)
+	}
+	mv, isMap := v.(map[string]any)
+	if !isMap {
+		return v
+	}
+	inner, hasMod := mv["mod"].(map[string]any)
+	if !hasMod {
+		return v
+	}
+	f, isNum := num(inner["value"])
+	if !isNum {
+		return v
+	}
+	inner = maps.Clone(inner)
+	inner["value"] = scaled(f)
+	mv = maps.Clone(mv)
+	mv["mod"] = inner
+	return mv
 }

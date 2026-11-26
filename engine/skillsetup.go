@@ -291,7 +291,7 @@ func (c *Calculator) setupSkills(db *ModDB, b *pobcode.Build, useSwap bool, res 
 	newEffect := func(gc *groupCfg, gi int, gm *pobcode.Gem, gem *gamedata.Gem, eid string, ge *gamedata.Skill) *skillEffect {
 		sq := socketQuality(db.items[gc.cfg.SlotName], ge, socketIndex[gm])
 		eff := &skillEffect{id: eid, ge: ge, gem: gem, level: gm.Level, quality: gm.Quality + sq,
-			srcLevel: gm.Level, srcQuality: gm.Quality, srcPart: gm.SkillPart, hasSrc: true}
+			srcLevel: gm.Level, srcQuality: gm.Quality, srcPart: gm.SkillPart, hasSrc: true, socketQuality: sq}
 		if gem != nil {
 			cfg, socketed := gemCfg(gc, gi+1)
 			eff.cfg = cfg

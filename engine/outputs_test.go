@@ -1,0 +1,47 @@
+package engine
+
+import "testing"
+
+// The outputs below are compared with the oracle (PoB v2.68.1) on every
+// corpus build, one test per family.
+
+// TestDefenceMiscOutputs: CalcDefence.lua:528, 792, 1087-1090, 1125-1130,
+// 1228-1233, 1367-1368, 1551, 1585-1587, 1618-1621, 1637.
+func TestDefenceMiscOutputs(t *testing.T) {
+	oracleStats(t, false, "PhysicalResist", "ShowBlockEffect", "Gear:Ward", "Gear:EnergyShield", "Gear:Armour",
+		"Gear:Evasion", "splitEvade", "noSplitEvade", "MissingUnreservedLifePercent",
+		"EnergyShieldRechargeAppliesToLife", "EnergyShieldRechargeAppliesToEnergyShield", "WardRechargeDelay",
+		"BlindEffectMod", "CorruptedBloodImmunity", "MaimImmunity", "HinderImmunity", "KnockbackImmunity",
+		"RawArmourDefense")
+}
+
+// TestTotemResists: CalcDefence.lua:600-611, 633-637 with the base mods of
+// CalcSetup.lua:39-42, 621-624 and the totem aura mods of CalcPerform.lua:
+// 2551-2581.
+func TestTotemResists(t *testing.T) {
+	var keys []string
+	for _, e := range []string{"Fire", "Cold", "Lightning", "Chaos"} {
+		keys = append(keys, "Totem"+e+"Resist", "Totem"+e+"ResistTotal", "Totem"+e+"ResistOverCap",
+			"MissingTotem"+e+"Resist")
+	}
+	oracleStats(t, true, keys...)
+}
+
+// TestSelfDebuffs: CalcDefence.lua:1668-1699.
+func TestSelfDebuffs(t *testing.T) {
+	keys := []string{"DebuffExpirationRate", "DebuffExpirationModifier", "showDebuffExpirationModifier",
+		"SelfBlindDuration"}
+	for _, a := range ailmentTypeList {
+		keys = append(keys, "Self"+a+"Duration", "Self"+a+"Effect")
+	}
+	oracleStats(t, true, keys...)
+}
+
+// TestPerformOutputs: CalcPerform.lua:83, 133-134, 934-935, 990-1004,
+// 1380-1388, 1511-1514, 3375, 3972-4013 (and CalcActiveSkill.lua:573-575).
+func TestPerformOutputs(t *testing.T) {
+	oracleStats(t, false, "ChaosInoculation", "LowestOfMaximumLifeAndMaximumMana", "MaximumLifeManaDifference",
+		"InherentRageLoss", "InherentRageLossDelay", "PowerChargesDuration", "FrenzyChargesDuration",
+		"EnduranceChargesDuration", "HexDoomLimit", "LootQuantityNormalEnemies", "LootRarityMagicEnemies",
+		"GuardSkillActive", "GemHasLevel", "GemLevel", "GemHasQuality", "GemQuality")
+}

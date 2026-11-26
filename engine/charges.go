@@ -50,6 +50,11 @@ func charges(db *ModDB) {
 	sumMax := func(name string) float64 { return math.Max(db.Sum("BASE", name), 0) }
 	out["PowerChargesMin"] = sumMax("PowerChargesMin")
 	out["PowerChargesMax"] = overrideOr(db, "PowerChargesMax", sumMax("PowerChargesMax"))
+	// CalcPerform.lua:990, 997, 1004.
+	chargeDuration := func(name string) float64 {
+		return math.Floor(db.Sum("BASE", "ChargeDuration") * calcMod(db, nil, name, "ChargeDuration"))
+	}
+	out["PowerChargesDuration"] = chargeDuration("PowerChargesDuration")
 	if db.Flag("MaximumFrenzyChargesIsMaximumPowerCharges") {
 		replaceMod(db, "FrenzyChargesMax", "OVERRIDE", out["PowerChargesMax"])
 	}
@@ -59,6 +64,7 @@ func charges(db *ModDB) {
 		frenzyMax = out["PowerChargesMax"]
 	}
 	out["FrenzyChargesMax"] = overrideOr(db, "FrenzyChargesMax", frenzyMax)
+	out["FrenzyChargesDuration"] = chargeDuration("FrenzyChargesDuration")
 	if db.Flag("MaximumEnduranceChargesIsMaximumFrenzyCharges") {
 		replaceMod(db, "EnduranceChargesMax", "OVERRIDE", out["FrenzyChargesMax"])
 	}
@@ -68,6 +74,7 @@ func charges(db *ModDB) {
 		enduranceMax = out["FrenzyChargesMax"]
 	}
 	out["EnduranceChargesMax"] = overrideOr(db, "EnduranceChargesMax", enduranceMax)
+	out["EnduranceChargesDuration"] = chargeDuration("EnduranceChargesDuration")
 	for _, n := range []string{"SiphoningChargesMax", "ChallengerChargesMax", "BlitzChargesMax", "InspirationChargesMax", "CrabBarriersMax", "BloodChargesMax", "SpiritChargesMax"} {
 		out[n] = sumMax(n)
 	}
@@ -206,6 +213,7 @@ func rage(db *ModDB, mainCfg *Cfg) {
 	if stacks == maxStacks {
 		db.Add(Mod{Name: "Condition:HaveMaximumRage", Type: "FLAG", Value: true})
 	}
+	inherentRageLoss(db)
 }
 
 // alternateCharges is calcs.perform's "Process stats from alternate

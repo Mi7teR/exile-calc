@@ -460,6 +460,9 @@ func (c *Calculator) buildSkillMods(db *ModDB, s *activeSkill, res *Result) {
 	}
 	list.NewMod("GemLevel", "BASE", float64(lvl), "Max Level")
 	list.NewMod("GemQuality", "BASE", float64(q), "Max Quality")
+	if a.socketQuality > 0 { // CalcActiveSkill.lua:573-575
+		list.NewMod("GemSocketQuality", "BASE", float64(a.socketQuality), "Socket Quality")
+	}
 	for _, p := range list.List(s.cfg, "SupportedGemProperty") {
 		v, _ := p.Value.(map[string]any)
 		if v["keyword"] != "grants_active_skill" || a.gem == nil || hasTag(a.gem, "support") {

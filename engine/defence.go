@@ -128,6 +128,7 @@ func (c *Calculator) defence(db *ModDB, gearMods map[string][]modparser.Mod, key
 		out["EffectiveSpellBlockChance"] + out["EffectiveSpellProjectileBlockChance"]) / 4
 	out["BlockEffect"] = 100 - db.Sum("BASE", "BlockEffect")
 	if out["BlockEffect"] != 0 {
+		out["ShowBlockEffect"] = 1 // CalcDefence.lua:792
 		out["DamageTakenOnBlock"] = 100 - out["BlockEffect"]
 	}
 
@@ -176,6 +177,7 @@ func (c *Calculator) defence(db *ModDB, gearMods map[string][]modparser.Mod, key
 	// fuse it into the sum (FMA on arm64): PoB adds the rounded products,
 	// and mKBO1UbFLlKF's 7103.4999999999991 must not become 7103.5.
 	var ward, es, arm, eva, gearEvasion float64
+	var gearWard, gearES, gearArmour float64
 	for _, slot := range defenceSlots {
 		d, ok := armour[slot]
 		if !ok {
@@ -207,15 +209,19 @@ func (c *Calculator) defence(db *ModDB, gearMods map[string][]modparser.Mod, key
 			} else {
 				ward += float64(wardBase * calcMod(db, cfg, "Ward", "Defences"))
 			}
+			gearWard += wardBase
 		}
 		if esBase > 0 {
 			if esToWard {
 				es += float64(esBase * db.MoreCfg(cfg, "EnergyShield", "Defences"))
+				gearES += esBase
 			} else if !db.Flag("ConvertArmourESToLife") {
+				gearES += esBase
 				es += float64(esBase * calcMod(db, cfg, "EnergyShield", "Defences", slot+"ESAndArmour"))
 			}
 		}
 		if armBase > 0 {
+			gearArmour += armBase
 			arm += float64(armBase * calcMod(db, cfg, "Armour", "ArmourAndEvasion", "Defences", slot+"ESAndArmour"))
 		}
 		if evaBase > 0 {
@@ -294,6 +300,9 @@ func (c *Calculator) defence(db *ModDB, gearMods map[string][]modparser.Mod, key
 	out["ProjectileEvasion"] = math.Max(round(eva*calcMod(db, nil, "ProjectileEvasion"), 0), 0)
 	out["LowestOfArmourAndEvasion"] = math.Min(out["Armour"], out["Evasion"])
 	out["Ward"] = math.Max(math.Floor(ward), 0)
+	// CalcDefence.lua:1087-1090.
+	out["Gear:Ward"], out["Gear:EnergyShield"] = gearWard, gearES
+	out["Gear:Armour"], out["Gear:Evasion"] = gearArmour, gearEvasion
 	c.evadeChance(db)
 }
 
@@ -358,8 +367,12 @@ func (c *Calculator) evadeChance(db *ModDB) {
 		}
 		out["MeleeEvadeChance"] = chance(melee, "MeleeEvadeChance")
 		out["ProjectileEvadeChance"] = chance(proj, "ProjectileEvadeChance")
-		if out["MeleeEvadeChance"] == out["ProjectileEvadeChance"] {
+		// CalcDefence.lua:1125-1130.
+		if out["MeleeEvadeChance"] != out["ProjectileEvadeChance"] {
+			out["splitEvade"] = 1
+		} else {
 			out["EvadeChance"] = out["MeleeEvadeChance"]
+			out["noSplitEvade"] = 1
 		}
 	}
 }
