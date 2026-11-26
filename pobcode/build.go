@@ -145,6 +145,11 @@ type SocketGroup struct {
 	MainActiveSkill      int
 	MainActiveSkillCalcs int
 	Gems                 []Gem
+	// NoSupports is group.noSupports as a calculation leaves it on a group
+	// it creates (PoB's "On Kill Monster Explosion" group). PoB does not
+	// save it, so Decode leaves it false and Code does not write it; it
+	// lives on in the calculated build, as on PoB's session group.
+	NoSupports bool
 }
 
 type Gem struct {

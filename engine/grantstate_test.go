@@ -55,6 +55,28 @@ func TestExplodeGroupGrant(t *testing.T) {
 		if n != len(gems) {
 			t.Errorf("%s: %d EnemyExplode skills for %d gems", tc.id, n, len(gems))
 		}
+		// A calculation of the calculated build (the minion passes,
+		// withMainSkill, and the Comparer) keeps the created group's
+		// noSupports, as PoB's session group does; the saved build does not
+		// hold it.
+		again, err := c.Calc(withMainSkill(res.build, 1, 1))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := grantOf(again.grants, groupBySource(t, again.build, "Explode")).noSupports; got != tc.noSupports {
+			t.Errorf("%s: recalculated Explode group noSupports %v, want %v", tc.id, got, tc.noSupports)
+		}
+		code, err := res.build.Code()
+		if err != nil {
+			t.Fatal(err)
+		}
+		saved, err := pobcode.FromCode(code)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if g := saved.ActiveSkills().Groups[i]; g.NoSupports {
+			t.Errorf("%s: the saved build keeps NoSupports", tc.id)
+		}
 	}
 }
 

@@ -589,11 +589,14 @@ func (l *groupList) explode(n int) {
 	idx := slices.IndexFunc(l.groups, func(g pobcode.SocketGroup) bool { return g.Source == "Explode" })
 	if idx < 0 {
 		// { label = "On Kill Monster Explosion", enabled = true, gemList = { }, source = "Explode", noSupports = true }
-		idx = l.add(pobcode.SocketGroup{Label: explodeGroupLabel, Enabled: true, Source: "Explode"})
-		// Only a group created here has noSupports: the block never sets
-		// it on a group it finds, and a saved build does not hold it.
-		l.grants[idx].noSupports = true
+		idx = l.add(pobcode.SocketGroup{Label: explodeGroupLabel, Enabled: true, Source: "Explode", NoSupports: true})
 	}
+	// Only a group created by the block has noSupports: the block never
+	// sets it on a group it finds, and a saved build does not hold it. It
+	// stays on the group of the calculated build, so a calculation of that
+	// build (the minion and Comparer passes) sees it, as PoB's session
+	// group keeps it.
+	l.grants[idx].noSupports = l.groups[idx].NoSupports
 	l.marked[idx] = true
 	// gemsBySource reuses gems by their explodeSource, which a saved build
 	// does not carry (SkillsTab.lua saves no explodeSource), so every gem
