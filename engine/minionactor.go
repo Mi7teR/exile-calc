@@ -34,6 +34,7 @@ func minionBaseMods(mdb *ModDB) {
 	mdb.NewMod("ShockStacksMax", "BASE", 1, "Base")
 	mdb.NewMod("ScorchStacksMax", "BASE", 1, "Base")
 	mdb.conditions["Buffed"], mdb.conditions["Combat"], mdb.conditions["Effective"] = true, true, true
+	minionLeechBaseMods(mdb)
 	chargeBaseMods(mdb)
 	initConditionMods(mdb)
 	shrineBaseMods(mdb)
@@ -474,6 +475,9 @@ var minionResultStats = []string{
 	"Life", "EnergyShield", "Armour", "Evasion", "Str", "Dex", "Int",
 	"FireResist", "ColdResist", "LightningResist", "ChaosResist",
 	"BlockChance", "SpellBlockChance",
+	// The leech caps (minionLeechCaps).
+	"MaxLifeLeechInstance", "MaxLifeLeechRatePercent", "MaxLifeLeechRate", "MaxEnergyShieldLeechInstance",
+	"MaxEnergyShieldLeechRate", "MaxManaLeechInstance", "MaxManaLeechRate",
 }
 
 // mainMinion computes env.minion, the main skill's minion, the way
@@ -653,6 +657,7 @@ func (c *Calculator) minionDefence(db *ModDB, mc *minionCalc) {
 	}
 	c.resistances(mdb)
 	c.defence(mdb, mc.gear, map[string]bool{})
+	minionLeechCaps(mdb)
 	for _, k := range minionResultStats {
 		mc.res.Stats[k] = mdb.output[k]
 	}
