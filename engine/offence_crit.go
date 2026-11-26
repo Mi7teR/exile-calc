@@ -77,7 +77,9 @@ func (c *Calculator) crit(s *activeSkill, p *hitPass, enemy *ModDB, actor *ModDB
 				}
 			}
 			out["PreBifurcateCritChance"] = cc
-			if list.FlagCfg(cfg, "BifurcateCrit") {
+			// CalcOffence.lua:3162: only with env.mode_effective, which
+			// every actor's Effective condition mirrors (CalcSetup.lua:134).
+			if actor.conditions["Effective"] && list.FlagCfg(cfg, "BifurcateCrit") {
 				cc = (1 - math.Pow(1-cc/100, 2)) * 100 //nolint:staticcheck // matches PoB CalcOffence.lua:3163
 			}
 			for _, x := range []struct {
@@ -103,7 +105,8 @@ func (c *Calculator) crit(s *activeSkill, p *hitPass, enemy *ModDB, actor *ModDB
 			extra += enemy.Sum("BASE", "SelfCritMultiplier") / 100
 			extra = round(extra*enemyInc, 2)
 			override, hasOverride := list.OverrideCfg(cfg, "CritChance")
-			if list.FlagCfg(cfg, "BifurcateCrit") && !(hasOverride && override == 100) {
+			// CalcOffence.lua:3261: env.mode_effective, as above.
+			if actor.conditions["Effective"] && list.FlagCfg(cfg, "BifurcateCrit") && !(hasOverride && override == 100) {
 				pre := out["PreBifurcateCritChance"]
 				multiChance := pre * pre / 100
 				use := 1.0
