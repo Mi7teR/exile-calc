@@ -168,7 +168,8 @@ func (c *Calculator) offence(actor *ModDB, s *activeSkill, w1 hitSource, w2 *hit
 		if s.flags["ballista"] {
 			base = list.SumCfg(s.cfg, "BASE", "BallistaPlacementTime")
 		}
-		out["TotemPlacementSpeed"] = 1 / base * calcMod(list, s.cfg, "TotemPlacementSpeed") * actor.output["ActionSpeedMod"]
+		out["TotemPlacementSpeed"] = 1 / base * calcMod(list, s.cfg, "TotemPlacementSpeed") *
+			actor.output["ActionSpeedMod"]
 		out["TotemPlacementTime"] = 1 / out["TotemPlacementSpeed"]
 		out["TotemLife"] = c.totemLife(s)
 	}
@@ -477,13 +478,16 @@ func pacts(actor *ModDB, s *activeSkill, out map[string]float64) {
 		}
 		if key == "Beidat" {
 			// Coverage bonuses are averaged with the same uptime as the damage bonus.
-			mult := effect / 100
-			if s.flags["projectile"] && !list.FlagCfg(s.cfg, "NoAdditionalProjectiles") && !list.FlagCfg(s.cfg, "SingleProjectile") {
+			mult := effect / 100 //nolint:mnd // percent
+			if s.flags["projectile"] && !list.FlagCfg(s.cfg, "NoAdditionalProjectiles") &&
+				!list.FlagCfg(s.cfg, "SingleProjectile") {
 				out["BeidatAdditionalProjectiles"] = v.mods.SumCfg(v.cfg, "BASE", "BeidatAdditionalProjectiles") * mult
 				out["ProjectileCount"] += out["BeidatAdditionalProjectiles"]
 			}
-			if s.flags["chaining"] && !s.flags["projectile"] && !list.FlagCfg(s.cfg, "CannotChain") && !list.FlagCfg(s.cfg, "NoAdditionalChains") {
-				out["BeidatAdditionalBeamChains"] = v.mods.SumCfg(v.cfg, "BASE", "BeidatAdditionalBeamChains") * mult * list.MoreCfg(s.cfg, "ChainCountMax")
+			if s.flags["chaining"] && !s.flags["projectile"] && !list.FlagCfg(s.cfg, "CannotChain") &&
+				!list.FlagCfg(s.cfg, "NoAdditionalChains") {
+				out["BeidatAdditionalBeamChains"] = v.mods.SumCfg(v.cfg, "BASE", "BeidatAdditionalBeamChains") * mult *
+					list.MoreCfg(s.cfg, "ChainCountMax")
 				out["ChainMax"] += out["BeidatAdditionalBeamChains"]
 				out["ChainMaxString"] = out["ChainMax"]
 				out["ChainRemaining"] = math.Max(0, out["ChainMax"]-out["Chain"])
@@ -575,10 +579,12 @@ func sustainableStages(s *activeSkill, out map[string]float64) {
 // Exposure debuff (effectCond ScorchingRayMaxStages) applies.
 func scorchingRayStages(skills []*activeSkill) {
 	for _, s := range skills {
-		if name := s.active.ge.Name; !s.disabled && s.part == 2 && (name == "Scorching Ray" || name == "Scorching Ray of Immolation") {
+		name := s.active.ge.Name
+		if !s.disabled && s.part == 2 && (name == "Scorching Ray" || name == "Scorching Ray of Immolation") {
 			stage := "Multiplier:" + strings.Join(strings.Fields(name), "")
-			s.mods.NewMod(stage+"MaxStages", "BASE", 7, "Base")
-			s.mods.NewMod(stage+"StageAfterFirst", "BASE", 7, "Base")
+			const maximum = 7 // CalcPerform.lua: local maximum = 7
+			s.mods.NewMod(stage+"MaxStages", "BASE", maximum, "Base")
+			s.mods.NewMod(stage+"StageAfterFirst", "BASE", maximum, "Base")
 		}
 	}
 }

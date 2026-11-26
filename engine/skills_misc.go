@@ -12,7 +12,10 @@ func init() {
 	)
 	registerSkill([]string{"Bodyswap", "Bodyswap of Sacrifice"}, skillHooks{preDamage: bodyswapPreDamage})
 	registerSkill([]string{"Righteous Fire"}, skillHooks{preDamage: righteousFirePreDamage})
-	registerSkill([]string{"Righteous Fire of Arcane Devotion"}, skillHooks{preDamage: righteousFireOfArcaneDevotionPreDamage})
+	registerSkill(
+		[]string{"Righteous Fire of Arcane Devotion"},
+		skillHooks{preDamage: righteousFireOfArcaneDevotionPreDamage},
+	)
 	registerSkill([]string{"Vaal Righteous Fire"}, skillHooks{preDamage: vaalRighteousFirePreDamage})
 	registerSkill([]string{"Rallying Cry"}, skillHooks{warcryShare: rallyingCryWarcryShare})
 	registerSkill([]string{"Seismic Cry"}, skillHooks{warcryShare: seismicCryWarcryShare})

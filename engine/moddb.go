@@ -223,16 +223,16 @@ func (db *ModDB) moreInternal(ctx *ModDB, cfg *Cfg, names []string) float64 {
 			if !db.isList {
 				f = globalLimit(m, f, &limits)
 			}
-			mod *= 1 + f/100
-			if hp, has := highPrecisionMods[[2]string{m.Name, "MORE"}]; has {
+			mod *= 1 + f/100                                                  //nolint:mnd // percent
+			if hp, has := highPrecisionMods[[2]string{m.Name, "MORE"}]; has { //nolint:goconst // mod type
 				precision = max(precision, hp)
 			}
 		}
 		if precision >= 0 {
-			p := math.Pow(10, float64(precision))
+			p := math.Pow(10, float64(precision)) //nolint:mnd // decimal places
 			result = math.Floor(result*mod*p) / p
 		} else {
-			result *= round(mod, 2)
+			result *= round(mod, 2) //nolint:mnd // PoB rounds MORE to 2 places
 		}
 	}
 	if db.parent != nil {
@@ -387,8 +387,9 @@ func (db *ModDB) getStat(stat string, cfg *Cfg) float64 {
 		case math.IsNaN(v):
 			return db.output["Mana"]
 		case v < 0:
-			before := (math.Abs(db.output["ManaUnreservedPercent"]) + 100) * ((100 + db.root().manaEfficiency) / 100)
-			return db.output["Mana"] * (math.Ceil(before) / 100)
+			before := (math.Abs(db.output["ManaUnreservedPercent"]) + 100) * //nolint:mnd // percent
+				((100 + db.root().manaEfficiency) / 100) //nolint:mnd // percent
+			return db.output["Mana"] * (math.Ceil(before) / 100) //nolint:mnd // percent
 		}
 	}
 	// (self.actor.output and self.actor.output[stat]) or (cfg and cfg.skillStats and cfg.skillStats[stat]) or 0

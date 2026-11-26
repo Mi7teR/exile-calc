@@ -562,7 +562,7 @@ func extraAuras(db *ModDB, main *activeSkill) {
 		if !ok {
 			continue
 		}
-		if !truthy(v["onlyAllies"]) && !(truthy(v["fromAllies"]) && db.Flag("AlliesAurasCannotAffectSelf")) {
+		if !truthy(v["onlyAllies"]) && (!truthy(v["fromAllies"]) || !db.Flag("AlliesAurasCannotAffectSelf")) {
 			db.Add(scaleMod(modFromMap(mm, e.Mod.Source), scale))
 			if !truthy(v["notBuff"]) {
 				db.multipliers["BuffOnSelf"]++

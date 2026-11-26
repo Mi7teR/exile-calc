@@ -96,7 +96,14 @@ func (c *Calculator) clusterGraph(spec *pobcode.Spec, b *pobcode.Build, res *Res
 // with PassiveSpec's legacyClusterNodeMap: the ids a format-1 spec saved
 // for the subgraphs' sockets and nodes -> the current ids
 // (BuildLegacyProxyGroup and BuildLegacyClusterOrbitMappings).
-func (c *Calculator) clusterGraphLegacy(spec *pobcode.Spec, b *pobcode.Build, res *Result, legacy map[int]int) (map[int]clusterNode, map[int][]int, map[int]bool) {
+//
+//nolint:gocognit,gocyclo,cyclop,funlen // the BuildSubgraph walk, ported as one function
+func (c *Calculator) clusterGraphLegacy(
+	spec *pobcode.Spec,
+	b *pobcode.Build,
+	res *Result,
+	legacy map[int]int,
+) (map[int]clusterNode, map[int][]int, map[int]bool) {
 	// subSockets: the tree sockets the subgraphs create (PassiveSpec keeps
 	// nested cluster sockets out of self.nodes until a subgraph adds them).
 	subSockets := map[int]bool{}
@@ -305,8 +312,8 @@ func (c *Calculator) clusterGraphLegacy(spec *pobcode.Spec, b *pobcode.Build, re
 
 		// Recurse into allocated sockets holding a valid cluster jewel.
 		for _, s := range sockets {
-			if jewel := jewelAt(s.ID); allocated[s.ID] && jewel != nil && s.ExpansionJewel != nil {
-				build(jewel, s.ExpansionJewel, id, s.ID)
+			if sub := jewelAt(s.ID); allocated[s.ID] && sub != nil && s.ExpansionJewel != nil {
+				build(sub, s.ExpansionJewel, id, s.ID)
 			}
 		}
 	}
@@ -377,7 +384,13 @@ func translateClusterOrbitIndex(src, srcPerOrbit, destPerOrbit int) int {
 // legacy orbit space, where the proxy node's own orbit placed them, with
 // the current one, offset by orbitOffsets, and returns legacy id -> current
 // id for the nodes whose ids differ.
-func legacyOrbitMappings(tree *gamedata.Tree, data *gamedata.ClusterJewels, proxy *gamedata.Node, cj *gamedata.ClusterJewel, byIndex map[int]int) map[int]int {
+func legacyOrbitMappings(
+	tree *gamedata.Tree,
+	data *gamedata.ClusterJewels,
+	proxy *gamedata.Node,
+	cj *gamedata.ClusterJewel,
+	byIndex map[int]int,
+) map[int]int {
 	spo := tree.Constants.SkillsPerOrbit
 	total := cj.TotalIndicies
 	if total == 0 || cj.SizeIndex+1 >= len(spo) || proxy.Orbit >= len(spo) {

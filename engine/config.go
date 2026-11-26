@@ -39,11 +39,38 @@ func (c *configApplies) get(opts []gamedata.ConfigOption) map[string]*luadata.Fu
 	return c.funcs
 }
 
-// bossResistPlaceholders are the options whose placeholder enemyIsBoss's
-// apply sets (ConfigOptions.lua SetPlaceholder) and whose apply adds enemy
-// mods.
-var bossResistPlaceholders = map[string]bool{
-	"enemyLightningResist": true, "enemyColdResist": true, "enemyFireResist": true, "enemyChaosResist": true,
+// configPlaceholder is the option's placeholder: the saved one, else its
+// defaultPlaceholderState, unless enemyIsBoss's apply sets it.
+func configPlaceholder(o gamedata.ConfigOption, set *pobcode.ConfigSet, e *enemyEnv) any {
+	if e != nil {
+		if v, ok := bossPlaceholder(o.Var, e); ok {
+			return v
+		}
+	}
+	placeholder := o.DefaultPlaceholderState
+	if set != nil {
+		for _, p := range set.Placeholders {
+			if p.Name == o.Var {
+				placeholder = inputValue(p)
+			}
+		}
+	}
+	return placeholder
+}
+
+// bossPlaceholder returns the placeholder enemyIsBoss's apply sets for an
+// enemy resistance option (ConfigOptions.lua SetPlaceholder), replacing the
+// saved one: nil when it clears it. ok is false for other options.
+func bossPlaceholder(name string, e *enemyEnv) (any, bool) {
+	switch name {
+	case "enemyLightningResist", "enemyColdResist", "enemyFireResist", "enemyChaosResist":
+	default:
+		return nil, false
+	}
+	if v, ok := e.holders[name]; ok {
+		return v, true
+	}
+	return nil, true
 }
 
 // configValue is the value ConfigTab:BuildModList passes to apply, and
@@ -59,23 +86,12 @@ func configValue(o gamedata.ConfigOption, set *pobcode.ConfigSet, e *enemyEnv) (
 	if o.DefaultValue != nil {
 		input = o.DefaultValue
 	}
-	placeholder = o.DefaultPlaceholderState
 	if set != nil {
 		if in, ok := set.Input(o.Var); ok {
 			input = inputValue(in)
 		}
-		for _, p := range set.Placeholders {
-			if p.Name == o.Var {
-				placeholder = inputValue(p)
-			}
-		}
 	}
-	if e != nil && bossResistPlaceholders[o.Var] {
-		placeholder = nil
-		if v, ok := e.holders[o.Var]; ok {
-			placeholder = v
-		}
-	}
+	placeholder = configPlaceholder(o, set, e)
 	switch o.Type {
 	case "check":
 		b, _ := input.(bool)

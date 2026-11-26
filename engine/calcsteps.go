@@ -216,7 +216,10 @@ func stepBandit(_ *Calculator, st *calcState) error {
 // soul.
 func stepPantheon(c *Calculator, st *calcState) error {
 	db, b, config := st.db, st.b, st.config
-	for _, x := range [][2]string{{"pantheonMajorGod", legacyBuildChoice(b, b.PantheonMajorGod)}, {"pantheonMinorGod", legacyBuildChoice(b, b.PantheonMinorGod)}} {
+	for _, x := range [][2]string{
+		{"pantheonMajorGod", legacyBuildChoice(b, b.PantheonMajorGod)},
+		{"pantheonMinorGod", legacyBuildChoice(b, b.PantheonMinorGod)},
+	} {
 		god := c.data.Pantheons[configString(config, x[0], x[1])]
 		if god == nil || len(god.Souls) == 0 {
 			continue

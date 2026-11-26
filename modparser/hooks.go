@@ -66,12 +66,12 @@ var hooks = map[string]Hook{
 	},
 	// ["enemies permanently take (%d+)%% increased damage for each second they've ever been frozen by you, up to a maximum of (%d+)%%"] = function(num, _, limit) return {
 	//   mod("EnemyModifier", "LIST", { mod = mod("DamageTaken", "INC", num, { type = "Condition", var = "FrozenByYou" }, { type = "Multiplier", var = "FrozenByYouSeconds", limit = limit / num }) }) } end,
-	"specialModList[^enemies permanently take (%d+)%% increased damage for each second they've ever been frozen by you, up to a maximum of (%d+)%%$]": func(p *Parser, a []any) any {
+	"specialModList[^enemies permanently take (%d+)%% increased damage for each second they've ever been frozen by you, up to a maximum of (%d+)%%$]": func(_ *Parser, a []any) any {
 		return everBeenAilmentedTaken(a, "FrozenByYou")
 	},
 	// ["enemies permanently take (%d+)%% increased damage for each second they've ever been chilled by you, up to a maximum of (%d+)%%"] = function(num, _, limit) return {
 	//   mod("EnemyModifier", "LIST", { mod = mod("DamageTaken", "INC", num, { type = "Condition", var = "ChilledByYou" }, { type = "Multiplier", var = "ChilledByYouSeconds", limit = limit / num }) }) } end,
-	"specialModList[^enemies permanently take (%d+)%% increased damage for each second they've ever been chilled by you, up to a maximum of (%d+)%%$]": func(p *Parser, a []any) any {
+	"specialModList[^enemies permanently take (%d+)%% increased damage for each second they've ever been chilled by you, up to a maximum of (%d+)%%$]": func(_ *Parser, a []any) any {
 		return everBeenAilmentedTaken(a, "ChilledByYou")
 	},
 	// ["each mine applies (%d+)%% reduced damage dealt to enemies near it, up to (%d+)%%"] = function(num, _, limit) return {
@@ -400,11 +400,11 @@ var hooks = map[string]Hook{
 	//   mod( firstToUpper(element1).."ExposureChance", "BASE", 100, { type = "ActorCondition", actor = "enemy", var = "RareOrUnique" }, { type = "Condition", var = "Effective" }),
 	//   mod("EnemyModifier", "LIST", { mod = mod(firstToUpper(element2).."Exposure", "BASE", -num, { type = "Condition", var = "RareOrUnique" }) }, { type = "Condition", var = "Effective" }),
 	// } end
-	"specialModList[^while a unique enemy is in your presence, inflict (%w+) exposure on hit, applying %-(%d+)%% to (%w+) resistance$]": func(p *Parser, a []any) any {
+	"specialModList[^while a unique enemy is in your presence, inflict (%w+) exposure on hit, applying %-(%d+)%% to (%w+) resistance$]": func(_ *Parser, a []any) any {
 		return presenceExposure(a, "RareOrUnique")
 	},
 	// ["while a pinnacle atlas boss is in your presence, inflict (%w+) exposure on hit, applying %-(%d+)%% to (%w+) resistance"]: the same with PinnacleBoss.
-	"specialModList[^while a pinnacle atlas boss is in your presence, inflict (%w+) exposure on hit, applying %-(%d+)%% to (%w+) resistance$]": func(p *Parser, a []any) any {
+	"specialModList[^while a pinnacle atlas boss is in your presence, inflict (%w+) exposure on hit, applying %-(%d+)%% to (%w+) resistance$]": func(_ *Parser, a []any) any {
 		return presenceExposure(a, "PinnacleBoss")
 	},
 	// ["with at least one nearby corpse, nearby enemies deal (%d+)%% reduced damage"] = function(num) return {
@@ -506,16 +506,22 @@ var hooks = map[string]Hook{
 	"specialModList[^([%+%-]%d+) to level of socketed skill gems per (%d+) player levels$]":        socketedLevelPerPlayerLevels,
 	// ["(%d+)%% chance for poisons inflicted with this weapon to deal (%d+)%% more damage"] = function(num, _, more) return {
 	//   mod("Damage", "MORE", tonumber(more) * num / 100, nil, 0, KeywordFlag.Poison, { type = "Condition", var = "{Hand}Attack" }, { type = "SkillType", skillType = SkillType.Attack }) } end,
-	"specialModList[^(%d+)%% chance for poisons inflicted with this weapon to deal (%d+)%% more damage$]": func(p *Parser, a []any) any {
-		return poisonChanceMore(a, map[string]any{"type": "Condition", "var": "{Hand}Attack"}, map[string]any{"type": "SkillType", "skillType": 1.0})
+	"specialModList[^(%d+)%% chance for poisons inflicted with this weapon to deal (%d+)%% more damage$]": func(_ *Parser, a []any) any {
+		return poisonChanceMore(a,
+			map[string]any{"type": "Condition", "var": "{Hand}Attack"}, //nolint:goconst // Lua tag value
+			map[string]any{"type": "SkillType", "skillType": 1.0})
 	},
 	// ["(%d+)%% chance for poisons inflicted with blast rain or artillery balls?i?s?ta to deal (%d+)%% more damage"]: the same for Blast Rain and Artillery Ballista.
-	"specialModList[^(%d+)%% chance for poisons inflicted with blast rain or artillery balls?i?s?ta to deal (%d+)%% more damage$]": func(p *Parser, a []any) any {
-		return poisonChanceMore(a, map[string]any{"type": "SkillName", "skillNameList": []any{"Blast Rain", "Artillery Ballista"}})
+	"specialModList[^(%d+)%% chance for poisons inflicted with blast rain or artillery balls?i?s?ta to deal (%d+)%% more damage$]": func(_ *Parser, a []any) any {
+		return poisonChanceMore(a, map[string]any{
+			"type": "SkillName", "skillNameList": []any{"Blast Rain", "Artillery Ballista"}, //nolint:goconst // Lua key
+		})
 	},
 	// ["(%d+)%% chance for poisons inflicted with freezing pulse and eye of winter to deal (%d+)%% more damage"]: the same, transfigured gems included.
-	"specialModList[^(%d+)%% chance for poisons inflicted with freezing pulse and eye of winter to deal (%d+)%% more damage$]": func(p *Parser, a []any) any {
-		return poisonChanceMore(a, map[string]any{"type": "SkillName", "skillNameList": []any{"Freezing Pulse", "Eye of Winter"}, "includeTransfigured": true})
+	"specialModList[^(%d+)%% chance for poisons inflicted with freezing pulse and eye of winter to deal (%d+)%% more damage$]": func(_ *Parser, a []any) any {
+		return poisonChanceMore(a, map[string]any{
+			"type": "SkillName", "skillNameList": []any{"Freezing Pulse", "Eye of Winter"}, "includeTransfigured": true,
+		})
 	},
 	// ["([%a%s]+) reserves no mana"], ["([%a%s]+) has no reservation"] and
 	// ["([%a%s]+) has no reservation if cast as an aura"] = function(_, name) return {
@@ -1671,7 +1677,7 @@ func condTag(v string) map[string]any { return map[string]any{"type": "Condition
 // ChilledByYou, the multiplier is cond.."Seconds", limited to limit / num.
 func everBeenAilmentedTaken(a []any, cond string) any {
 	n, _ := toNumber(arg(a, 0)).(float64)
-	limit, _ := toNumber(argS(a, 2)).(float64)
+	limit, _ := toNumber(argS(a, 2)).(float64) //nolint:mnd // Lua capture index
 	return []any{newMod("EnemyModifier", "LIST", map[string]any{"mod": withTags(newMod("DamageTaken", "INC", n, 0, 0),
 		map[string]any{"type": "Condition", "var": cond},
 		map[string]any{"type": "Multiplier", "var": cond + "Seconds", "limit": limit / n})}, 0, 0)}
@@ -1682,21 +1688,23 @@ func everBeenAilmentedTaken(a []any, cond string) any {
 // (ModParser.lua specialModList): the chance needs the enemy condition, the
 // exposure the same condition on the enemy.
 func presenceExposure(a []any, cond string) any {
-	n, _ := toNumber(argS(a, 2)).(float64)
+	n, _ := toNumber(argS(a, 2)).(float64) //nolint:mnd // Lua capture index
 	effective := map[string]any{"type": "Condition", "var": "Effective"}
+	element := firstToUpper(argS(a, 3)) //nolint:mnd // Lua capture index
+	exposure := withTags(newMod(element+"Exposure", "BASE", -n, 0, 0), map[string]any{"type": "Condition", "var": cond})
 	return []any{
-		withTags(newMod(firstToUpper(argS(a, 1))+"ExposureChance", "BASE", 100.0, 0, 0),
+		withTags(newMod(firstToUpper(argS(a, 1))+"ExposureChance", "BASE", 100.0, 0, 0), //nolint:mnd // 100% chance
 			map[string]any{"type": "ActorCondition", "actor": "enemy", "var": cond}, effective),
-		withTags(newMod("EnemyModifier", "LIST", map[string]any{"mod": withTags(newMod(firstToUpper(argS(a, 3))+"Exposure", "BASE", -n, 0, 0),
-			map[string]any{"type": "Condition", "var": cond})}, 0, 0), effective),
+		withTags(newMod("EnemyModifier", "LIST", map[string]any{"mod": exposure}, 0, 0), effective),
 	}
 }
 
 // socketedLevelPerPlayerLevels is the Lua body of the "to level of socketed
 // (active) skill gems per N player levels" lines (The Poet's Pen).
-func socketedLevelPerPlayerLevels(p *Parser, a []any) any {
-	div, _ := toNumber(argS(a, 2)).(float64)
-	return []any{withTags(newMod("GemProperty", "LIST", map[string]any{"keyword": "grants_active_skill", "key": "level", "value": arg(a, 0)}, 0, 0),
+func socketedLevelPerPlayerLevels(_ *Parser, a []any) any {
+	div, _ := toNumber(argS(a, 2)).(float64) //nolint:mnd // Lua capture index
+	prop := map[string]any{"keyword": "grants_active_skill", "key": "level", "value": arg(a, 0)}
+	return []any{withTags(newMod("GemProperty", "LIST", prop, 0, 0),
 		map[string]any{"type": "SocketedIn", "slotName": "{SlotName}"},
 		map[string]any{"type": "Multiplier", "var": "Level", "div": div})}
 }
@@ -1706,7 +1714,7 @@ func socketedLevelPerPlayerLevels(p *Parser, a []any) any {
 // poison damage (KeywordFlag.Poison).
 func poisonChanceMore(a []any, tags ...any) any {
 	n, _ := toNumber(arg(a, 0)).(float64)
-	more, _ := toNumber(argS(a, 2)).(float64)
-	const kwPoison = 0x200000 // KeywordFlag.Poison
-	return []any{withTags(newMod("Damage", "MORE", more*n/100, 0, kwPoison), tags...)}
+	more, _ := toNumber(argS(a, 2)).(float64)                                          //nolint:mnd // Lua capture index
+	const kwPoison = 0x200000                                                          // KeywordFlag.Poison
+	return []any{withTags(newMod("Damage", "MORE", more*n/100, 0, kwPoison), tags...)} //nolint:mnd // percent
 }

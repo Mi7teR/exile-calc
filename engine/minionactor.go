@@ -30,7 +30,7 @@ func minionBaseMods(mdb *ModDB) {
 	mdb.NewMod("BlockChanceMax", "BASE", 75, "Base")
 	mdb.NewMod("SpellBlockChanceMax", "BASE", 75, "Base")
 	mdb.NewMod("ImpaleStacksMax", "BASE", 5, "Base")
-	mdb.NewMod("SoulEaterMax", "BASE", 45, "Base") // soul_eater_maximum_stacks
+	mdb.NewMod("SoulEaterMax", "BASE", soulEaterMaxStacks, "Base")
 	mdb.NewMod("ShockStacksMax", "BASE", 1, "Base")
 	mdb.NewMod("ScorchStacksMax", "BASE", 1, "Base")
 	mdb.conditions["Buffed"], mdb.conditions["Combat"], mdb.conditions["Effective"] = true, true, true
@@ -544,7 +544,8 @@ func (c *Calculator) mainMinion(db *ModDB, skills []*activeSkill, buffs map[stri
 		for _, r := range db.TabulateCfg(nil, "BASE", "ResistanceAddedToMinions") {
 			v, _ := num(r.Value)
 			for _, t := range resistTypes {
-				mdb.NewMod(t+"Resist", "BASE", math.Floor(db.output[t+"Resist"]*v/100), r.Source)
+				share := math.Floor(db.output[t+"Resist"] * v / 100) //nolint:mnd // percent
+				mdb.NewMod(t+"Resist", "BASE", share, r.Source)
 			}
 		}
 	}

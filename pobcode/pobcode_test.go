@@ -410,15 +410,15 @@ func TestClusterHashFormatVersionRoundTrip(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		for round := 0; round < 2; round++ {
+		for round := range 2 {
 			for i, s := range b.Specs {
 				if s.ClusterHashFormatVersion != c.want[i] {
 					t.Errorf("round %d spec %d: version %d, want %d", round, i, s.ClusterHashFormatVersion, c.want[i])
 				}
 			}
-			out, err := b.XML()
-			if err != nil {
-				t.Fatal(err)
+			out, xerr := b.XML()
+			if xerr != nil {
+				t.Fatal(xerr)
 			}
 			if got := strings.Count(string(out), `clusterHashFormatVersion="2"`); got != c.want[1]-1 {
 				t.Errorf("round %d: %d specs written with version 2", round, got)

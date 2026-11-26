@@ -143,7 +143,7 @@ func convertTree(src string) (*gamedata.Tree, error) {
 		// PassiveTree.lua "hide legacy alternate ascendancies that are no
 		// longer obtainable": PoB deletes the nodes of these bloodlines
 		// from the tree, so a spec that lists them loses them.
-		if legacyAlternateAscendancies[n.AscendancyName] {
+		if isLegacyAlternateAscendancy(n.AscendancyName) {
 			continue
 		}
 		tree.Nodes[id] = n
@@ -151,6 +151,12 @@ func convertTree(src string) (*gamedata.Tree, error) {
 	return &tree, nil
 }
 
-// legacyAlternateAscendancies is PassiveTree.lua's
+// isLegacyAlternateAscendancy is PassiveTree.lua's
 // legacyAlternateAscendancyIds.
-var legacyAlternateAscendancies = map[string]bool{"Warden": true, "Warlock": true, "Primalist": true}
+func isLegacyAlternateAscendancy(name string) bool {
+	switch name {
+	case "Warden", "Warlock", "Primalist":
+		return true
+	}
+	return false
+}

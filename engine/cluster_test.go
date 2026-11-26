@@ -35,7 +35,7 @@ func TestLegacyClusterSpecMovesSocket(t *testing.T) {
 }
 
 func TestTranslateClusterOrbitIndex(t *testing.T) {
-	for src := 0; src < 12; src++ {
+	for src := range 12 {
 		if back := translateClusterOrbitIndex(translateClusterOrbitIndex(src, 12, 16), 16, 12); back != src {
 			t.Errorf("12->16->12: %d -> %d", src, back)
 		}

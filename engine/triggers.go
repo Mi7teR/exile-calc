@@ -86,7 +86,7 @@ var triggerConfigs = map[string]func(db *ModDB, main *activeSkill) *triggerConfi
 	// by wand attacks.
 	"poet's pen": func(*ModDB, *activeSkill) *triggerConfig {
 		return &triggerConfig{triggerOnUse: true,
-			triggerSkillCond: func(main, s *activeSkill) bool {
+			triggerSkillCond: func(_, s *activeSkill) bool {
 				return (s.types[stDamage] || s.types[stAttack]) && s.cfg.Flags&modFlagByName["Wand"] > 0
 			},
 			triggeredSkillCond: func(main, s *activeSkill) bool {

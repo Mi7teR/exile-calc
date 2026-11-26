@@ -266,8 +266,11 @@ func actorMisc(db *ModDB, main *activeSkill, silverFlask bool, silverFlaskInc fl
 			limit = db.Sum("BASE", "SoulEaterMax")
 		}
 		for _, f := range []uint64{mfAttack, mfCast} {
-			db.Add(Mod{Name: "Speed", Type: "INC", Value: 5.0, Source: "Base", Flags: f,
-				Tags: []map[string]any{{"type": "Multiplier", "var": "SoulEaterStack", "limit": limit}}})
+			tag := map[string]any{"type": "Multiplier", "var": "SoulEaterStack", "limit": limit}
+			db.Add(Mod{
+				Name: "Speed", Type: "INC", Value: soulEaterSpeedPerStack, Flags: f, Tags: []map[string]any{tag},
+				Source: "Base", //nolint:goconst // PoB source
+			})
 		}
 	}
 }
@@ -379,6 +382,13 @@ func initConditionMods(db *ModDB) {
 }
 
 // playerBaseMods are the defensive player base mods of calcs.initEnv.
+// Soul Eater: Data/Misc.lua characterConstants soul_eater_maximum_stacks
+// and CalcPerform.lua doActorMisc's speed per stack.
+const (
+	soulEaterMaxStacks     = 45
+	soulEaterSpeedPerStack = 5.0
+)
+
 func playerBaseMods(db *ModDB) {
 	endurance := map[string]any{"type": "Multiplier", "var": "EnduranceCharge"}
 	db.NewMod("PhysicalDamageReduction", "BASE", 4, "Base", endurance) // physical_damage_reduction_%_per_endurance_charge
@@ -388,7 +398,7 @@ func playerBaseMods(db *ModDB) {
 	db.NewMod("EnemyCurseLimit", "BASE", 1, "Base")
 	db.NewMod("SocketedCursesHexLimitValue", "BASE", 1, "Base")
 	db.NewMod("ImpaleStacksMax", "BASE", 5, "Base") // impaled_debuff_number_of_reflected_hits
-	db.NewMod("SoulEaterMax", "BASE", 45, "Base")   // soul_eater_maximum_stacks
+	db.NewMod("SoulEaterMax", "BASE", soulEaterMaxStacks, "Base")
 	db.NewMod("ShockStacksMax", "BASE", 1, "Base")  // CalcSetup.lua initModDB
 	db.NewMod("ScorchStacksMax", "BASE", 1, "Base") // CalcSetup.lua initModDB
 	// Offence base mods of calcs.initEnv (characterConstants).

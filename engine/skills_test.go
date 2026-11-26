@@ -74,7 +74,7 @@ func TestResolveGemUnknownGemIDByName(t *testing.T) {
 		t.Fatalf("got gem %v id %q ok %v, want Arctic Armour", gem, id, ok)
 	}
 	g.NameSpec = "No Such Gem"
-	if _, _, ok := c.resolveGem(g); ok {
+	if _, _, found := c.resolveGem(g); found {
 		t.Error("an unknown gemId with an unknown name must stay unresolved")
 	}
 }
