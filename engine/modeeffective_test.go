@@ -161,3 +161,27 @@ func TestModeEffectiveGuards(t *testing.T) {
 		})
 	}
 }
+
+// TestDropsBurningGround: CalcOffence.lua:5788-5813. -fxcKCnOf7D2 with the
+// custom mods "Drops Burning Ground while moving, dealing 2500 Fire Damage
+// per second for 4 seconds" and "25% increased Fire Damage": the oracle
+// gives BurningGroundDPS 10901.6875, not from ignite.
+func TestDropsBurningGround(t *testing.T) {
+	c := newCalc(t)
+	b := corpusBuild(t, "-fxcKCnOf7D2")
+	cfg := b.ActiveConfig()
+	text := "Drops Burning Ground while moving, dealing 2500 Fire Damage per second for 4 seconds\n" +
+		"25% increased Fire Damage"
+	cfg.CustomMods = append(cfg.CustomMods, pobcode.CustomModBlock{Title: "test", Enabled: true, Text: text})
+	res, err := c.Calc(b)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := res.Stats["BurningGroundDPS"]; !near(got, 10901.6875, 1e-9) || res.Stats["BurningGroundFromIgnite"] != 0 {
+		t.Errorf(
+			"BurningGroundDPS %v (from ignite %v), want 10901.6875 not from ignite",
+			got,
+			res.Stats["BurningGroundFromIgnite"],
+		)
+	}
+}
