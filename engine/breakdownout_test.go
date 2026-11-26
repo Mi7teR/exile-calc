@@ -291,3 +291,13 @@ func TestAttackPassOnlyStats(t *testing.T) {
 		"PreEffectiveCritChance",
 	)
 }
+
+// TestBuildOutputStats: the MAIN-mode numbers of calcs.buildOutput
+// (Calcs.lua:418-464), the cost warnings with EnergyShieldProtectsMana and
+// the ExtraPoints and Spec:* sums.
+func TestBuildOutputStats(t *testing.T) {
+	oracleStats(t, true, "ExtraPoints", "Spec:LifeInc", "Spec:ManaInc", "Spec:ArmourInc", "Spec:EvasionInc",
+		"Spec:EnergyShieldInc")
+	oracleStats(t, false, "ManaCostWarning", "LifeCostWarning", "ESCostWarning", "RageCostWarning",
+		"EnergyShieldProtectsMana")
+}

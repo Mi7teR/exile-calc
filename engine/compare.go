@@ -171,6 +171,10 @@ func (cp *Comparer) Item(slot string, itemText string) (*ItemComparison, error) 
 	if err != nil {
 		return nil, err
 	}
+	// As Calc, for the same stats as before.
+	if err = cp.c.buildOutput(res); err != nil {
+		return nil, err
+	}
 	full := &FullDPSResult{}
 	if cp.usedFullDPS {
 		if full, err = cp.c.fullDPSFrom(res); err != nil {

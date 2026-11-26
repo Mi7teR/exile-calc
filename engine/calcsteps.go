@@ -29,6 +29,11 @@ type calcState struct {
 	// calcFullDPS run in "CALCULATOR" mode): b's socket groups are used as
 	// they are, without CalcSetup.lua's granted skill block (1506).
 	calculator bool
+	// skillPass is a MAIN-mode calcs.buildActiveSkill pass (the cost
+	// warnings of buildOutput) on the calculated build: env.buildBreakdown
+	// is false (Calcs.lua:372) and the granted skill block, which would
+	// change nothing on that build, is skipped as in CALCULATOR mode.
+	skillPass bool
 	// compared is the id of the Comparer's compared item (0 = none),
 	// whose grants are not cached (itemInfo).
 	compared int
@@ -131,12 +136,17 @@ var calcSteps = []calcStep{
 
 // Calc computes a build (PoB's calcs.initEnv and calcs.perform).
 func (c *Calculator) Calc(b *pobcode.Build) (*Result, error) {
-	return c.calc(b, calcOpts{})
+	res, err := c.calc(b, calcOpts{})
+	if err != nil {
+		return nil, err
+	}
+	return res, c.buildOutput(res)
 }
 
 // calcOpts are the calcState settings Calc leaves at zero.
 type calcOpts struct {
 	calculator bool         // calcState.calculator: CALCULATOR mode
+	skillPass  bool         // calcState.skillPass
 	compared   int          // calcState.compared
 	grants     []groupGrant // calcState.grants in CALCULATOR mode
 	// extraJewelFuncs is calcState.extraJewelFuncs: non-nil (maybe empty)
@@ -148,8 +158,8 @@ type calcOpts struct {
 // opts.calculator.
 func (c *Calculator) calc(b *pobcode.Build, opts calcOpts) (*Result, error) {
 	// The steps of calcSteps run in order over a fresh calcState.
-	st := &calcState{b: b, calculator: opts.calculator, compared: opts.compared, grants: opts.grants,
-		extraJewelFuncs: opts.extraJewelFuncs}
+	st := &calcState{b: b, calculator: opts.calculator, skillPass: opts.skillPass, compared: opts.compared,
+		grants: opts.grants, extraJewelFuncs: opts.extraJewelFuncs}
 	for _, step := range calcSteps {
 		if err := step.run(c, st); err != nil {
 			return nil, err
@@ -193,7 +203,7 @@ func stepInitEnv(c *Calculator, st *calcState) error {
 	db.enemy.enemy = db
 	db.player, db.enemy.player = db, db
 	db.gameIDs = c.gemIdx.gameID
-	db.buildBreakdown = !st.calculator // CalcSetup.lua:512
+	db.buildBreakdown = !st.calculator && !st.skillPass // CalcSetup.lua:512, Calcs.lua:372
 	st.db = db
 	st.res = &Result{Stats: db.output, DB: db}
 	st.config = b.ActiveConfig()
@@ -261,6 +271,8 @@ func stepBandit(_ *Calculator, st *calcState) error {
 		db.NewMod("MovementSpeed", "INC", 8, "Bandit")
 	case "Oak":
 		db.NewMod("Life", "BASE", 40, "Bandit")
+	default:
+		db.NewMod("ExtraPoints", "BASE", 1, "Bandit")
 	}
 	return nil
 }
@@ -703,7 +715,7 @@ func stepSkills(c *Calculator, st *calcState) error {
 	// env.explodeSources is gathered in every mode; the EnemyExplode gems
 	// read their source from it (enemyExplode).
 	db.explodeSources = c.explodeSources(st)
-	if !st.calculator {
+	if !st.calculator && !st.skillPass {
 		st.b, res.callerGroups, st.grants = c.withGrantedSkills(st, db.explodeSources)
 	}
 	db.build, res.build, res.compared, res.grants = st.b, st.b, st.compared, st.grants

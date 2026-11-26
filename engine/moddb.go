@@ -152,6 +152,9 @@ type Cfg struct {
 	SkillDist           float64         // cfg.skillDist: melee or projectile distance to the enemy
 	HasSkillDist        bool
 	SkillStats          map[string]float64 // cfg.skillStats: the hand pass output, read by GetStat when the actor has no such stat
+	// source is cfg.source: only mods whose source up to the first ":"
+	// is this one count (ModDB.lua:144 and the other *Internal queries).
+	source string
 }
 
 const keywordMatchAll = 0x40000000 // KeywordFlag.MatchAll
@@ -168,11 +171,17 @@ func matchKeywordFlags(keywordFlags, modKeywordFlags uint64) bool {
 }
 
 // eligible is the selection of ModDB SumInternal and its siblings:
-// band(flags, mod.flags) == mod.flags and MatchKeywordFlags.
+// band(flags, mod.flags) == mod.flags, MatchKeywordFlags and, with
+// cfg.source, mod.source:match("[^:]+") == source.
 func eligible(m *Mod, typ string, cfg *Cfg) bool {
 	var flags, kw uint64
 	if cfg != nil {
 		flags, kw = cfg.Flags, cfg.KeywordFlags
+		if cfg.source != "" {
+			if src, _, _ := strings.Cut(m.Source, ":"); src != cfg.source {
+				return false
+			}
+		}
 	}
 	return m.Type == typ && flags&m.Flags == m.Flags && matchKeywordFlags(kw, m.KeywordFlags)
 }
