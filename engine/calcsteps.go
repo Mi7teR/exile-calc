@@ -169,6 +169,7 @@ func stepInitEnv(c *Calculator, st *calcState) error {
 	db.enemy.enemy = db
 	db.player, db.enemy.player = db, db
 	db.gameIDs = c.gemIdx.gameID
+	db.buildBreakdown = !st.calculator // CalcSetup.lua:512
 	st.db = db
 	st.res = &Result{Stats: db.output, DB: db}
 	st.config = b.ActiveConfig()

@@ -63,6 +63,9 @@ type ModDB struct {
 	// explodeSources is the player's env.explodeSources as mod sources
 	// (grantedskills.go), in the order of the Explode group's gems.
 	explodeSources []string
+	// buildBreakdown is the player's env.buildBreakdown (CalcSetup.lua:512):
+	// MAIN mode, not CALCULATOR. Read it through hasBreakdown.
+	buildBreakdown bool
 
 	// incomplete holds the actor's notes for Result.Incomplete from skill
 	// hooks (noteIncomplete).
@@ -569,6 +572,18 @@ func (db *ModDB) theBuild() *pobcode.Build {
 		}
 	}
 	return nil
+}
+
+// hasBreakdown is whether the actor has a breakdown (actor.breakdown):
+// env.buildBreakdown for the player and, through the owner chain, its
+// minions (CalcPerform.lua:1517-1523).
+func (db *ModDB) hasBreakdown() bool {
+	for d := db.root(); d != nil; d = d.owner {
+		if d.buildBreakdown {
+			return true
+		}
+	}
+	return false
 }
 
 // root is the end of the parent chain: the actor's ModDB.

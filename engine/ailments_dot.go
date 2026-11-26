@@ -144,6 +144,7 @@ func ignite(actor *ModDB, s *activeSkill, p *hitPass, global map[string]float64,
 		out["IgniteStacksMax"] = maxStacks
 		out["TotalIgniteDPS"] = out["IgniteDPS"]
 	}
+	critDotMulti(actor, out, "Ignite", global["CritChance"], ailmentCrit)
 }
 
 // bleed is the "Calculate bleeding chance and damage" part of the ailment
@@ -247,6 +248,7 @@ func bleed(actor *ModDB, s *activeSkill, p *hitPass, global map[string]float64, 
 	out["BleedDPS"] = math.Min(out["BaseBleedDPS"], dotDpsCap)
 	global["BleedStacks"] = stacks
 	global["BleedDamage"] = out["BaseBleedDPS"] * global["BleedDuration"]
+	critDotMulti(actor, out, "Bleed", global["CritChance"], ailmentCrit)
 }
 
 // poison is the "Calculate poison chance and damage" part of the ailment
@@ -377,6 +379,7 @@ func poison(actor *ModDB, s *activeSkill, p *hitPass, global map[string]float64,
 	} else {
 		out["TotalPoisonDPS"] = math.Min(single*stacks, dotDpsCap)
 	}
+	critDotMulti(actor, out, "Poison", global["CritChance"], global["CritChance"])
 }
 
 // impale is the "Calculate impale chance and modifiers" part of the

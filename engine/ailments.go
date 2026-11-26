@@ -166,6 +166,28 @@ func ailmentDamage(out map[string]float64, typ string, critChance, hitDmg, critD
 	return hitDmg*fromHit/(fromHit+fromCrit) + critDmg*fromCrit/(fromHit+fromCrit)
 }
 
+// critDotMulti is the "if breakdown" part of the ailment sections that
+// replaces output.<Type>DotMulti with the mean of the non-crit and crit DoT
+// multipliers, weighted by the instances each creates (CalcOffence.lua:4645-4652
+// bleed, 4944-4951 poison, 5340-5347 ignite). It only changes the displayed
+// stat: the damage has already been computed. hitCrit is globalOutput.CritChance,
+// ailmentCrit the chance the crit share uses (ailmentCritChance for bleed and
+// ignite, globalOutput.CritChance for poison).
+func critDotMulti(actor *ModDB, out map[string]float64, typ string, hitCrit, ailmentCrit float64) {
+	if !actor.hasBreakdown() {
+		return
+	}
+	critMulti, ok := out["Crit"+typ+"DotMulti"]
+	if !ok || critMulti == out[typ+"DotMulti"] {
+		return
+	}
+	fromHit := out[typ+"ChanceOnHit"] / 100 * (1 - hitCrit/100)   //nolint:mnd // percent
+	fromCrit := out[typ+"ChanceOnCrit"] / 100 * ailmentCrit / 100 //nolint:mnd // percent
+	totalFromHit := fromHit / (fromHit + fromCrit)
+	totalFromCrit := fromCrit / (fromHit + fromCrit)
+	out[typ+"DotMulti"] = out[typ+"DotMulti"]*totalFromHit + critMulti*totalFromCrit
+}
+
 // ailmentDotCfg is the igniteCfg/bleedCfg/poisonCfg of a pass: a DoT +
 // ailment cfg with the pass's weapon flags and the given keywords.
 func ailmentDotCfg(s *activeSkill, p *hitPass, keywords uint64) *Cfg {
