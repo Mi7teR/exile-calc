@@ -3,7 +3,7 @@
 Real Path of Building builds on the 3.30 tree and the stats PoB computes for
 them; the engine's diff tests compare against `expected/`.
 
-140 builds: public pobb.in links listed on poebuilds.cc, level 85+, at most
+145 builds: public pobb.in links listed on poebuilds.cc, level 85+, at most
 two per ascendancy within an archetype for the later additions (the
 Elementalist ignite set is all Elementalists). Builds published on an
 older tree were added with `goldencorpus add -tree 3_30`, which moves the
@@ -23,6 +23,14 @@ groups of tree-granted skills as CalcSetup.lua does.
 gzVTJCkWXFan's Full DPS is compared through quirks.json: its Toxic Rain
 mirage keeps its +gem levels from items (the MirageDPS quirk) and so adds
 a larger DoT than PoB's.
+
+Five Raise Spectre builds (wYVdkskvi67I, JtugGaLoWqgT, LP9p86nzbP2H,
+a2nRZLW9ZVuu, Wpo4TuYfRXFT) keep their spectre list (`<Spectre>`); two
+raise a Perfect Blasphemer, whose curses go on the enemy. JtugGaLoWqgT's
+Dex is 14 short (Tree:11688 and Tree:45456, in its Brutal Restraints'
+radius, give PoB +4 Dex each) and so is its minions' damage from Null's
+Inclination; a2nRZLW9ZVuu's Animated Guardian
+block and Holy Relic speed differ. Neither is a spectre gap.
 
 `party-<base id>` builds are synthetic: a corpus build with a Party tab
 (imported auras, curses, warcries, links, party member stats and enemy

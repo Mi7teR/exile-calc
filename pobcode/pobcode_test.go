@@ -445,8 +445,9 @@ func TestClusterHashFormatVersionRoundTrip(t *testing.T) {
 
 func TestSpectreListRoundTrip(t *testing.T) {
 	x := string(readFile(t, "testdata/modern.xml"))
-	x = strings.Replace(x, `<PlayerStat stat="Life"`,
-		`<Spectre id="Metadata/Monsters/Axis/AxisCaster"/><Spectre id="Metadata/Monsters/KitavaDemon/KitavaDemon"/><PlayerStat stat="Life"`, 1)
+	spectres := `<Spectre id="Metadata/Monsters/Axis/AxisCaster"/>` +
+		`<Spectre id="Metadata/Monsters/KitavaDemon/KitavaDemon"/>`
+	x = strings.Replace(x, `<PlayerStat stat="Life"`, spectres+`<PlayerStat stat="Life"`, 1)
 	x = strings.Replace(x, `<Gem `, `<Gem skillMinionSkill="3" `, 1)
 	want := []string{"Metadata/Monsters/Axis/AxisCaster", "Metadata/Monsters/KitavaDemon/KitavaDemon"}
 	b, err := Parse([]byte(x))

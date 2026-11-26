@@ -21,12 +21,12 @@ go get github.com/Mi7teR/poe-lib
 | `engine` | PoB's `calcs`: attributes, life, mana, resists, EHP, main skill DPS, ailments, minions, plus combat DPS against a boss and a pack | matches PoB on the golden corpus |
 
 The engine is checked against headless PoB on a [golden corpus](testdata/golden)
-of 140 real 3.30 builds (135 public, 5 synthetic: two Party-tab, one
-linked-minion and two Oak-bandit variants of public builds). Every compared
-defence stat matches within 0.5% on all 140; the main skill's DPS stats on
-139 (the miss is a tree-granted skill group), minion stats on all 213 oracle
-minions, and Full DPS on all 140. The remaining gap is listed in the corpus
-README. Where PoB is wrong
+of 145 real 3.30 builds (140 public, five of them Raise Spectre builds;
+5 synthetic: two Party-tab, one linked-minion and two Oak-bandit variants
+of public builds). Every compared defence stat matches within 0.5% on 144
+of 145; the main skill's DPS stats and Full DPS on all 145, minion
+defence stats on 240 of 241 oracle minions and minion DPS on 234. The
+remaining gaps are listed in the corpus README. Where PoB is wrong
 and the engine follows the game instead, the difference is recorded in
 [quirks.json](testdata/golden/quirks.json).
 
