@@ -365,12 +365,15 @@ type Skill struct {
 	HasGlobalEffect          bool                `json:"hasGlobalEffect,omitempty"`
 	SkillTotemID             int                 `json:"skillTotemId,omitempty"`
 	MinionList               []string            `json:"minionList,omitempty"`
-	AddMinionList            []string            `json:"addMinionList,omitempty"`
-	MinionHasItemSet         bool                `json:"minionHasItemSet,omitempty"`
-	CastTime                 float64             `json:"castTime,omitempty"`
-	NoCastTime               bool                `json:"noCastTime,omitempty"` // castTime is absent (nil in Lua)
-	MinionUses               []string            `json:"minionUses,omitempty"` // item slots the minion uses
-	Parts                    []SkillPart         `json:"parts,omitempty"`
+	// SpectreMinionList: minionList is an empty table (Raise Spectre), so
+	// CalcActiveSkill.lua takes the build's spectre list instead.
+	SpectreMinionList bool        `json:"spectreMinionList,omitempty"`
+	AddMinionList     []string    `json:"addMinionList,omitempty"`
+	MinionHasItemSet  bool        `json:"minionHasItemSet,omitempty"`
+	CastTime          float64     `json:"castTime,omitempty"`
+	NoCastTime        bool        `json:"noCastTime,omitempty"` // castTime is absent (nil in Lua)
+	MinionUses        []string    `json:"minionUses,omitempty"` // item slots the minion uses
+	Parts             []SkillPart `json:"parts,omitempty"`
 }
 
 // SkillPart is one of a granted effect's parts: its name and the skill
@@ -453,4 +456,10 @@ type Minion struct {
 	WeaponType1                  string   `json:"weaponType1,omitempty"`
 	BaseDamageIgnoresAttackSpeed bool     `json:"baseDamageIgnoresAttackSpeed,omitempty"`
 	SkillList                    []string `json:"skillList,omitempty"`
+	// MonsterTags are the monster's tags (Data/Spectres.lua monsterTags),
+	// read by MonsterTag mod tags and the beast spectre condition.
+	MonsterTags []string `json:"monsterTags,omitempty"`
+	// DamageFixup is the spectre's damageFixup: less attack damage and
+	// more attack speed (CalcActiveSkill.lua:516).
+	DamageFixup float64 `json:"damageFixup,omitempty"`
 }

@@ -102,6 +102,9 @@ func convertSkill(t *luadata.Table) (*gamedata.Skill, error) {
 			return nil, fmt.Errorf("%s: %w", name, err)
 		}
 	}
+	if ml, ok := t.Get("minionList").(*luadata.Table); ok && len(ml.List) == 0 && len(ml.Keys) == 0 {
+		s.SpectreMinionList = true
+	}
 
 	var err error
 	if s.SkillTypes, err = intKeys(t.Get("skillTypes")); err != nil {

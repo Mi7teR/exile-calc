@@ -61,6 +61,10 @@ func convertMinion(t *luadata.Table) (*gamedata.Minion, error) {
 	if err := luadata.Decode(t.Get("skillList"), &m.SkillList); err != nil {
 		return nil, fmt.Errorf("skillList: %w", err)
 	}
+	if err := luadata.Decode(t.Get("monsterTags"), &m.MonsterTags); err != nil {
+		return nil, fmt.Errorf("monsterTags: %w", err)
+	}
+	m.DamageFixup = f("damageFixup")
 	if ml, ok := t.Get("modList").(*luadata.Table); ok {
 		for _, v := range ml.List {
 			mod, err := skillMod(v)
