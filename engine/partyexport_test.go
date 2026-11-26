@@ -80,23 +80,41 @@ func exportBlocks(typ, text string) [][]string {
 	return out
 }
 
-// TestPartyExportLeechLink: a link's MaximumLifeLeechIsEqualToPartyMember
-// exports the player's leech cap (user decision; PoB's "Parent" filter at
-// CalcPerform.lua:3949 skips its branch, 3954-3955), and a "Parent" mod
-// still exports as PoB does (3950-3951).
+// TestPartyExportLeechLink: Vampiric Link's real mod,
+// MaximumLifeLeechIsEqualToParent (Data/Skills/act_dex.lua:18382), exports
+// the player's MaxLifeLeechRatePercent output (user decision; PoB tests for
+// the imported name MaximumLifeLeechIsEqualToPartyMember at
+// CalcPerform.lua:3954, so it never exports it).
 func TestPartyExportLeechLink(t *testing.T) {
-	db := NewModDB()
-	db.enemy = NewModDB()
-	db.output["MaxLifeLeechRatePercent"], db.output["BlockChanceMax"] = 20, 75
-	e := newPartyExports()
-	e.link["Protective Link"] = &partyExport{effectMult: 1, mods: []Mod{
-		{Name: "MaximumLifeLeechIsEqualToPartyMember", Type: "FLAG", Value: true},
-		{Name: "MaximumBlockAttackChanceIsEqualToParent", Type: "FLAG", Value: true},
-	}}
-	e.finish(db, nil, hitSource{})
-	for _, k := range []string{"MaxLifeLeechRatePercent=20", "BlockChanceMax=75"} {
-		if !e.playerMods[k] {
-			t.Errorf("PlayerMods %v without %s", e.playerMods, k)
+	c := newCalc(t)
+	b := corpusBuild(t, "HBcW_8Hvft-z")
+	var gem pobcode.Gem
+	for id, g := range c.data.Gems {
+		if g.Name == "Vampiric Link" {
+			gem = pobcode.Gem{NameSpec: g.Name, GemID: id, SkillID: g.GrantedEffectID, Level: 20, Enabled: true,
+				EnableGlobal1: true, EnableGlobal2: true, Count: 1}
 		}
+	}
+	if gem.SkillID == "" {
+		t.Fatal("no Vampiric Link gem")
+	}
+	set := b.ActiveSkills()
+	set.Groups = append(set.Groups, pobcode.SocketGroup{Enabled: true, Gems: []pobcode.Gem{gem}})
+	if b.Party == nil {
+		b.Party = &pobcode.Party{}
+	}
+	b.Party.ExportBuffs = true
+	res, err := c.Calc(b)
+	if err != nil {
+		t.Fatal(err)
+	}
+	link, err := res.PartyExportErr("Link")
+	if err != nil || !strings.Contains(link, "Vampiric Link") ||
+		!strings.Contains(link, "MaximumLifeLeechIsEqualToParent") {
+		t.Fatalf("Link export %q (%v)", link, err)
+	}
+	want := "MaxLifeLeechRatePercent=" + luaToString(res.DB.output["MaxLifeLeechRatePercent"])
+	if mods := res.PartyExport("PlayerMods"); !strings.Contains(mods, want) {
+		t.Errorf("PlayerMods %q without %q", mods, want)
 	}
 }

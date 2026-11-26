@@ -1,6 +1,7 @@
 package engine
 
 import (
+	"fmt"
 	"maps"
 	"math"
 	"sort"
@@ -427,17 +428,20 @@ func (e *partyExports) finish(db *ModDB, main *activeSkill, w1 hitSource) {
 			e.aura[key] = cp
 		}
 	}
-	// The links (3944-3967), with one difference (user decision): PoB
-	// looks only at mods with "Parent" in their name (3949), so its branch
-	// for MaximumLifeLeechIsEqualToPartyMember (3954-3955) never runs and
-	// the party member's leech cap is not exported; here it is, as the
-	// link does in the game.
+	// The links (3944-3967), with one difference (user decision): PoB's
+	// leech branch (3954-3955) tests for MaximumLifeLeechIsEqualToPartyMember,
+	// the name the Party tab gives the mod on import (PartyTab.lua:888),
+	// while Vampiric Link's own mod is MaximumLifeLeechIsEqualToParent
+	// (Data/Skills/act_dex.lua:18382), so PoB never exports the leech cap;
+	// here the link's real mod exports it, as the link does in the game.
+	// The value is the player's MaxLifeLeechRatePercent output, whatever
+	// the player's leech caps (calcs.defence) set it to.
 	for _, name := range sortedKeys(e.link) {
 		if name == "Flame Link" {
 			e.playerMods["Life="+luaToString(out["Life"])] = true
 		}
 		for _, m := range e.link[name].mods {
-			if m.Name == "MaximumLifeLeechIsEqualToPartyMember" {
+			if m.Name == "MaximumLifeLeechIsEqualToParent" {
 				e.playerMods["MaxLifeLeechRatePercent="+luaToString(out["MaxLifeLeechRatePercent"])] = true
 				continue
 			}
@@ -466,34 +470,74 @@ func (e *partyExports) finish(db *ModDB, main *activeSkill, w1 hitSource) {
 // the MAIN output and then the CALCS one (Classes/CalcsTab.lua:459-461);
 // both fill buffExports while the Party tab exports, so the CALCS pass is
 // the one the tab keeps. It is computed on first use.
+//
+// The build is snapshotted at Calc time as the CALCS pass sees it
+// (calcsModeBuild copies the active skill set's groups and gems, and the
+// Calcs tab inputs are copied); the rest (items, tree, config) is shared
+// with the input build, which, as for Result.Build, must not be modified
+// afterwards.
 type partyExportCache struct {
 	calc  *Calculator
 	build *pobcode.Build
 	once  sync.Once
 	e     *partyExports
+	err   error
 }
 
-func (p *partyExportCache) exports() *partyExports {
+func newPartyExportCache(c *Calculator, b *pobcode.Build) *partyExportCache {
+	snap := calcsModeBuild(b)
+	snap.CalcsInputs = append([]pobcode.Input(nil), b.CalcsInputs...)
+	return &partyExportCache{calc: c, build: snap}
+}
+
+// exports computes the CALCS pass once. A failed pass, an error or a
+// panic, is kept as p.err, so every call sees the same failure.
+func (p *partyExportCache) exports() (*partyExports, error) {
 	p.once.Do(func() {
-		b := calcsModeBuild(p.build)
-		opts := calcOpts{buffMode: calcsBuffMode(b)}
-		// The main skill takes its own *Calcs part, minion and item set
-		// (CalcActiveSkill.lua:268, 713, 755: activeSkill ==
-		// env.player.mainSkill); find its gem first.
-		r, err := p.calc.calc(b, opts)
-		if err != nil {
-			return
-		}
-		if g, k, ok := mainGem(r); ok {
-			gm := &b.ActiveSkills().Groups[g-1].Gems[k]
-			gm.SkillPart, gm.SkillMinion, gm.SkillMinionItemSet = gm.SkillPartCalcs, gm.SkillMinionCalcs, gm.SkillMinionItemSetCalcs
-			if r, err = p.calc.calc(b, opts); err != nil {
-				return
+		defer func() {
+			if v := recover(); v != nil {
+				p.e, p.err = nil, fmt.Errorf("party export: %v", v)
 			}
-		}
-		p.e = r.DB.partyExports
+		}()
+		p.e, p.err = p.compute()
 	})
-	return p.e
+	return p.e, p.err
+}
+
+func (p *partyExportCache) compute() (*partyExports, error) {
+	b := calcsModeBuild(p.build)
+	opts := calcOpts{buffMode: calcsBuffMode(b)}
+	// The main skill takes its own *Calcs part, minion and item set
+	// (CalcActiveSkill.lua:268, 713, 755: activeSkill ==
+	// env.player.mainSkill); find its gem first.
+	r, err := p.calc.calc(b, opts)
+	if err != nil {
+		return nil, err
+	}
+	if gm := mainGemIn(r, b); gm != nil {
+		gm.SkillPart, gm.SkillMinion, gm.SkillMinionItemSet = gm.SkillPartCalcs, gm.SkillMinionCalcs, gm.SkillMinionItemSetCalcs
+		if r, err = p.calc.calc(b, opts); err != nil {
+			return nil, err
+		}
+	}
+	return r.DB.partyExports, nil
+}
+
+// mainGemIn is b's gem of r's main skill, nil when b has none: a main
+// skill in a group the granted skill block created or re-appended
+// (callerGroup beyond b's groups) has no gem in b to give the *Calcs
+// selections to, so the pass keeps them as they are.
+func mainGemIn(r *Result, b *pobcode.Build) *pobcode.Gem {
+	g, k, ok := mainGem(r)
+	set := b.ActiveSkills()
+	if !ok || set == nil || g < 1 || g > len(set.Groups) || k >= len(set.Groups[g-1].Gems) {
+		return nil
+	}
+	gm := &set.Groups[g-1].Gems[k]
+	if gm.SkillID != r.main.gem.SkillID || gm.NameSpec != r.main.gem.NameSpec {
+		return nil
+	}
+	return gm
 }
 
 // calcsBuffMode is the Calcs tab's misc_buffMode (Classes/CalcsTab.lua:36,

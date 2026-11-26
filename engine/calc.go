@@ -412,9 +412,19 @@ func (r *Result) PartyExport(buffType string) string {
 	if r == nil || r.party == nil {
 		return ""
 	}
-	e := r.party.exports()
-	if e == nil {
-		return ""
+	s, _ := r.PartyExportErr(buffType)
+	return s
+}
+
+// PartyExportErr is PartyExport with the error of a failed export pass
+// ("" and nil when the build does not export buffs).
+func (r *Result) PartyExportErr(buffType string) (string, error) {
+	if r == nil || r.party == nil {
+		return "", nil
 	}
-	return e.text(buffType)
+	e, err := r.party.exports()
+	if err != nil || e == nil {
+		return "", err
+	}
+	return e.text(buffType), nil
 }

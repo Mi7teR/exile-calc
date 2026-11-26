@@ -127,7 +127,7 @@ var calcSteps = []calcStep{
 func (c *Calculator) Calc(b *pobcode.Build) (*Result, error) {
 	res, err := c.calc(b, calcOpts{})
 	if err == nil && b.Party != nil && b.Party.ExportBuffs {
-		res.party = &partyExportCache{calc: c, build: b}
+		res.party = newPartyExportCache(c, b)
 	}
 	return res, err
 }
