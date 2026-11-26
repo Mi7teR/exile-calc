@@ -1,10 +1,12 @@
 package engine
 
 import (
+	"slices"
 	"strings"
 	"testing"
 
 	"github.com/Mi7teR/poe-lib/gamedata"
+	"github.com/Mi7teR/poe-lib/pobcode"
 )
 
 // TestMinionExtraCurses: "Check for extra curses" for env.minion
@@ -93,7 +95,7 @@ func TestMinionAuraTotem(t *testing.T) {
 	for _, s := range db.activeSkills {
 		if s.summon == nil && s.flags["spectre"] {
 			c.minionAurasOnPlayer(db, s, totem, func(l []Mod, name string) { added[name] = append(added[name], l...) },
-				func([]Mod, string) {}, &Result{})
+				func([]Mod, string) {}, map[string]bool{}, &Result{})
 		}
 	}
 	l, ok := added["Totem Determination"]
@@ -167,4 +169,72 @@ func TestMinionDebuffCondition(t *testing.T) {
 	if !seen || !affected {
 		t.Errorf("minion offence ran %v, AffectedByMaim %v", seen, affected)
 	}
+}
+
+// TestMinionPartyExports: the Party tab exports of the minions' skills
+// (buffExports, CalcPerform.lua:2923-2933, 3002) as PartyTab.lua
+// exportBuffs writes them. a2nRZLW9ZVuu exporting: the spectre's Smite and
+// its Wrath (moved to Wrath_Debuff by the Holy Relic's Wrath) carry
+// setSpectreSource's names. The lines are PoB's; PoB orders a buff's mods
+// by its stat processing, the engine by mod name, so they compare as sets.
+func TestMinionPartyExports(t *testing.T) {
+	c := newCalc(t)
+	b := corpusBuild(t, "a2nRZLW9ZVuu")
+	if res, err := c.Calc(b); err != nil || res.DB.partyExports != nil {
+		t.Fatalf("exports without the Party tab's export: %v %v", err, res.DB.partyExports)
+	}
+	if b.Party == nil {
+		b.Party = &pobcode.Party{}
+	}
+	b.Party.ExportBuffs = true
+	res, err := c.Calc(b)
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := res.DB.partyExports.text("Aura")
+	got := map[string][]string{}
+	name := ""
+	for l := range strings.SplitSeq(text, "\n") {
+		switch {
+		case name == "":
+			name = l
+		case l == "---":
+			name = ""
+		default:
+			got[name] = append(got[name], l)
+		}
+	}
+	want := map[string][]string{
+		"Smite": {
+			"100",
+			"33|Spectre:Smite - Perfect Blasphemer|LightningMin|BASE|-|-|type=GlobalEffect/effectType=Aura,type=Condition/neg=true/var=AffectedByVaalSmite",
+			"621|Spectre:Smite - Perfect Blasphemer|LightningMax|BASE|-|-|type=GlobalEffect/effectType=Aura,type=Condition/neg=true/var=AffectedByVaalSmite",
+		},
+		"Wrath": {"100",
+			"26|Skill:Wrath|LightningMin|BASE|-|Attack|type=GlobalEffect/effectType=Aura",
+			"415|Skill:Wrath|LightningMax|BASE|-|Attack|type=GlobalEffect/effectType=Aura",
+			"23|Skill:Wrath|LightningDamage|MORE|Spell|-|type=GlobalEffect/effectType=Aura"},
+		"Wrath_Debuff": {
+			"100",
+			"9|Spectre:Wrath - Perfect Spirit of Fortune|LightningMin|BASE|-|Attack|type=GlobalEffect/effectType=Aura",
+			"126|Spectre:Wrath - Perfect Spirit of Fortune|LightningMax|BASE|-|Attack|type=GlobalEffect/effectType=Aura",
+			"18|Spectre:Wrath - Perfect Spirit of Fortune|LightningDamage|MORE|Spell|-|type=GlobalEffect/effectType=Aura",
+		},
+	}
+	for k, w := range want {
+		g := got[k]
+		if len(g) == 0 || g[0] != w[0] || !sameStrings(g[1:], w[1:]) {
+			t.Errorf("%s: %q, want %q", k, g, w)
+		}
+	}
+	// The Party tab of a party member reads it back.
+	list := map[string]*partyBuffList{}
+	parsePartyBuffs(list, text, "Aura", nil)
+	if smite := list["Aura"].get("Smite"); smite == nil || smite.effect != 100 || len(smite.mods) != 2 {
+		t.Errorf("parsed Smite %+v", smite)
+	}
+}
+
+func sameStrings(a, b []string) bool {
+	return slices.Equal(slices.Sorted(slices.Values(a)), slices.Sorted(slices.Values(b)))
 }

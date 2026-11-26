@@ -827,6 +827,10 @@ func stepEarlyCharges(_ *Calculator, st *calcState) error {
 
 // stepBuffs: CalcPerform.lua "Combine buffs/debuffs" (Buff, Aura, ...).
 func stepBuffs(c *Calculator, st *calcState) error {
+	// partyTabEnableExportBuffs (CalcPerform.lua:1314).
+	if p := st.b.Party; p != nil && p.ExportBuffs && !st.calculator {
+		st.db.partyExports = newPartyExports()
+	}
 	st.curses, st.buffs = c.applyBuffs(st.db, st.skills, st.res)
 	return nil
 }
