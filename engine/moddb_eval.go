@@ -3,6 +3,8 @@ package engine
 import (
 	"math"
 	"strings"
+
+	"github.com/Mi7teR/poe-lib/gamedata"
 )
 
 // eval ports ModStoreClass:EvalMod for the tag types used by defence. It
@@ -405,14 +407,13 @@ func (db *ModDB) eval(m *Mod, cfg *Cfg) (any, bool) {
 			if !match {
 				return nil, false
 			}
-		default:
-			// EvalMod ignores tag types it has no branch for (Global,
-			// GlobalEffect, ...); the types it does handle but we have not
-			// ported yet leave the mod out and are counted.
-			if typ := tagStr(t, "type"); unportedTags[typ] {
-				db.UnsupportedTags[typ]++
+		case "MonsterTag":
+			if !monsterTagMatches(db.root().minionData, t) {
 				return nil, false
 			}
+		default:
+			// EvalMod ignores tag types it has no branch for (Global,
+			// GlobalEffect, ...).
 		}
 	}
 	return value, true
@@ -509,6 +510,35 @@ func (db *ModDB) skillNameTag(t map[string]any, cfg *Cfg) bool {
 			}
 		} else if sn, ok := t["skillName"].(string); ok {
 			match = strings.ToLower(sn) == name
+		}
+	}
+	if tagBool(t, "neg") {
+		match = !match
+	}
+	return match
+}
+
+// monsterTagMatches is the MonsterTag branch of ModStoreClass:EvalMod
+// (ModStore.lua:925): the actor is a minion with a monster tag in the
+// tag's monsterTagList (or equal to its monsterTag), case-insensitively.
+func monsterTagMatches(md *gamedata.Minion, t map[string]any) bool {
+	if md == nil || md.MonsterTags == nil {
+		return false
+	}
+	match := false
+	for _, tag := range md.MonsterTags {
+		if l, ok := t["monsterTagList"].([]any); ok {
+			for _, n := range l {
+				if s, _ := n.(string); strings.EqualFold(s, tag) {
+					match = true
+					break
+				}
+			}
+		} else {
+			match = strings.EqualFold(tagStr(t, "monsterTag"), tag)
+		}
+		if match {
+			break
 		}
 	}
 	if tagBool(t, "neg") {

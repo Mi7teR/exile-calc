@@ -760,6 +760,12 @@ func stepAttributesLifeMana(c *Calculator, st *calcState) error {
 	c.attributes(db)
 	shrineBuffs(db)
 	c.lifeMana(db)
+	// CalcPerform.lua:1991: env.minion gets the main skill's
+	// MinionModifier mods here, after the player's attributes and before
+	// the buffs.
+	if s := mainSkill(st.skills); s != nil && s.mods != nil {
+		s.minionModifiers = s.mods.List(s.cfg, "MinionModifier")
+	}
 	return nil
 }
 
@@ -823,10 +829,38 @@ func stepCurses(c *Calculator, st *calcState) error {
 func stepExtraAuras(c *Calculator, st *calcState) error {
 	db := st.db
 	impaleStacks(db)
+	hallowingFlame(db, mainSkill(st.skills))
 	extraAuras(db, mainSkill(st.skills))
 	db.party.partyExtraAuras(db)
 	c.mergeKeystones(db, st.keystones, st.res)
 	return nil
+}
+
+// hallowingFlame is CalcPerform.lua:3445: with Condition:CanInflictHallowingFlame
+// (for the main skill), attack hits against an enemy with Hallowing Flame
+// gain 25% (scaled by its magnitude) of physical damage as extra fire per
+// stack, as an ExtraAura for the player and its allies.
+func hallowingFlame(db *ModDB, main *activeSkill) {
+	var cfg *Cfg
+	if main != nil {
+		cfg = main.cfg
+	}
+	if !db.FlagCfg(cfg, "Condition:CanInflictHallowingFlame") {
+		return
+	}
+	magnitude, ok := db.Override("HallowingFlameMagnitude")
+	if !ok {
+		magnitude = db.Sum("INC", "HallowingFlameMagnitude")
+	}
+	val := math.Floor(25 * (1 + magnitude/100))
+	mod := map[string]any{
+		"name": "PhysicalDamageGainAsFire", "type": "BASE", "value": val, "flags": 0.0, "keywordFlags": 0.0,
+		"@list": []any{
+			map[string]any{"type": "GlobalEffect", "effectType": "Global", "unscalable": true},
+			map[string]any{"type": "ActorCondition", "actor": "enemy", "var": "HallowingFlame"},
+			map[string]any{"type": "Multiplier", "var": "HallowingFlame", "actor": "enemy"},
+		}}
+	db.Add(Mod{Name: "ExtraAura", Type: modTypeList, Value: map[string]any{"mod": mod}, Source: "Hallowing Flame"})
 }
 
 // stepDisableWeapons: CalcPerform.lua Dancing Dervish (DisableWeapons);

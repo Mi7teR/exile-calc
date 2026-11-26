@@ -271,6 +271,14 @@ type activeSkill struct {
 	// skill (the stages after the first), set when hasStageCount.
 	activeStageCount float64
 	hasStageCount    bool
+	// spectres is env.build.spectreList for a skill whose minionList is
+	// empty (Raise Spectre): the ids Build.lua Load keeps, those in
+	// data.minions.
+	spectres []string
+	// minionModifiers are the skill's MinionModifier mods as calcs.perform
+	// gives them to env.minion: read after the player's attributes, before
+	// the buffs (the main skill only).
+	minionModifiers []ListEntry
 	// infoTrigger is activeSkill.infoTrigger: the trigger label
 	// CalcTriggers.lua defaultTriggerHandler gives a triggered main skill.
 	infoTrigger string

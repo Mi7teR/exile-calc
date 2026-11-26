@@ -318,7 +318,9 @@ func (c *Calculator) clusterGraphLegacy(
 		}
 	}
 
-	for id := range allocated {
+	// In id order: the jewels' parse notes (Result.Unparsed) come out in a
+	// stable order.
+	for _, id := range slices.Sorted(maps.Keys(allocated)) {
 		n := tree.Nodes[id]
 		if n == nil || !n.IsJewelSocket || n.ExpansionJewel == nil || n.ExpansionJewel.Size != 2 {
 			continue

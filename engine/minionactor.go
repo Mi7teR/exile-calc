@@ -57,7 +57,7 @@ func (c *Calculator) initMinionDB(db *ModDB, s *activeSkill, m *skillMinion, res
 		return nil, nil
 	}
 	mdb := NewModDB()
-	mdb.enemy, mdb.owner = db.enemy, db
+	mdb.enemy, mdb.owner, mdb.minionData = db.enemy, db, m.data
 	mdb.multipliers["Level"] = float64(m.level)
 	minionBaseMods(mdb)
 	mdb.NewMod("Life", "BASE", math.Floor(table[m.level-1]*m.data.Life), "Base")
@@ -504,14 +504,17 @@ func (c *Calculator) mainMinion(db *ModDB, skills []*activeSkill, buffs map[stri
 		}
 	}
 	mskills := c.createMinionSkills(mdb, s, m, [2]string{weaponType, weapon2Type}, res)
-	ms := mskills[0]
+	ms := mskills[minionSkillIndex(s, len(mskills))]
 	mdb.activeSkills = mskills
-	addMinionModifiers(mdb, s.mods.List(s.cfg, "MinionModifier"), m.typ)
+	addMinionModifiers(mdb, s.minionModifiers, m.typ)
 	c.mergeKeystones(mdb, map[string]bool{}, res)
 	c.attributes(mdb)
 	shrineBuffs(mdb)
 	c.lifeMana(mdb)
 	mb := minionBuffs(db, skills, mdb, s.cfg, res)
+	if sp := c.spectreEffectsOf(db, skills); len(sp.minion) > 0 {
+		mb["Spectre"] = append(mb["Spectre"], sp.minion...) // CalcPerform.lua:2282
+	}
 	for k, l := range c.minionSkillBuffs(db, mdb, skills, s, mskills, charLevel, res) {
 		mergeBuff(l, mb, k)
 	}
@@ -618,8 +621,8 @@ func withMainSkill(b *pobcode.Build, g, n int) *pobcode.Build {
 // createMinionSkills is calcs.createMinionSkills (CalcActiveSkill.lua):
 // the minion's skills (its minion data's skill list and ExtraMinionSkill
 // mods) at the highest level its level allows, supported by the summoning
-// skill's supports, with mod lists on the minion's ModDB. The first is the
-// minion's main skill (skillMinionSkill is not stored).
+// skill's supports, with mod lists on the minion's ModDB. The main skill
+// is minionSkillIndex.
 func (c *Calculator) createMinionSkills(mdb *ModDB, s *activeSkill, m *skillMinion, weapons [2]string, res *Result) []*activeSkill {
 	skills := c.data.Skills.Effects
 	var ids []string
@@ -670,6 +673,17 @@ func (c *Calculator) createMinionSkills(mdb *ModDB, s *activeSkill, m *skillMini
 		list = append(list, ms)
 	}
 	return list
+}
+
+// minionSkillIndex is the end of calcs.createMinionSkills: the minion's
+// main skill is the gem's skillMinionSkill (1-based), clamped to the
+// skill list; returned 0-based.
+func minionSkillIndex(s *activeSkill, n int) int {
+	i := 1
+	if s.gem != nil && s.gem.SkillMinionSkill != 0 {
+		i = s.gem.SkillMinionSkill
+	}
+	return max(min(i, n), 1) - 1
 }
 
 // minionSkillBuffs is the env.minion side of calcs.perform's loop over the
@@ -753,6 +767,7 @@ func (c *Calculator) bareMinionSkills(db *ModDB, s *activeSkill, m *skillMinion,
 	}
 	casting := NewModDB()
 	casting.enemy, casting.owner, casting.build, casting.enemyEnv = db.enemy, db, db.build, db.enemyEnv
+	casting.minionData = m.data // minion.modDB.actor = activeSkill.minion
 	l := c.createMinionSkills(casting, s, m, [2]string{m.data.WeaponType1}, res)
 	db.minionSkillCache[s] = l
 	return casting, l

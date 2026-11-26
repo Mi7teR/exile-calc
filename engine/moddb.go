@@ -48,6 +48,7 @@ type ModDB struct {
 	isList      bool                       // a ModList (child): EvalMod without global limits
 	owner       *ModDB                     // a minion's parent actor (tag actor "parent")
 	player      *ModDB                     // actor.player: env.player for the player and its enemy
+	minionData  *gamedata.Minion           // actor.minionData: a minion's monster data
 	// activeSkills is actor.activeSkillList.
 	activeSkills []*activeSkill
 	// manaEfficiency is env.player.ManaEfficiency: the mana reservation
@@ -456,11 +457,6 @@ func (db *ModDB) target(t map[string]any) (*ModDB, bool) {
 		}
 	}
 	return nil, false
-}
-
-// unportedTags are the remaining tag types ModStoreClass:EvalMod handles.
-var unportedTags = map[string]bool{
-	"MonsterTag": true,
 }
 
 // round is PoB's round(v, places) (Modules/Common.lua): floor(v*10^p + 0.5).

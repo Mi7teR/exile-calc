@@ -23,6 +23,9 @@ type enemyCurse struct {
 	isMark         bool
 	ignoreHexLimit bool
 	socketedLimit  bool // socketedCursesHexLimit
+	// minion: the curse is in minionCurses (a minion's skill), slotted
+	// after the player's curses within minionCurses.limit.
+	minion         bool
 	mods, buffMods []Mod
 }
 
@@ -97,8 +100,8 @@ func (c *Calculator) skillCurse(db *ModDB, s *activeSkill, b *skillBuff) *enemyC
 }
 
 // applyCurses ports "Assign curses to slots" of calcs.perform for the
-// player's and the party's curses (allyCurses; minion curses are not
-// ported) and puts the slotted curses on the enemy.
+// player's, the minions' (minionCurses) and the party's curses
+// (allyCurses) and puts the slotted curses on the enemy.
 func (c *Calculator) applyCurses(db *ModDB, skills []*activeSkill, curses []*enemyCurse, res *Result) {
 	limit := int(db.Sum("BASE", "EnemyCurseLimit"))
 	if db.Flag("CurseLimitIsMaximumPowerCharges") {
@@ -107,10 +110,18 @@ func (c *Calculator) applyCurses(db *ModDB, skills []*activeSkill, curses []*ene
 	}
 	db.output["EnemyCurseLimit"] = float64(limit) // CalcPerform.lua:3250
 	allyCurses, allyLimit := db.party.partyCurses(db.enemy)
+	var own, minion []*enemyCurse
+	for _, cu := range curses {
+		if cu.minion {
+			minion = append(minion, cu)
+		} else {
+			own = append(own, cu)
+		}
+	}
 	sources := []struct {
 		curses []*enemyCurse
 		limit  int
-	}{{curses, limit}, {allyCurses, allyLimit}}
+	}{{own, limit}, {minion, c.spectreEffectsOf(db, skills).curseLimit}, {allyCurses, allyLimit}}
 	var slots []*enemyCurse
 	markSlotted := false
 	for _, src := range sources {

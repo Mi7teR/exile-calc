@@ -14,11 +14,14 @@ type skillMinion struct {
 }
 
 // minionList is the skill's activeSkill.minionList: the granted effect's
-// minions, then those its supports add (with their level requirement).
-// Spectres (an empty minionList) need the build's spectre list, which is
-// not ported.
+// minions (the build's spectre list for an empty minionList,
+// CalcActiveSkill.lua:690), then those its supports add (with their level
+// requirement).
 func minionList(s *activeSkill) ([]string, map[string]int) {
 	list := append([]string(nil), s.active.ge.MinionList...)
+	if s.active.ge.SpectreMinionList {
+		list = append(list, s.spectres...)
+	}
 	supportLevel := map[string]int{}
 	for _, e := range s.effects {
 		if !e.ge.Support || len(e.ge.AddMinionList) == 0 {

@@ -129,6 +129,16 @@ func (c *Calculator) applyBuffs(db *ModDB, skills []*activeSkill, res *Result) (
 		}
 		mergeBuff(src, buffs, name)
 	}
+	// CalcPerform.lua:2242: the active spectres' modLists, before the
+	// skills' buffs; their mods are inserted, not merged.
+	sp := c.spectreEffectsOf(db, skills)
+	if sp.beast {
+		db.conditions["HaveBeastSpectre"] = true
+	}
+	if len(sp.player) > 0 {
+		order = append(order, "Spectre")
+		buffs["Spectre"] = append(buffs["Spectre"], sp.player...)
+	}
 	for _, s := range skills {
 		if s.disabled {
 			continue
@@ -270,7 +280,12 @@ func (c *Calculator) applyBuffs(db *ModDB, skills []*activeSkill, res *Result) (
 				break
 			}
 		}
-		c.minionAurasOnPlayer(db, s, add, res)
+		curses = append(curses, c.minionAurasOnPlayer(db, s, add, func(src []Mod, name string) {
+			if _, ok := debuffs[name]; !ok {
+				debuffOrder = append(debuffOrder, name)
+			}
+			mergeBuff(src, debuffs, name)
+		}, res)...)
 	}
 	db.party.partyBuffsOnPlayer(db, add, func(src []Mod, name string) {
 		if _, ok := debuffs[name]; !ok {
@@ -591,27 +606,48 @@ func scaleMods(l []Mod, scale float64) []Mod {
 	return out
 }
 
-// minionAurasOnPlayer is the player part of calcs.perform's minion skill
-// buffs: the auras and ally buffs of a skill's minion's own skills (the
-// Elemental Relic's Anger, Hatred and Wrath). The minion's ModDB is a bare
-// one (bareMinionSkills): its own aura effect mods are not read.
-func (c *Calculator) minionAurasOnPlayer(db *ModDB, s *activeSkill, add func([]Mod, string), res *Result) {
+// minionAurasOnPlayer is the player and enemy part of calcs.perform's
+// minion skill buffs (CalcPerform.lua:2811): the auras and ally buffs of a
+// skill's minion's own skills (the Elemental Relic's Anger, Hatred and
+// Wrath), their debuffs on the enemy, and their curses, returned as
+// minionCurses. The minion's ModDB is a bare one (bareMinionSkills): its
+// own aura and curse effect mods are not read.
+func (c *Calculator) minionAurasOnPlayer(db *ModDB, s *activeSkill, add, debuff func([]Mod, string), res *Result) []*enemyCurse {
 	if s.summon != nil || db.enemyEnv == nil {
-		return
+		return nil
 	}
 	m := c.minionOf(s, int(db.multipliers["Level"]), db.enemyEnv.level)
 	if m == nil || m.data.Hostile {
-		return
+		return nil
 	}
+	var curses []*enemyCurse
 	casting, mskills := c.bareMinionSkills(db, s, m, res)
 	for _, ms := range mskills {
-		if ms.disabled || !truthy(ms.data.val("enable")) {
+		if ms.disabled {
 			continue
 		}
 		list, cfg := ms.mods, ms.cfg
+		enabled := truthy(ms.data.val("enable"))
 		for _, b := range ms.buffs {
 			name := strings.ReplaceAll(b.name, " ", "")
+			if b.typ == "Debuff" || b.typ == "AuraDebuff" {
+				// Debuffs need no "enable" (CalcPerform.lua:2979).
+				minionDebuff(db, ms, b, debuff)
+				continue
+			}
+			if !enabled {
+				continue
+			}
 			switch b.typ {
+			case "Curse":
+				// CalcPerform.lua:2967.
+				if db.enemy.Flag("Hexproof") && !ms.types[stMark] {
+					continue
+				}
+				inc := list.SumCfg(cfg, "INC", "CurseEffect") + db.enemy.Sum("INC", "CurseEffectOnSelf")
+				more := list.MoreCfg(cfg, "CurseEffect") * db.enemy.More("CurseEffectOnSelf")
+				curses = append(curses, &enemyCurse{name: b.name, priority: c.cursePriorityOf(b.name, ms),
+					minion: true, mods: scaleMods(b.mods, (1+inc/100)*more)})
 			case "Buff":
 				if !b.applyAllies {
 					continue
@@ -643,4 +679,48 @@ func (c *Calculator) minionAurasOnPlayer(db *ModDB, s *activeSkill, add func([]M
 			}
 		}
 	}
+	return curses
+}
+
+// minionDebuff is the Debuff and AuraDebuff branch of calcs.perform's
+// minion skill buffs (CalcPerform.lua:2979): the debuff on the enemy,
+// scaled by the minion skill's debuff (and aura) effect and its stacks.
+// The party's buff exports are not kept.
+func minionDebuff(db *ModDB, ms *activeSkill, b *skillBuff, debuff func([]Mod, string)) {
+	list, cfg := ms.mods, ms.cfg
+	stack := 1.0
+	if b.stackVar != "" {
+		stack = list.SumCfg(cfg, "BASE", "Multiplier:"+b.stackVar)
+		if b.hasStackLimit {
+			stack = math.Min(stack, b.stackLimit)
+		} else if b.stackLimitVar != "" {
+			stack = math.Min(stack, list.SumCfg(cfg, "BASE", "Multiplier:"+b.stackLimitVar))
+		}
+	} else if v, ok := num(ms.data.val("stackCount")); ok {
+		stack = v
+	}
+	if stack <= 0 {
+		return
+	}
+	name := strings.ReplaceAll(b.name, " ", "")
+	mult := 1.0
+	if b.typ == "AuraDebuff" {
+		mult = 0
+		if !list.Flag("SelfAurasOnlyAffectYou") || list.FlagCfg(cfg, "SelfAurasAffectYouAndLinkedTarget") {
+			mult = (1 + list.SumCfg(cfg, "INC", "AuraEffect", "BuffEffect", "DebuffEffect")/100) * list.MoreCfg(cfg, "AuraEffect", "BuffEffect", "DebuffEffect")
+			if db.enemy.conditions["AffectedBy"+name] || db.party.auraBeats("AuraDebuff", b.name, mult) {
+				mult = 0
+			}
+		}
+	}
+	db.enemy.conditions["AffectedBy"+name] = true
+	if b.typ == "Debuff" {
+		mult = (1 + list.SumCfg(cfg, "INC", "DebuffEffect")/100) * list.MoreCfg(cfg, "DebuffEffect")
+	}
+	src := scaleMods(b.mods, mult*stack)
+	if ms.data.val("stackCount") != nil || b.stackVar != "" {
+		v, _ := num(ms.data.val("stackCount"))
+		src = append(src, Mod{Name: "Multiplier:" + b.name + "Stack", Type: "BASE", Value: v, Source: b.name})
+	}
+	debuff(src, b.name)
 }

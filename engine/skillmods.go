@@ -413,6 +413,21 @@ func (c *Calculator) buildSkillMods(db *ModDB, s *activeSkill, res *Result) {
 	}
 	list := db.child()
 	s.mods = list
+	// CalcActiveSkill.lua:516: the minion's damage fixup, less attack
+	// damage and more attack speed.
+	if md := db.minionData; md != nil && md.DamageFixup != 0 {
+		list.Add(Mod{Name: "Damage", Type: "MORE", Value: -100 * md.DamageFixup, Flags: mfAttack, Source: "Damage Fixup"})
+		list.Add(Mod{Name: "Speed", Type: "MORE", Value: 100 * md.DamageFixup, Flags: mfAttack, Source: "Damage Fixup"})
+	}
+	if ge.SpectreMinionList {
+		if b := db.theBuild(); b != nil {
+			for _, id := range b.SpectreList {
+				if c.data.Minions[id] != nil {
+					s.spectres = append(s.spectres, id)
+				}
+			}
+		}
+	}
 	if list.FlagCfg(s.cfg, "DisableSkill") && !list.FlagCfg(s.cfg, "EnableSkill") {
 		s.disabled = true
 	}
