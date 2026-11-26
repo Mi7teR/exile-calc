@@ -21,6 +21,8 @@ func init() {
 	registerSkill([]string{"Blood Sacrament"}, skillHooks{initial: bloodSacramentInitial})
 	registerSkill([]string{"Cyclone", "Vaal Cyclone"}, skillHooks{initial: cycloneInitial})
 	registerSkill([]string{"Cyclone of Tumult"}, skillHooks{initial: cycloneOfTumultInitial})
+	registerSkill([]string{"Divine Ire", "Divine Ire of Holy Lightning"}, skillHooks{preDamage: divineIrePreDamage})
+	registerSkill([]string{"Divine Ire of Disintegration"}, skillHooks{preDamage: divineIrePreDamage})
 }
 
 // Data/Skills/act_int.lua Flameblast preDamageFunc.
@@ -134,4 +136,16 @@ func cycloneMeleeRange(s *activeSkill, w1 hitSource, w2 *hitSource, source strin
 		r = list.SumCfg(s.cfg, "BASE", "UnarmedRange") + 10*list.SumCfg(s.cfg, "BASE", "UnarmedRangeMetre")
 	}
 	list.NewMod("Multiplier:AdditionalMeleeRange", "BASE", r, source)
+}
+
+// Data/Skills/act_int.lua Divine Ire, Divine Ire of Holy Lightning and
+// Divine Ire of Disintegration preDamageFunc: the release hits once per
+// channelled stage (Disintegration only releases, so on every part).
+func divineIrePreDamage(_ *ModDB, s *activeSkill, _ map[string]float64) {
+	name := s.active.ge.Name
+	if s.part != 2 && name != "Divine Ire of Disintegration" {
+		return
+	}
+	stage := "Multiplier:" + strings.Join(strings.Fields(name), "") + "Stage"
+	s.data.set("hitTimeMultiplier", s.mods.SumCfg(s.cfg, "BASE", stage))
 }

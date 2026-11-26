@@ -134,6 +134,16 @@ func luaPortCases() []luaPortCase {
 			output: map[string]float64{"EnergyShield": 1200, "ChaosResist": 20, "ProjectileCount": 3, "Life": 4300},
 		},
 		{
+			skill: "Divine Ire of Holy Lightning", hook: "preDamageFunc", part: 2,
+			stats: []luaPortMod{{"Multiplier:DivineIreofHolyLightningStage", "BASE", 10, "Config"}},
+			data:  map[string]any{}, output: map[string]float64{},
+		},
+		{
+			skill: "Divine Ire of Disintegration", hook: "preDamageFunc", part: 1,
+			stats: []luaPortMod{{"Multiplier:DivineIreofDisintegrationStage", "BASE", 7, "Config"}},
+			data:  map[string]any{}, output: map[string]float64{},
+		},
+		{
 			skill: "Vaal Righteous Fire", hook: "preDamageFunc",
 			data:   map[string]any{"percentSacrificed": 0.6, "RFMultiplier": 1.58},
 			output: map[string]float64{"Life": 6525, "EnergyShield": 120},

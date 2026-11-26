@@ -536,6 +536,16 @@ func (c *Calculator) mainMinion(db *ModDB, skills []*activeSkill, buffs map[stri
 	defenceForConditionals(mdb, gear)
 	charges(mdb)
 	actorMisc(mdb, ms, false, 0)
+	// CalcDefence.lua: the player's ResistanceAddedToMinions (Bonemeld)
+	// gives the minion that share of the player's final resistances.
+	if db.Sum("BASE", "ResistanceAddedToMinions") > 0 {
+		for _, r := range db.TabulateCfg(nil, "BASE", "ResistanceAddedToMinions") {
+			v, _ := num(r.Value)
+			for _, t := range resistTypes {
+				mdb.NewMod(t+"Resist", "BASE", math.Floor(db.output[t+"Resist"]*v/100), r.Source)
+			}
+		}
+	}
 	c.resistances(mdb)
 	c.defence(mdb, gear, map[string]bool{})
 	stats := map[string]float64{}

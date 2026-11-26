@@ -417,8 +417,8 @@ func preDamageFunc(actor *ModDB, s *activeSkill, out map[string]float64) {
 
 // pacts is the Pact part of the damage passes of calcs.offence: each
 // "Pact of X" skill the actor has adds its damage scaled by its uptime to
-// the spells it empowers. Pact of Beidat's extra projectiles, chains and
-// cascades are not ported.
+// the spells it empowers, and Pact of Beidat its extra projectiles, beam
+// chains and cascades the same way.
 func pacts(actor *ModDB, s *activeSkill, out map[string]float64) {
 	if !s.types[stSpell] || s.types[stBrand] {
 		return
@@ -473,6 +473,25 @@ func pacts(actor *ModDB, s *activeSkill, out map[string]float64) {
 					m.Value = mulValue(m.Value, effect/100)
 					list.Add(m)
 				}
+			}
+		}
+		if key == "Beidat" {
+			// Coverage bonuses are averaged with the same uptime as the damage bonus.
+			mult := effect / 100
+			if s.flags["projectile"] && !list.FlagCfg(s.cfg, "NoAdditionalProjectiles") && !list.FlagCfg(s.cfg, "SingleProjectile") {
+				out["BeidatAdditionalProjectiles"] = v.mods.SumCfg(v.cfg, "BASE", "BeidatAdditionalProjectiles") * mult
+				out["ProjectileCount"] += out["BeidatAdditionalProjectiles"]
+			}
+			if s.flags["chaining"] && !s.flags["projectile"] && !list.FlagCfg(s.cfg, "CannotChain") && !list.FlagCfg(s.cfg, "NoAdditionalChains") {
+				out["BeidatAdditionalBeamChains"] = v.mods.SumCfg(v.cfg, "BASE", "BeidatAdditionalBeamChains") * mult * list.MoreCfg(s.cfg, "ChainCountMax")
+				out["ChainMax"] += out["BeidatAdditionalBeamChains"]
+				out["ChainMaxString"] = out["ChainMax"]
+				out["ChainRemaining"] = math.Max(0, out["ChainMax"]-out["Chain"])
+				// globalOutput is the actor's output: PerStat ChainRemaining (Arc) reads it.
+				actor.output["ChainMax"], actor.output["ChainRemaining"] = out["ChainMax"], out["ChainRemaining"]
+			}
+			if s.types[stCascadable] {
+				out["BeidatAdditionalCascades"] = v.mods.SumCfg(v.cfg, "BASE", "BeidatAdditionalCascades") * mult
 			}
 		}
 		done[key] = true

@@ -34,6 +34,7 @@ var switchCases = map[string][]string{
 		"Flameblast", "Flameblast of Celerity", "Flameblast of Contraction",
 		"Static Strike",
 		"Righteous Fire", "Righteous Fire of Arcane Devotion", "Vaal Righteous Fire",
+		"Divine Ire", "Divine Ire of Holy Lightning", "Divine Ire of Disintegration",
 	},
 	"preSkillType": {"Rage Vortex"},
 	"postCrit":     {"Kinetic Fusillade", "Lightning Tendrils of Eccentricity"},
