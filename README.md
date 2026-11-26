@@ -17,7 +17,7 @@ go get github.com/Mi7teR/poe-lib
 | `pobcode` | PoB export code ↔ `Build`: items by slot, gems, passive trees, config | done |
 | `gamedata` | Embedded game data: bases, mods with tiers, gems, uniques, passive tree, minions | done |
 | `itemtext` | Item text (game Ctrl+C, Ctrl+Alt+C, PoB format) → base, sockets, enchants, implicits, explicits | done |
-| `modparser` | Mod line → ModDB modifiers, using PoB's own pattern tables; 99.1% of the lines in PoB's ModCache (19089 of 19265), 0 wrong | in progress |
+| `modparser` | Mod line → ModDB modifiers, using PoB's own pattern tables; all 19265 lines PoB's ModCache parses fully, 0 wrong | done |
 | `engine` | PoB's `calcs`: attributes, life, mana, resists, EHP, main skill DPS, ailments, minions, plus combat DPS against a boss and a pack | matches PoB on the golden corpus |
 
 The engine is checked against headless PoB on a [golden corpus](testdata/golden)
@@ -25,7 +25,7 @@ of 140 real 3.30 builds (135 public, 5 synthetic: two Party-tab, one
 linked-minion and two Oak-bandit variants of public builds). Every compared
 defence stat matches within 0.5% on all 140; the main skill's DPS stats on
 139 (the miss is a tree-granted skill group), minion stats on all 213 oracle
-minions, and Full DPS on 127. The remaining Full DPS gaps are listed in the
+minions, and Full DPS on 129. The remaining Full DPS gaps are listed in the
 corpus README. Where PoB is wrong
 and the engine follows the game instead, the difference is recorded in
 [quirks.json](testdata/golden/quirks.json).
