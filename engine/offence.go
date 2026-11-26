@@ -483,6 +483,9 @@ func pacts(actor *ModDB, s *activeSkill, out map[string]float64) {
 				!list.FlagCfg(s.cfg, "SingleProjectile") {
 				out["BeidatAdditionalProjectiles"] = v.mods.SumCfg(v.cfg, "BASE", "BeidatAdditionalProjectiles") * mult
 				out["ProjectileCount"] += out["BeidatAdditionalProjectiles"]
+				// globalOutput is the actor's output.
+				actor.output["BeidatAdditionalProjectiles"] = out["BeidatAdditionalProjectiles"]
+				actor.output["ProjectileCount"] = out["ProjectileCount"]
 			}
 			if s.flags["chaining"] && !s.flags["projectile"] && !list.FlagCfg(s.cfg, "CannotChain") &&
 				!list.FlagCfg(s.cfg, "NoAdditionalChains") {
@@ -496,6 +499,7 @@ func pacts(actor *ModDB, s *activeSkill, out map[string]float64) {
 			}
 			if s.types[stCascadable] {
 				out["BeidatAdditionalCascades"] = v.mods.SumCfg(v.cfg, "BASE", "BeidatAdditionalCascades") * mult
+				actor.output["BeidatAdditionalCascades"] = out["BeidatAdditionalCascades"]
 			}
 		}
 		done[key] = true

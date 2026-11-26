@@ -292,8 +292,10 @@ func Parse(data []byte) (*Build, error) {
 			AscendClassID:          p.int("Spec.ascendClassId", s.AscendClassID, 0),
 			SecondaryAscendClassID: p.int("Spec.secondaryAscendClassId", s.SecondaryAscendClassID, 0),
 			Nodes:                  p.intList("Spec.nodes", s.Nodes),
-			// PassiveSpec.lua Load: tonumber(attr) or (nodes and 1 or 2);
-			// Save always writes nodes, so an absent attribute is 1.
+			// PassiveSpec.lua:106 Load: tonumber(attr) or (xml.attrib.nodes and 1 or 2).
+			// Save always writes nodes; a URL-format spec (no nodes attribute, 2)
+			// cannot reach here, since pobcode reads only the nodes list.
+			// So an absent attribute is 1.
 			ClusterHashFormatVersion: p.int("Spec.clusterHashFormatVersion", s.ClusterHashFormat, 1),
 		}
 		for _, m := range masteryRe.FindAllStringSubmatch(s.MasteryEffects, -1) {

@@ -490,17 +490,34 @@ func (c *Calculator) legacyClusterSpec(spec *pobcode.Spec, b *pobcode.Build) *po
 			nodes = append(nodes, id)
 		}
 	}
-	// self.jewels is keyed by node: a jewel moved onto a socket that
-	// already holds one does not add a second entry. (PoB's pairs order
-	// decides between them, and the socket item slots have already written
-	// a 0 for every empty socket, so PoB can also lose the moved jewel;
-	// the jewel is kept here, see testdata/golden/quirks.json.)
-	held := map[int]bool{}
-	for _, s := range spec.Sockets {
-		held[s.NodeID] = true
+	sockets, moved := remapSockets(spec.Sockets, mapped)
+	changed = changed || moved
+	if !changed {
+		return spec
 	}
-	var sockets []pobcode.Socket
-	for _, s := range spec.Sockets {
+	out := *spec
+	out.Nodes, out.Sockets = nodes, sockets
+	return &out
+}
+
+// remapSockets moves the jewels of legacy sockets to their current ids.
+// self.jewels is keyed by node: a jewel moved onto a socket that already
+// holds one does not add a second entry. (PoB's pairs order decides
+// between them, and the socket item slots have already written a 0 for
+// every empty socket, so PoB can also lose the moved jewel; the jewel is
+// kept here, see testdata/golden/quirks.json.) PassiveSpec.lua:130-132
+// Load drops sockets saved with itemId 0, so only sockets holding a jewel
+// take a place.
+func remapSockets(in []pobcode.Socket, mapped func(int) (int, bool)) ([]pobcode.Socket, bool) {
+	held := map[int]bool{}
+	for _, s := range in {
+		if s.ItemID != 0 {
+			held[s.NodeID] = true
+		}
+	}
+	changed := false
+	var out []pobcode.Socket
+	for _, s := range in {
 		if cur, ok := mapped(s.NodeID); ok {
 			changed = true
 			if held[cur] {
@@ -508,12 +525,7 @@ func (c *Calculator) legacyClusterSpec(spec *pobcode.Spec, b *pobcode.Build) *po
 			}
 			s.NodeID, held[cur] = cur, true
 		}
-		sockets = append(sockets, s)
+		out = append(out, s)
 	}
-	if !changed {
-		return spec
-	}
-	out := *spec
-	out.Nodes, out.Sockets = nodes, sockets
-	return &out
+	return out, changed
 }

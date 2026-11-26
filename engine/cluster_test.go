@@ -3,6 +3,8 @@ package engine
 import (
 	"slices"
 	"testing"
+
+	"github.com/Mi7teR/poe-lib/pobcode"
 )
 
 // PassiveSpec.lua ApplyLegacyClusterNodeRemap: fmxcrOoQ46rS is a format-1
@@ -42,5 +44,49 @@ func TestTranslateClusterOrbitIndex(t *testing.T) {
 	}
 	if got := translateClusterOrbitIndex(5, 6, 16); got != 13 {
 		t.Errorf("6->16 of 5 = %d, want 13", got)
+	}
+}
+
+// PassiveSpec.lua BuildLegacyProxyGroup: a medium cluster (sizeIndex 1) in
+// the large socket 55190 creates its socket 49080 from the proxy group,
+// while the old parser downsized the group and placed it at 36931
+// (1U1EWET8OeON's Witchbane).
+func TestLegacyProxyGroupSocket(t *testing.T) {
+	c := newCalc(t)
+	tree := c.data.Tree
+	large := tree.Nodes[55190]
+	proxy := tree.Nodes[large.ExpansionJewel.Proxy]
+	group := tree.Groups[proxy.Group-1].Nodes
+	legacy := legacyProxyGroup(tree, group, large.ExpansionJewel.Size, 1)
+	if s := findClusterSocket(tree, group, 0); s == nil || s.ID != 49080 {
+		t.Fatalf("current socket %v, want 49080", s)
+	}
+	if s := findClusterSocket(tree, legacy, 0); s == nil || s.ID != 36931 {
+		t.Fatalf("legacy socket %v, want 36931", s)
+	}
+	b := corpusBuild(t, "1U1EWET8OeON")
+	m := map[int]int{}
+	c.clusterGraphLegacy(b.ActiveSpec(), b, &Result{}, m)
+	if m[36931] != 49080 {
+		t.Errorf("legacy map 36931 -> %d, want 49080", m[36931])
+	}
+}
+
+// PassiveSpec.lua:130-132: a socket saved with itemId 0 is not loaded, so
+// it does not block the jewel moved onto it.
+func TestLegacyClusterSpecEmptySocket(t *testing.T) {
+	c := newCalc(t)
+	b := corpusBuild(t, "fmxcrOoQ46rS")
+	spec := *b.ActiveSpec()
+	spec.Sockets = append([]pobcode.Socket{{NodeID: 29712, ItemID: 0}}, spec.Sockets...)
+	got := c.legacyClusterSpec(&spec, b)
+	found := false
+	for _, s := range got.Sockets {
+		if s.NodeID == 29712 && s.ItemID != 0 {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("jewel from 16218 lost: %v", got.Sockets)
 	}
 }

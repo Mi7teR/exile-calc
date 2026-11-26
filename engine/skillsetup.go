@@ -17,7 +17,7 @@ import (
 // case; nil when none or more than one match. The abbreviation patterns
 // PoB tries next are not ported: saved builds carry full names.
 func (x *gemIndex) findSkillGem(nameSpec string) *gamedata.Gem {
-	ids := x.byName[strings.ToLower(strings.TrimSpace(nameSpec))]
+	ids := x.byName[strings.ToLower(nameSpec)]
 	if len(ids) != 1 {
 		return nil
 	}
