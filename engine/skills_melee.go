@@ -20,12 +20,8 @@ func moltenStrikePreDamage(_ *ModDB, s *activeSkill, out map[string]float64) {
 	}
 	data := s.data
 	proj := out["ProjectileCount"]
-	enemyRadius, ok := s.mods.OverrideCfg(s.cfg, "EnemyRadius")
-	if !ok {
-		enemyRadius = s.mods.SumCfg(s.cfg, "BASE", "EnemyRadius")
-	}
 	inner, outer := out["AreaOfEffectRadiusSecondary"], out["AreaOfEffectRadiusTertiary"]
-	overlap := math.Min(1, (enemyRadius+out["AreaOfEffectRadius"]-inner)/(outer-inner))
+	overlap := math.Min(1, (enemyRadius(s)+out["AreaOfEffectRadius"]-inner)/(outer-inner))
 	out["OverlapChance"] = overlap * 100
 	mult := 1.0
 	if s.part == 3 || s.part == 5 || s.part == 6 {
@@ -37,11 +33,7 @@ func moltenStrikePreDamage(_ *ModDB, s *activeSkill, out map[string]float64) {
 		}
 	}
 	if mult != 1 {
-		mulDPS(data, mult)
-		if v, has := out["SkillDPSMultiplier"]; has {
-			mult *= v
-		}
-		out["SkillDPSMultiplier"] = mult
+		applySkillDPSMultiplier(s, out, mult)
 	}
 }
 

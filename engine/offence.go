@@ -332,11 +332,7 @@ func (c *Calculator) offence(actor *ModDB, s *activeSkill, w1 hitSource, w2 *hit
 	dpsMod := (1 + list.SumCfg(cfg, "INC", "DPS")/100) * list.MoreCfg(cfg, "DPS")
 	if s.types[stBrand] && !truthy(data.val("countsAttachedBrandsInDamage")) {
 		dpsMod *= out["AttachedBrandCount"]
-		if v, ok := out["SkillDPSMultiplier"]; ok {
-			out["SkillDPSMultiplier"] = v * out["AttachedBrandCount"]
-		} else {
-			out["SkillDPSMultiplier"] = out["AttachedBrandCount"]
-		}
+		mulSkillDPSOutput(out, out["AttachedBrandCount"]) // CalcOffence.lua:2520
 	}
 	dpsMult := data.dpsMultiplier.or(1) * dpsMod
 	quantity := math.Max(list.SumCfg(cfg, "BASE", "QuantityMultiplier"), 1)

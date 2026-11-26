@@ -129,9 +129,14 @@ func seismicCryWarcryShare(db *ModDB, s, main *activeSkill) {
 // Data/Skills/act_dex.lua:1374-1379 Blade Blast (and Blade Blast of
 // Unloading, :1468-1473) preDamageFunc: one hit per detonated blade (the
 // stage count, dpsBaseMultiplier), once per second for "Blade Hits Per
-// Sec".
-func bladeBlastPreDamage(_ *ModDB, s *activeSkill, _ map[string]float64) {
-	mulDPS(s.data, numOr(s.data.val("dpsBaseMultiplier"), 0))
+// Sec". Without dpsBaseMultiplier (PoB's Lua fails on the nil) the DPS
+// stays one hit per cast and the actor notes it as incomplete.
+func bladeBlastPreDamage(actor *ModDB, s *activeSkill, _ map[string]float64) {
+	if m, ok := num(s.data.val("dpsBaseMultiplier")); ok {
+		mulDPS(s.data, m)
+	} else {
+		noteIncomplete(actor, s.active.ge.Name+": no dpsBaseMultiplier, detonated blades not counted")
+	}
 	if s.part == 2 {
 		s.data.hitTimeOverride = optF{1, true}
 	}

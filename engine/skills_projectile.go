@@ -181,7 +181,12 @@ const projectileDistanceCap = 150
 // Data/Skills/act_int.lua:1086-1165 Ball Lightning preDamageFunc: one
 // strike per ball (part 1), or the strikes of a ball travelling past the
 // enemy from the cast distance (part 2, "All Bolts in Range").
-func ballLightningPreDamage(_ *ModDB, s *activeSkill, out map[string]float64) {
+//
+// PoB divides by the strike interval and the ball's distance per strike;
+// when either is not positive (missing data, no projectile speed) the
+// multiplier stays 1 and the actor notes it as incomplete instead of an
+// Inf or NaN DPS.
+func ballLightningPreDamage(actor *ModDB, s *activeSkill, out map[string]float64) {
 	data := s.data
 	mult := 0.0
 	switch s.part {
@@ -189,14 +194,14 @@ func ballLightningPreDamage(_ *ModDB, s *activeSkill, out map[string]float64) {
 		mult = 1
 	case 2:
 		perStrike := numOr(data.val("strikeInterval"), 0)
-		maxStrikes := math.Floor(data.duration.or(0) / perStrike)
 		distPerStrike := numOr(data.val("projectileSpeed"), 0) * calcMod(s.mods, s.cfg, "ProjectileSpeed") * perStrike
-		enemyRadius, ok := s.mods.OverrideCfg(s.cfg, "EnemyRadius")
-		if !ok {
-			enemyRadius = s.mods.SumCfg(s.cfg, "BASE", "EnemyRadius")
+		if perStrike <= 0 || distPerStrike <= 0 {
+			noteIncomplete(actor, "Ball Lightning: no strike interval or projectile speed, bolts in range not counted")
+			return
 		}
+		maxStrikes := math.Floor(data.duration.or(0) / perStrike)
 		baseRadius := out["AreaOfEffectRadius"]
-		strikeRadius := baseRadius + enemyRadius
+		strikeRadius := baseRadius + enemyRadius(s)
 		var castDist float64
 		switch {
 		case s.cfg != nil && s.cfg.HasSkillDist:
@@ -211,12 +216,7 @@ func ballLightningPreDamage(_ *ModDB, s *activeSkill, out map[string]float64) {
 		mult = math.Max(0, math.Min(maxStrikes, last+1-first))
 	}
 	if mult != 1 {
-		mulDPS(data, mult)
-		if v, ok := out["SkillDPSMultiplier"]; ok {
-			out["SkillDPSMultiplier"] = v * mult
-		} else {
-			out["SkillDPSMultiplier"] = mult
-		}
+		applySkillDPSMultiplier(s, out, mult)
 	}
 }
 

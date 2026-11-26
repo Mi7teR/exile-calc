@@ -61,6 +61,10 @@ type ModDB struct {
 	partyMembers     *ModDB                                     // the player's: env.partyMembers.modDB (its output from PartyMemberStats)
 	minionFlasks     struct{ any, nonUnique, quicksilver bool } // the player's active flasks that could reach a minion
 
+	// incomplete holds the actor's notes for Result.Incomplete from skill
+	// hooks (noteIncomplete).
+	incomplete []string
+
 	// UnsupportedTags counts tag types EvalMod does not port yet; mods
 	// carrying them are left out of every sum.
 	UnsupportedTags map[string]int

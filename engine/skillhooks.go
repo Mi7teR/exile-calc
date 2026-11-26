@@ -1,5 +1,7 @@
 package engine
 
+import "slices"
+
 // Per-skill hooks: PoB's skill functions (initialFunc, preSkillTypeFunc,
 // preDamageFunc, postCritFunc in Data/Skills/*.lua) plus the warcry share
 // of calcs.perform, keyed by the active skill's gem name. Each skills_*.go
@@ -62,4 +64,44 @@ func hooksOf(s *activeSkill) *skillHooks {
 // mulDPS scales the skill's dpsMultiplier (default 1) by m.
 func mulDPS(data *skillData, m float64) {
 	data.dpsMultiplier = optF{data.dpsMultiplier.or(1) * m, true}
+}
+
+// mulSkillDPSOutput is output.SkillDPSMultiplier =
+// (output.SkillDPSMultiplier or 1) * m.
+func mulSkillDPSOutput(out map[string]float64, m float64) {
+	if v, ok := out["SkillDPSMultiplier"]; ok {
+		out["SkillDPSMultiplier"] = v * m
+	} else {
+		out["SkillDPSMultiplier"] = m
+	}
+}
+
+// applySkillDPSMultiplier scales skillData.dpsMultiplier and
+// output.SkillDPSMultiplier by m, as the skills' preDamageFuncs do (their
+// "if dpsMultiplier ~= 1" check stays with the caller).
+func applySkillDPSMultiplier(s *activeSkill, out map[string]float64, m float64) {
+	mulDPS(s.data, m)
+	mulSkillDPSOutput(out, m)
+}
+
+// enemyRadius is skillModList:Override(skillCfg, "EnemyRadius") or
+// skillModList:Sum("BASE", skillCfg, "EnemyRadius").
+func enemyRadius(s *activeSkill) float64 {
+	if v, ok := s.mods.OverrideCfg(s.cfg, "EnemyRadius"); ok {
+		return v
+	}
+	return s.mods.SumCfg(s.cfg, "BASE", "EnemyRadius")
+}
+
+// noteIncomplete records on the actor a part a hook could not compute;
+// the player's notes go to Result.Incomplete. A nil actor (hook tests)
+// drops the note.
+func noteIncomplete(actor *ModDB, msg string) {
+	if actor == nil {
+		return
+	}
+	r := actor.root()
+	if !slices.Contains(r.incomplete, msg) {
+		r.incomplete = append(r.incomplete, msg)
+	}
 }

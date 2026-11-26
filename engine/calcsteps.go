@@ -878,6 +878,7 @@ func stepOffence(c *Calculator, st *calcState) error {
 			debugPlayerSkill(s)
 		}
 	}
+	res.Incomplete = append(res.Incomplete, db.incomplete...)
 	return nil
 }
 

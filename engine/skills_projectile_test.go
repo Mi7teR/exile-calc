@@ -18,3 +18,27 @@ func TestEyeOfWinterRamp(t *testing.T) {
 		}
 	}
 }
+
+// Ball Lightning with no projectile speed or strike interval keeps its
+// DPS multiplier instead of Inf or NaN, and notes it.
+func TestBallLightningGuard(t *testing.T) {
+	for _, data := range []map[string]any{
+		{"strikeInterval": 0.15, "projectileSpeed": 0.0, "duration": 2.0},
+		{"projectileSpeed": 40.0, "duration": 2.0},
+	} {
+		s := triggerTestSkill("Ball Lightning")
+		s.part = 2
+		for k, v := range data {
+			s.data.set(k, v)
+		}
+		actor := NewModDB()
+		out := map[string]float64{"AreaOfEffectRadius": 22}
+		ballLightningPreDamage(actor, s, out)
+		if m := s.data.dpsMultiplier.or(1); m != 1 || len(actor.incomplete) != 1 {
+			t.Errorf("%v: dpsMultiplier %v, notes %v", data, m, actor.incomplete)
+		}
+		if _, ok := out["SkillDPSMultiplier"]; ok {
+			t.Errorf("%v: SkillDPSMultiplier set", data)
+		}
+	}
+}

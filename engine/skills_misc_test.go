@@ -35,3 +35,19 @@ func TestBanePreSkillType(t *testing.T) {
 		}
 	}
 }
+
+// Blade Blast without dpsBaseMultiplier keeps one hit per cast and notes
+// it, instead of a DPS of 0.
+func TestBladeBlastMissingMultiplier(t *testing.T) {
+	s := triggerTestSkill("Blade Blast")
+	actor := NewModDB()
+	bladeBlastPreDamage(actor, s, nil)
+	if m := s.data.dpsMultiplier.or(1); m != 1 || len(actor.incomplete) != 1 {
+		t.Errorf("dpsMultiplier %v, notes %v", m, actor.incomplete)
+	}
+	s.data.set("dpsBaseMultiplier", 6.0)
+	bladeBlastPreDamage(actor, s, nil)
+	if m := s.data.dpsMultiplier.or(1); m != 6 {
+		t.Errorf("dpsMultiplier %v, want 6", m)
+	}
+}
