@@ -162,6 +162,35 @@ var radiusPatterns = func() []radiusPattern {
 		{`^passive skills in radius also grant (\d+)% increased (\w+) damage$`, grant("", func(c []string) []Mod {
 			return []Mod{mod(strings.ToUpper(c[2][:1])+c[2][1:]+"Damage", "INC", numCap(c, 1))}
 		})},
+		// ModParser.lua:6469-6493: notables in radius grant these mods
+		// instead of their own (finishNode, CalcSetup.lua:233-249).
+		{
+			`^notable passive skills in radius are transformed to instead grant: ` +
+				`(\d+)% increased mana cost of skills and (\d+)% increased spell damage$`,
+			transformNotable(func(c []string, src string) []Mod {
+				cost := mod("ManaCost", "INC", numCap(c, 1))
+				cost.Source = src
+				dmg := mod("Damage", "INC", numCap(c, 2)) //nolint:mnd // the second capture
+				dmg.Flags, dmg.Source = mfSpell, src
+				return []Mod{cost, dmg}
+			}),
+		},
+		{
+			`^notable passive skills in radius are transformed to instead grant: minions take (\d+)% increased damage$`,
+			transformNotable(func(c []string, src string) []Mod {
+				taken := mod("DamageTaken", "INC", numCap(c, 1))
+				taken.Source = src
+				return []Mod{minionModifier(taken)}
+			}),
+		},
+		{
+			`^notable passive skills in radius are transformed to instead grant: minions have (\d+)% reduced movement speed$`,
+			transformNotable(func(c []string, src string) []Mod {
+				speed := mod("MovementSpeed", "INC", -numCap(c, 1))
+				speed.Source = src
+				return []Mod{minionModifier(speed)}
+			}),
+		},
 	}
 	out := make([]radiusPattern, len(defs))
 	for i, d := range defs {
@@ -169,6 +198,52 @@ var radiusPatterns = func() []radiusPattern {
 	}
 	return out
 }()
+
+// flagModType is the FLAG mod type.
+const flagModType = "FLAG"
+
+// minionModifierName is the MinionModifier mod name.
+const minionModifierName = "MinionModifier"
+
+// transformNotable is a "Notable Passive Skills in Radius are Transformed
+// to instead grant" entry (ModParser.lua:6469-6493): on a notable it adds
+// the PassiveSkillHasOtherEffect flag and one NodeModifier per mod, which
+// finishNode puts in place of the node's mods.
+func transformNotable(mods func(caps []string, source string) []Mod) func(caps []string, source string) radiusFunc {
+	return func(caps []string, src string) radiusFunc {
+		return func(n *gamedata.Node, _, _ []Mod) []Mod {
+			if nodeType(n) != "Notable" {
+				return nil
+			}
+			out := []Mod{{Name: "PassiveSkillHasOtherEffect", Type: flagModType, Value: true, Source: src}}
+			for _, m := range mods(caps, src) {
+				out = append(out, Mod{Name: "NodeModifier", Type: modTypeList, Value: modValue(m), Source: src})
+			}
+			return out
+		}
+	}
+}
+
+// minionModifier is mod("MinionModifier", "LIST", { mod = m }), without a
+// source as in ModParser.lua:6482 and 6490.
+func minionModifier(m Mod) Mod {
+	return Mod{Name: minionModifierName, Type: modTypeList, Value: modValue(m)}
+}
+
+// nestedModKey is the key of a LIST value's nested mod ({ mod = ... }).
+const nestedModKey = "mod"
+
+// modValue is a LIST value { mod = m }.
+func modValue(m Mod) map[string]any { return map[string]any{nestedModKey: nestedMod(m)} }
+
+// nestedMod is modToMap with the mod's source.
+func nestedMod(m Mod) map[string]any {
+	out := modToMap(m)
+	if m.Source != "" {
+		out["source"] = m.Source
+	}
+	return out
+}
 
 func flagFor(name, onType string) func(caps []string, source string) radiusFunc {
 	return func(_ []string, src string) radiusFunc {

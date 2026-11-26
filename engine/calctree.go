@@ -131,8 +131,6 @@ func (c *Calculator) addNode(db *ModDB, res *Result, stats []string, incEffect f
 // jewels (207-232); the first-pass jewels (159-168) run before the
 // prefilter. The Flag reads the node's own list, so tags are evaluated
 // against that list alone.
-// The PassiveSkillHasOtherEffect/NodeModifier replacement (234-249) is not
-// ported in finishNode; no unique of the game data carries those lines.
 func nodeCanExplode(mods []Mod) bool {
 	// hasExplode (CalcSetup.lua:184-185, 227-228).
 	if !slices.ContainsFunc(mods, func(m Mod) bool { return m.Name == "CanExplode" }) {
@@ -148,7 +146,9 @@ func nodeCanExplode(mods []Mod) bool {
 // finishNode is the rest of buildModListForNode: a node that "grants
 // nothing" loses its mods, the rest is scaled by passive skill effect, then
 // the second-pass radius functions see the result (Self on allocated
-// nodes, SelfUnalloc on unallocated ones).
+// nodes, SelfUnalloc on unallocated ones), and a node with
+// PassiveSkillHasOtherEffect grants its NodeModifier mods instead
+// (replaceNodeMods).
 func finishNode(mods []Mod, allocated bool, tn *gamedata.Node, second []secondPassFunc) []Mod {
 	node := NewModDB()
 	for _, m := range mods {
@@ -168,6 +168,42 @@ func finishNode(mods []Mod, allocated bool, tn *gamedata.Node, second []secondPa
 				f.f(tn, out)
 			}
 		}
+	}
+	return replaceNodeMods(out)
+}
+
+// replaceNodeMods is CalcSetup.lua:233-249: when the node's list has
+// PassiveSkillHasOtherEffect (modList:Flag(nil, ...), so tags are
+// evaluated against that list), the mods of its NodeModifier entries, in
+// order, replace the whole list. Without a NodeModifier the list is kept
+// (the wipe runs on the first entry). hasOtherEffect follows the final
+// list (prefilter 170-189, wipe 191-197, rescan 219-232), which is what
+// the flag test sees here.
+func replaceNodeMods(mods []Mod) []Mod {
+	if !slices.ContainsFunc(mods, func(m Mod) bool { return m.Name == "PassiveSkillHasOtherEffect" }) {
+		return mods
+	}
+	node := NewModDB()
+	for _, m := range mods {
+		node.Add(m)
+	}
+	if !node.Flag("PassiveSkillHasOtherEffect") {
+		return mods
+	}
+	var out []Mod
+	replaced := false
+	for _, e := range node.List(nil, "NodeModifier") {
+		v, _ := e.Value.(map[string]any)
+		mm, ok := v[nestedModKey].(map[string]any)
+		if !ok {
+			continue
+		}
+		replaced = true
+		source, _ := mm["source"].(string)
+		out = append(out, modFromMap(mm, source))
+	}
+	if !replaced {
+		return mods
 	}
 	return out
 }

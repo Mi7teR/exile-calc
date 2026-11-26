@@ -69,7 +69,21 @@ var jewelRadii = []radius{
 // nodesInRadius ports the socket radius precalculation (PassiveTree.lua):
 // nodes with a group that are not proxies, masteries or blighted, within
 // [inner, outer] of the socket.
+//
+// A cluster jewel's socket (a tree socket with an expansion parent) has no
+// nodes in radius: PoB reads the radius lists from env.spec.nodes
+// (CalcSetup.lua:900-902, PassiveSpec.lua:1157 and 1091), where that socket
+// is the synthetic node BuildSubgraph makes (PassiveSpec.lua:2160-2170,
+// 2402-2403), not the tree node that carries nodesInRadius
+// (PassiveTree.lua:703-727); the tree node itself is left out of
+// spec.nodes (PassiveSpec.lua:54). So a radius jewel in a cluster jewel's
+// socket affects no node, and does not conquer or leap. Nodes of cluster
+// subgraphs are never in a radius either: they are not tree nodes, and
+// their ids (65536 and up) are in no tree list.
 func nodesInRadius(t *gamedata.Tree, pos map[int]point, socket int, r radius) []int {
+	if n := t.Nodes[socket]; n != nil && n.ExpansionJewel != nil && n.ExpansionJewel.Parent != 0 {
+		return nil
+	}
 	s, ok := pos[socket]
 	if !ok {
 		return nil
