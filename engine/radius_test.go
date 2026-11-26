@@ -217,3 +217,40 @@ func sumFromAnyFlags(db *ModDB, stat, source string) float64 {
 	}
 	return total
 }
+
+// TestExtraJewelFuncs: Ngamahu, Flame's Advance (50692) gives every
+// non-unique jewel a Large radius that converts other damage type
+// increases to fire and grants +4 Strength to small and notable passives
+// (ModParser.lua:2658-2672); PoB builds the env a second time with them
+// (CalcSetup.lua:1466-1475, 919-944). With the node allocated the oracle
+// gives Str 570 for 3e_oEmQebpBA and 349 for 8zRIqztIGNif.
+func TestExtraJewelFuncs(t *testing.T) {
+	c := newCalc(t)
+	for _, tc := range []struct {
+		id  string
+		str float64
+	}{{"3e_oEmQebpBA", 570}, {"8zRIqztIGNif", 349}} {
+		b := corpusBuild(t, tc.id)
+		spec := b.ActiveSpec()
+		for _, n := range []int{14996, 50692} {
+			if !slices.Contains(spec.Nodes, n) {
+				spec.Nodes = append(spec.Nodes, n)
+			}
+		}
+		res, err := c.Calc(b)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := res.Stats["Str"]; got != tc.str {
+			t.Errorf("%s: Str %v, want %v", tc.id, got, tc.str)
+		}
+		without, err := c.calc(b, calcOpts{extraJewelFuncs: []Mod{}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if without.Stats["Str"] >= tc.str {
+			t.Errorf("%s: Str without the extra jewel functions %v, want less than %v",
+				tc.id, without.Stats["Str"], tc.str)
+		}
+	}
+}

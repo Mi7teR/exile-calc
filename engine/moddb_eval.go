@@ -2,6 +2,7 @@ package engine
 
 import (
 	"math"
+	"slices"
 	"strings"
 
 	"github.com/Mi7teR/poe-lib/gamedata"
@@ -324,7 +325,9 @@ func (db *ModDB) eval(m *Mod, cfg *Cfg) (any, bool) {
 		case "SkillType":
 			match := false
 			if cfg != nil {
-				if types, ok := t["skillTypeList"].([]any); ok {
+				if types, ok := tableValues(t["skillTypeList"]); ok {
+					// pairs(tag.skillTypeList) (ModStore.lua:866): every
+					// value, holes included.
 					for _, ty := range types {
 						if f, isNum := num(ty); isNum && cfg.SkillTypes[int(f)] {
 							match = true
@@ -545,4 +548,24 @@ func monsterTagMatches(md *gamedata.Minion, t map[string]any) bool {
 		match = !match
 	}
 	return match
+}
+
+// tableValues is every value of a Lua table as the generic encoding holds
+// it: a list, or an object with its positional part under "@list" and the
+// keys past a hole (pairs order does not matter to its callers).
+func tableValues(v any) ([]any, bool) {
+	switch x := v.(type) {
+	case []any:
+		return x, true
+	case map[string]any:
+		out, _ := x["@list"].([]any)
+		out = slices.Clone(out)
+		for k, e := range x {
+			if k != "@list" {
+				out = append(out, e)
+			}
+		}
+		return out, true
+	}
+	return nil, false
 }

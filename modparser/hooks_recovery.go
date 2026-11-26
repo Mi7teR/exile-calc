@@ -169,3 +169,41 @@ func init() { //nolint:funlen // one registration table of ported Lua functions
 		},
 	})
 }
+
+func init() {
+	registerSpecial(map[string]Hook{
+		// ModParser.lua:4884 ["damage taken recouped as (%a+) is also recouped as energy shield"] = function(_, type) return {
+		//   flag("Add"..firstToUpper(type).."RecoupToEnergyShieldRecoup") } end
+		"damage taken recouped as (%a+) is also recouped as energy shield": func(_ *Parser, a []any) any {
+			return []any{flagMod("Add" + firstToUpper(argS(a, cap1)) + "RecoupToEnergyShieldRecoup")}
+		},
+		// ModParser.lua:6057 ["mana is increased by (%d+)%% of overcapped lightning resistance"] = function(num) return {
+		//   flag("ManaIncreasedByOvercappedLightningRes"), mod("Mana", "INC", num / 100, { type = "PerStat", stat = "LightningResistOverCap" }) } end
+		"mana is increased by (%d+)%% of overcapped lightning resistance": func(_ *Parser, a []any) any {
+			return []any{
+				flagMod("ManaIncreasedByOvercappedLightningRes"),
+				withTags(
+					newMod("Mana", "INC", argF(a, argNum)/100, 0, 0),
+					map[string]any{"type": "PerStat", "stat": "LightningResistOverCap"},
+				),
+			}
+		},
+		// ModParser.lua:5893 ["while stationary, gain ([%d%.]+)%% of life regenerated per second every second, up to a maximum of (%d+)%%"] =
+		//   function(num, _, limit) return { mod("LifeRegenPercent", "BASE", num, { type = "Multiplier", var = "StationarySeconds",
+		//   limit = tonumber(limit), limitTotal = true }, { type = "Condition", var = "Stationary" }) } end
+		"while stationary, gain ([%d%.]+)%% of life regenerated per second every second, up to a maximum of (%d+)%%": func(_ *Parser, a []any) any {
+			return []any{
+				withTags(
+					newMod("LifeRegenPercent", "BASE", arg(a, argNum), 0, 0),
+					map[string]any{
+						"type":       "Multiplier",
+						"var":        "StationarySeconds",
+						"limit":      toNumber(argS(a, cap2)),
+						"limitTotal": true,
+					},
+					condTag("Stationary"),
+				),
+			}
+		},
+	})
+}

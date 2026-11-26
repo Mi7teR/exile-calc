@@ -229,3 +229,35 @@ func TestItemMultiplier(t *testing.T) {
 		t.Error("a grant needing 2 Elder items holds with none")
 	}
 }
+
+// TestLuaTableHoles: tags and lists with holes as PoB's ModParser leaves
+// them. "Non-Instant Warcries ..." has skillTypeList { 64, nil, 37 }
+// (SkillType.Totem does not exist); EvalMod walks it with pairs
+// (ModStore.lua:866), so both Instant and Triggered skills are excluded.
+// Sacrificial Zeal's overwhelm has its tag at mod[2] behind a nil, which
+// EvalMod's ipairs (ModStore.lua:368) never reaches: it always applies.
+func TestLuaTableHoles(t *testing.T) {
+	c := newCalc(t)
+	parse := func(line string) Mod {
+		r := c.parser.Parse(line)
+		if !r.Parsed() || len(r.Mods) != 1 {
+			t.Fatalf("%q: %+v", line, r)
+		}
+		return fromParsed(r.Mods[0], "Test")
+	}
+	db := NewModDB()
+	db.Add(parse("Non-Instant Warcries you use yourself have no Cooldown"))
+	for _, tc := range []struct {
+		types map[int]bool
+		want  bool
+	}{{map[int]bool{1: true}, true}, {map[int]bool{64: true}, false}, {map[int]bool{37: true}, false}} {
+		cfg := &Cfg{KeywordFlags: 0x4, SkillTypes: tc.types}
+		if _, got := db.OverrideCfg(cfg, "CooldownRecovery"); got != tc.want {
+			t.Errorf("skill types %v: override %v, want %v", tc.types, got, tc.want)
+		}
+	}
+	zeal := parse("Hits Overwhelm 15% of Physical Damage Reduction while you have Sacrificial Zeal")
+	if len(zeal.Tags) != 0 {
+		t.Errorf("Sacrificial Zeal overwhelm tags %v, want none", zeal.Tags)
+	}
+}

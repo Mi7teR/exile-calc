@@ -203,3 +203,142 @@ func init() { //nolint:funlen // one registration table of ported Lua functions
 		},
 	})
 }
+
+// doubleArmour is Armour Mastery's "chance to defend with double armour"
+// (ModParser.lua:2491-2506): the Max, Average and Min calc ArmourDefense
+// mods, each with extra tags (the BeenHitRecently limit of the stacking form).
+func doubleArmour(chance float64, extra ...any) []any {
+	maxTag := condTag("ArmourMax")
+	avgTag := condTag("ArmourAvg")
+	notMax := map[string]any{"type": "Condition", "var": "ArmourMax", "neg": true}
+	notAvg := map[string]any{"type": "Condition", "var": "ArmourAvg", "neg": true}
+	return []any{
+		withTags(
+			sourced(newMod("ArmourDefense", "MAX", 100.0, 0, 0), "Armour Mastery: Max Calc"),
+			maxTag,
+		),
+		withTags(
+			sourced(
+				newMod("ArmourDefense", "MAX", math.Min(chance/100, 1)*100, 0, 0),
+				"Armour Mastery: Average Calc",
+			),
+			append([]any{avgTag}, extra...)...),
+		withTags(
+			sourced(
+				newMod("ArmourDefense", "MAX", math.Min(math.Floor(chance/100), 1)*100, 0, 0),
+				"Armour Mastery: Min Calc",
+			),
+			append([]any{notMax, notAvg}, extra...)...),
+	}
+}
+
+func init() {
+	registerSpecial(map[string]Hook{
+		// ModParser.lua:2502 ["(%d+)%% chance to defend with double armour"] = function(numChance) return {
+		//   mod("ArmourDefense", "MAX", 100, "Armour Mastery: Max Calc", { type = "Condition", var = "ArmourMax" }),
+		//   mod("ArmourDefense", "MAX", math.min(numChance / 100, 1.0) * 100, "Armour Mastery: Average Calc", { type = "Condition", var = "ArmourAvg" }),
+		//   mod("ArmourDefense", "MAX", math.min(math.floor(numChance / 100), 1.0) * 100, "Armour Mastery: Min Calc",
+		//   { type = "Condition", var = "ArmourMax", neg = true }, { type = "Condition", var = "ArmourAvg", neg = true }) } end
+		"(%d+)%% chance to defend with double armour": func(_ *Parser, a []any) any {
+			return doubleArmour(argF(a, argNum))
+		},
+		// ModParser.lua:2491 ["(%d+)%% chance to defend with double your armour for each time you've been hit by an enemy recently, up to (%d+)%%"] =
+		//   function(numChance, _, cap): the same three mods, the Average and Min ones with
+		//   { type = "Multiplier", var = "BeenHitRecently", limit = cap / numChance }.
+		"(%d+)%% chance to defend with double your armour for each time you've been hit by an enemy recently, up to (%d+)%%": func(_ *Parser, a []any) any {
+			n := argF(a, argNum)
+			return doubleArmour(
+				n,
+				map[string]any{"type": "Multiplier", "var": "BeenHitRecently", "limit": argF(a, cap2) / n},
+			)
+		},
+		// ModParser.lua:2521 ["defend with (%d+)%% of armour while not on low energy shield"] = function(num) return {
+		//   mod("ArmourDefense", "MAX", num - 100, "Armour and Energy Shield Mastery", { type = "Condition", var = "LowEnergyShield", neg = true }) } end
+		"defend with (%d+)%% of armour while not on low energy shield": func(_ *Parser, a []any) any {
+			return []any{
+				withTags(
+					sourced(
+						newMod("ArmourDefense", "MAX", argF(a, argNum)-100, 0, 0),
+						"Armour and Energy Shield Mastery",
+					),
+					map[string]any{"type": "Condition", "var": "LowEnergyShield", "neg": true},
+				),
+			}
+		},
+		// ModParser.lua:2232 ["(%d+)%% less damage taken for every (%d+)%% life recovery per second from leech"] = function(num, _, div)
+		//   return { mod("DamageTaken", "MORE", -num, { type = "PerStat", stat = "MaxLifeLeechRatePercent", div = tonumber(div) }) } end
+		"(%d+)%% less damage taken for every (%d+)%% life recovery per second from leech": func(_ *Parser, a []any) any {
+			return []any{
+				withTags(
+					newMod("DamageTaken", "MORE", -argF(a, argNum), 0, 0),
+					perStat("MaxLifeLeechRatePercent", toNumber(argS(a, cap2))),
+				),
+			}
+		},
+		// ModParser.lua:2557 ["(%d+)%% reduced damage taken while there are at least two rare or unique enemies nearby"] = function(num) return {
+		//   mod("DamageTaken", "INC", -num, nil, 0, { type = "MultiplierThreshold", var = "NearbyRareOrUniqueEnemies", threshold = 2 }) } end
+		"(%d+)%% reduced damage taken while there are at least two rare or unique enemies nearby": func(_ *Parser, a []any) any {
+			return []any{withTags(newMod("DamageTaken", "INC", -argF(a, argNum), 0, 0),
+				thresholdTag("NearbyRareOrUniqueEnemies", 2.0))}
+		},
+		// ModParser.lua:4097 ["+(%d+)%% chance to suppress spell damage if your e?q?u?i?p?p?e?d? ?boots, helmet and gloves have evasion"] =
+		//   function(num) return { mod("SpellSuppressionChance", "BASE", tonumber(num), { type = "StatThreshold", stat = "EvasionOnBoots", threshold = 1},
+		//   { ... "EvasionOnHelmet" ... }, { ... "EvasionOnGloves" ... }) } end
+		"+(%d+)%% chance to suppress spell damage if your e?q?u?i?p?p?e?d? ?boots, helmet and gloves have evasion": func(_ *Parser, a []any) any {
+			on := func(slot string) map[string]any {
+				return map[string]any{"type": "StatThreshold", "stat": "EvasionOn" + slot, "threshold": 1.0}
+			}
+			return []any{
+				withTags(
+					newMod("SpellSuppressionChance", "BASE", arg(a, argNum), 0, 0),
+					on("Boots"),
+					on("Helmet"),
+					on("Gloves"),
+				),
+			}
+		},
+		// ModParser.lua:2709 ["for each element you've been hit by damage of recently, (%d+)%% reduced damage taken of that element"] =
+		//   function(num) return { mod(E.."DamageTaken", "INC", -num, { type = "Condition", var = "HitBy"..E.."DamageRecently" }) for Fire, Cold, Lightning } end
+		"for each element you've been hit by damage of recently, (%d+)%% reduced damage taken of that element": func(_ *Parser, a []any) any {
+			var out []any
+			for _, e := range []string{"Fire", "Cold", "Lightning"} {
+				out = append(
+					out,
+					withTags(
+						newMod(e+"DamageTaken", "INC", -argF(a, argNum), 0, 0),
+						condTag("HitBy"+e+"DamageRecently"),
+					),
+				)
+			}
+			return out
+		},
+		// ModParser.lua:2917 ["grants armour equal to (%d+)%% of your reserved life to you and nearby allies"] = function(num) return {
+		//   mod("GrantReservedLifeAsAura", "LIST", { mod = mod("Armour", "BASE", num / 100) }) } end
+		"grants armour equal to (%d+)%% of your reserved life to you and nearby allies": func(_ *Parser, a []any) any {
+			return []any{modifierOf("GrantReservedLifeAsAura", newMod("Armour", "BASE", argF(a, argNum)/100, 0, 0))}
+		},
+		// ModParser.lua:3029 ["nearby enemies have (%d+)%% less accuracy rating while you have phasing"] = function(num) return {
+		//   mod("EnemyModifier", "LIST", { mod = mod("Accuracy", "MORE", -num) }, { type = "Condition", var = "Phasing" }) } end
+		"nearby enemies have (%d+)%% less accuracy rating while you have phasing": func(_ *Parser, a []any) any {
+			return []any{
+				modifierOf("EnemyModifier", newMod("Accuracy", "MORE", -argF(a, argNum), 0, 0), condTag("Phasing")),
+			}
+		},
+		// ModParser.lua:3031 ["nearby enemies have fire, cold and lightning exposure while you have phasing, applying %-(%d+)%% to those resistances"] =
+		//   function(num) return { mod("EnemyModifier", "LIST", { mod = mod(E.."Exposure", "BASE", -num) }, { type = "Condition", var = "Phasing" }) ... } end
+		"nearby enemies have fire, cold and lightning exposure while you have phasing, applying %-(%d+)%% to those resistances": func(_ *Parser, a []any) any {
+			var out []any
+			for _, e := range []string{"Fire", "Cold", "Lightning"} {
+				out = append(
+					out,
+					modifierOf(
+						"EnemyModifier",
+						newMod(e+"Exposure", "BASE", -argF(a, argNum), 0, 0),
+						condTag("Phasing"),
+					),
+				)
+			}
+			return out
+		},
+	})
+}

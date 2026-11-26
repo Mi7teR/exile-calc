@@ -32,6 +32,11 @@ type calcState struct {
 	// compared is the id of the Comparer's compared item (0 = none),
 	// whose grants are not cached (itemInfo).
 	compared int
+	// extraJewelFuncs is override.extraJewelFuncs (CalcSetup.lua:1466-1475):
+	// the ExtraJewelFunc mods of the first pass, which the radius jewel
+	// list of the second pass gives every jewel they apply to; nil in the
+	// first pass.
+	extraJewelFuncs []Mod
 	// grants is what the granted skill block set on each socket group of
 	// b (groupGrant): computed in MAIN mode, given by calcOpts in
 	// CALCULATOR mode, whose groups the MAIN pass left as PoB keeps them.
@@ -134,16 +139,30 @@ type calcOpts struct {
 	calculator bool         // calcState.calculator: CALCULATOR mode
 	compared   int          // calcState.compared
 	grants     []groupGrant // calcState.grants in CALCULATOR mode
+	// extraJewelFuncs is calcState.extraJewelFuncs: non-nil (maybe empty)
+	// once the first pass has collected them.
+	extraJewelFuncs []Mod
 }
 
 // calc is Calc with opts: MAIN mode, or CALCULATOR mode with
 // opts.calculator.
 func (c *Calculator) calc(b *pobcode.Build, opts calcOpts) (*Result, error) {
 	// The steps of calcSteps run in order over a fresh calcState.
-	st := &calcState{b: b, calculator: opts.calculator, compared: opts.compared, grants: opts.grants}
+	st := &calcState{b: b, calculator: opts.calculator, compared: opts.compared, grants: opts.grants,
+		extraJewelFuncs: opts.extraJewelFuncs}
 	for _, step := range calcSteps {
 		if err := step.run(c, st); err != nil {
 			return nil, err
+		}
+		// CalcSetup.lua:1466-1475, after the items and granted passives
+		// are merged: ExtraJewelFunc mods (Ngamahu, Flame's Advance) make
+		// PoB build the env again with them in the radius jewel list.
+		if step.name == "grantedPassives" && opts.extraJewelFuncs == nil {
+			extra := append([]Mod{}, st.db.mods["ExtraJewelFunc"]...)
+			if len(extra) > 0 {
+				opts.extraJewelFuncs = extra
+				return c.calc(b, opts)
+			}
 		}
 	}
 	return st.res, nil
@@ -297,7 +316,7 @@ func stepPassiveTree(c *Calculator, st *calcState) error {
 	cluster, clusterLinks, _ := c.clusterGraph(spec, b, res)
 	treeCounts(db, tree, spec.Nodes, cluster)
 	conquered := c.conquests(spec, b, allocated, res)
-	radiusFuncs := c.radiusFuncs(spec, b, allocated, res)
+	radiusFuncs := c.radiusFuncs(spec, b, allocated, res, st.extraJewelFuncs)
 	addTreeNode := func(id int, add bool) {
 		if g, ok := cluster[id]; ok {
 			if !add {

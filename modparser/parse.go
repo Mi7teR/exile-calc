@@ -832,10 +832,14 @@ func decodeMods(l []any) []Mod {
 		mod := Mod{Value: m["value"], Flags: num(m["flags"]), KeywordFlags: num(m["keywordFlags"])}
 		mod.Name, _ = m["name"].(string)
 		mod.Type, _ = m["type"].(string)
+		// EvalMod reads the tags with ipairs (ModStore.lua:368): a hole
+		// (mod[1] nil when a tag sits in createMod's flags position) ends them.
 		for _, t := range listOf(m) {
-			if tm, ok := t.(map[string]any); ok {
-				mod.Tags = append(mod.Tags, tm)
+			tm, isTag := t.(map[string]any)
+			if !isTag {
+				break
 			}
+			mod.Tags = append(mod.Tags, tm)
 		}
 		out = append(out, mod)
 	}

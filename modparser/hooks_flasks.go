@@ -139,3 +139,25 @@ func init() {
 		},
 	})
 }
+
+// flaskChargeInPresence is function(_, div) return { mod("FlaskChargesGenerated", "BASE", 1 / div,
+// { type = "ActorCondition", actor = "enemy", var = v }) } end (ModParser.lua:5286, 5289).
+func flaskChargeInPresence(v string) Hook {
+	return func(_ *Parser, a []any) any {
+		return []any{withTags(newMod("FlaskChargesGenerated", "BASE", 1/argF(a, cap1), 0, 0),
+			map[string]any{"type": "ActorCondition", "actor": "enemy", "var": v})}
+	}
+}
+
+func init() {
+	registerSpecial(map[string]Hook{
+		// ModParser.lua:5286 ["while a unique enemy is in your presence, flasks gain a charge every (%d+) seconds"]: var = "RareOrUnique"
+		"while a unique enemy is in your presence, flasks gain a charge every (%d+) seconds": flaskChargeInPresence(
+			"RareOrUnique",
+		),
+		// ModParser.lua:5289 ["while a pinnacle atlas boss is in your presence, flasks gain a charge every (%d+) seconds"]: var = "PinnacleBoss"
+		"while a pinnacle atlas boss is in your presence, flasks gain a charge every (%d+) seconds": flaskChargeInPresence(
+			"PinnacleBoss",
+		),
+	})
+}

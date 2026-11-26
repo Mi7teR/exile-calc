@@ -93,3 +93,69 @@ func playerTag() map[string]any {
 func modifierOf(list string, m map[string]any, tags ...any) map[string]any {
 	return withTags(newMod(list, "LIST", map[string]any{"mod": m}, 0, 0), tags...)
 }
+
+// nonUniqueJewelTags are the ItemCondition tags of the "Non-Unique Jewels
+// cause ..." lines (ModParser.lua:2664, 2671): the jewel is neither unique
+// nor relic.
+func nonUniqueJewelTags() []any {
+	return []any{
+		map[string]any{"type": tagItemCondition, keyItemSlot: "{SlotName}", "rarityCond": "UNIQUE", "neg": true},
+		map[string]any{"type": tagItemCondition, keyItemSlot: "{SlotName}", "rarityCond": "RELIC", "neg": true},
+	}
+}
+
+// Tag type and keys of ModParser.lua's ItemCondition and SkillName tags.
+const (
+	tagItemCondition       = "ItemCondition"
+	keyItemSlot            = "itemSlot"
+	keyIncludeTransfigured = "includeTransfigured"
+)
+
+func init() {
+	registerSpecial(map[string]Hook{
+		// ModParser.lua:2658 ["non%-unique jewels cause increases and reductions to other damage types in a (%a+) radius to be transformed
+		//   to apply to (%a+) damage"] = function(_, radius, dmgType) return { mod("ExtraJewelFunc", "LIST", {radius = firstToUpper(radius),
+		//   type = "Other", func = function(node, out, data) if node and not node.conqueredBy then getSimpleConv({ "PhysicalDamage","FireDamage",
+		//   "ColdDamage","LightningDamage","ChaosDamage","ElementalDamage" }, (dmgType:gsub("^%l", string.upper)).."Damage", "INC", true)(node, out, data)
+		//   end end}, <non-unique jewel tags>) } end
+		// The Lua function is data here: func names the conversion ("$jewelFunc").
+		"non%-unique jewels cause increases and reductions to other damage types in a (%a+) radius to be transformed to apply to (%a+) damage": func(
+			_ *Parser, a []any,
+		) any {
+			fn := map[string]any{"$jewelFunc": "convertDamageTypes", "dst": firstToUpper(argS(a, cap2)) + "Damage"}
+			return []any{withTags(newMod(
+				"ExtraJewelFunc",
+				"LIST",
+				map[string]any{
+					"radius": firstToUpper(argS(a, cap1)),
+					"type":   "Other",
+					"func":   fn,
+				},
+				0,
+				0,
+			), nonUniqueJewelTags()...)}
+		},
+		// ModParser.lua:2666 ["non%-unique jewels cause small and notable passive skills in a (%a+) radius to also grant %+(%d+) to (%a+)"] =
+		//   function(_, radius, val, attr) return { mod("ExtraJewelFunc", "LIST", {radius = (radius:gsub("^%l", string.upper)), type = "Other",
+		//   func = function(node, out, data) if node and not node.conqueredBy and (node.type == "Notable" or node.type == "Normal") then
+		//   out:NewMod(firstToUpper(attr):match("^%a%l%l"), "BASE", tonumber(val), data.modSource) end end}, <non-unique jewel tags>) } end
+		"non%-unique jewels cause small and notable passive skills in a (%a+) radius to also grant %+(%d+) to (%a+)": func(_ *Parser, a []any) any {
+			attr := firstToUpper(argS(a, cap3))
+			if len(attr) >= 3 { // ("^%a%l%l"): the first three letters
+				attr = attr[:3]
+			}
+			fn := map[string]any{"$jewelFunc": "grantAttribute", "stat": attr, "value": toNumber(argS(a, cap2))}
+			return []any{withTags(newMod(
+				"ExtraJewelFunc",
+				"LIST",
+				map[string]any{
+					"radius": firstToUpper(argS(a, cap1)),
+					"type":   "Other",
+					"func":   fn,
+				},
+				0,
+				0,
+			), nonUniqueJewelTags()...)}
+		},
+	})
+}

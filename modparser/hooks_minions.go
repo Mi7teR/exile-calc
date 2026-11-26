@@ -110,3 +110,26 @@ func init() {
 		},
 	})
 }
+
+func init() {
+	registerSpecial(map[string]Hook{
+		// ModParser.lua:5827 ["minions attacks overwhelm (%d+)%% physical damage reduction"] = function(num) return {
+		//   mod("MinionModifier", "LIST", { mod = mod("EnemyPhysicalDamageReduction", "BASE", -num, { type = "SkillType", skillType = SkillType.Attack }) }) } end
+		"minions attacks overwhelm (%d+)%% physical damage reduction": func(_ *Parser, a []any) any {
+			return []any{
+				modifierOf(
+					"MinionModifier",
+					withTags(newMod("EnemyPhysicalDamageReduction", "BASE", -argF(a, argNum), 0, 0),
+						skillTypeTag(skillTypeAttack)),
+				),
+			}
+		},
+		// ModParser.lua:4838 ["minions take (%d+)%% reduced damage"] = function(num) return {
+		//   mod("MinionModifier", "LIST", { mod = mod("DamageTaken", "INC", -num) }) } end
+		"minions take (%d+)%% reduced damage": func(_ *Parser, a []any) any {
+			return []any{modifierOf("MinionModifier", newMod("DamageTaken", "INC", -argF(a, argNum), 0, 0))}
+		},
+		// ModParser.lua:2996 ["corpses you spawn have (%d+)%% reduced maximum life"] = function(num) return { mod("CorpseLife", "INC", -num) } end
+		"corpses you spawn have (%d+)%% reduced maximum life": negNum("CorpseLife", "INC"),
+	})
+}

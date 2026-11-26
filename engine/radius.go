@@ -4,10 +4,12 @@ import (
 	"fmt"
 	"math"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 
 	"github.com/Mi7teR/poe-lib/gamedata"
+	"github.com/Mi7teR/poe-lib/itemtext"
 	"github.com/Mi7teR/poe-lib/pobcode"
 )
 
@@ -310,10 +312,23 @@ var collectPatterns = map[string]string{
 }
 
 // radiusFuncs collects the radius functions of the jewels socketed in
-// allocated sockets.
-func (c *Calculator) radiusFuncs(spec *pobcode.Spec, b *pobcode.Build, alloc map[int]bool, res *Result) radiusJewels {
+// allocated sockets: each jewel's own, then the extra jewel functions that
+// apply to it (override.extraJewelFuncs, CalcSetup.lua:919-944), each with
+// its own radius.
+func (c *Calculator) radiusFuncs(
+	spec *pobcode.Spec, b *pobcode.Build, alloc map[int]bool, res *Result, extra []Mod,
+) radiusJewels {
 	out := radiusJewels{byNode: map[int][]radiusFunc{}, second: map[int][]secondPassFunc{}, inRadius: map[int]bool{}}
 	var pos map[int]point
+	add := func(socket int, r radius, funcs []radiusFunc, seconds []secondPassFunc) {
+		if len(funcs) == 0 && len(seconds) == 0 {
+			return
+		}
+		if pos == nil {
+			pos = c.nodePositions()
+		}
+		out.add(nodesInRadius(c.data.Tree, pos, socket, r), funcs, seconds)
+	}
 	for _, s := range spec.Sockets {
 		if s.ItemID == 0 || !alloc[s.NodeID] {
 			continue
@@ -326,53 +341,111 @@ func (c *Calculator) radiusFuncs(spec *pobcode.Spec, b *pobcode.Build, alloc map
 		if it == nil {
 			continue
 		}
-		r, ok := radiusByLabel(it.Radius)
-		if !ok {
-			continue
-		}
 		src := fmt.Sprintf("Tree:%d", s.NodeID)
-		var funcs []radiusFunc
-		var seconds []secondPassFunc
-		for i := 0; i < len(lines); i++ {
-			l := asciiLowerTrim(lines[i])
-			// Two-line jewel mods are matched together (ItemClass:ParseRaw).
-			if !isRadiusFuncLine(l) && i+1 < len(lines) && isRadiusFuncLine(l+" "+asciiLowerTrim(lines[i+1])) {
-				l = l + " " + asciiLowerTrim(lines[i+1])
-				i++
-			}
-			for _, p := range radiusPatterns {
-				if m := p.re.FindStringSubmatch(l); m != nil {
-					funcs = append(funcs, p.make(m, src))
-				}
-			}
-			if t, ok := collectPatterns[l]; ok {
-				f, final := collectUnallocated(t)
-				seconds = append(seconds, f)
-				out.finals = append(out.finals, final)
-			}
-			if p, ok := selfFuncs[l]; ok {
-				f, final := newPerStat(p, src)
-				seconds = append(seconds, f)
-				out.finals = append(out.finals, final)
-			}
+		if r, ok := radiusByLabel(it.Radius); ok {
+			funcs, seconds := ownRadiusFuncs(lines, src, &out)
+			add(s.NodeID, r, funcs, seconds)
 		}
-		if len(funcs) == 0 && len(seconds) == 0 {
-			continue
-		}
-		if pos == nil {
-			pos = c.nodePositions()
-		}
-		for _, id := range nodesInRadius(c.data.Tree, pos, s.NodeID, r) {
-			if len(funcs) > 0 {
-				out.byNode[id] = append(out.byNode[id], funcs...)
+		for _, m := range extra {
+			if r, f, ok := extraJewelFunc(m, it, src); ok {
+				add(s.NodeID, r, []radiusFunc{f}, nil)
 			}
-			if len(seconds) > 0 {
-				out.second[id] = append(out.second[id], seconds...)
-			}
-			out.inRadius[id] = true
 		}
 	}
 	return out
+}
+
+// add gives the nodes ids the functions.
+func (out *radiusJewels) add(ids []int, funcs []radiusFunc, seconds []secondPassFunc) {
+	for _, id := range ids {
+		if len(funcs) > 0 {
+			out.byNode[id] = append(out.byNode[id], funcs...)
+		}
+		if len(seconds) > 0 {
+			out.second[id] = append(out.second[id], seconds...)
+		}
+		out.inRadius[id] = true
+	}
+}
+
+// ownRadiusFuncs is a radius jewel's own functions (jewelData.funcList)
+// from its mod lines; the finalisers go to out.
+func ownRadiusFuncs(lines []string, src string, out *radiusJewels) ([]radiusFunc, []secondPassFunc) {
+	var funcs []radiusFunc
+	var seconds []secondPassFunc
+	for i := 0; i < len(lines); i++ {
+		l := asciiLowerTrim(lines[i])
+		// Two-line jewel mods are matched together (ItemClass:ParseRaw).
+		if !isRadiusFuncLine(l) && i+1 < len(lines) && isRadiusFuncLine(l+" "+asciiLowerTrim(lines[i+1])) {
+			l = l + " " + asciiLowerTrim(lines[i+1])
+			i++
+		}
+		for _, p := range radiusPatterns {
+			if m := p.re.FindStringSubmatch(l); m != nil {
+				funcs = append(funcs, p.make(m, src))
+			}
+		}
+		if t, ok := collectPatterns[l]; ok {
+			f, final := collectUnallocated(t)
+			seconds = append(seconds, f)
+			out.finals = append(out.finals, final)
+		}
+		if p, ok := selfFuncs[l]; ok {
+			f, final := newPerStat(p, src)
+			seconds = append(seconds, f)
+			out.finals = append(out.finals, final)
+		}
+	}
+	return funcs, seconds
+}
+
+// extraJewelFunc is one ExtraJewelFunc entry for a jewel
+// (extraJewelFuncs:List({ item = item }, "ExtraJewelFunc")): its radius and
+// function, when its tags hold for the item. Its ItemCondition tags with
+// itemSlot "{SlotName}" read cfg.item, the jewel (ModStore.lua:691-760).
+func extraJewelFunc(m Mod, it *itemtext.Item, src string) (radius, radiusFunc, bool) {
+	for _, t := range m.Tags {
+		if tagStr(t, "type") != "ItemCondition" {
+			return radius{}, nil, false // no other tag occurs on these mods
+		}
+		if rc := tagStr(t, "rarityCond"); rc != "" {
+			match := strings.EqualFold(string(it.Rarity), rc)
+			if match == tagBool(t, "neg") {
+				return radius{}, nil, false
+			}
+		}
+	}
+	v, _ := m.Value.(map[string]any)
+	label, _ := v["radius"].(string)
+	r, ok := radiusByLabel(label)
+	fn, _ := v["func"].(map[string]any)
+	if !ok || fn == nil {
+		return radius{}, nil, false
+	}
+	switch name, _ := fn["$jewelFunc"].(string); name {
+	case "convertDamageTypes":
+		// getSimpleConv({ "PhysicalDamage", ..., "ElementalDamage" }, dst, "INC", true) (ModParser.lua:2658-2665).
+		dst, _ := fn["dst"].(string)
+		var types []string
+		for _, t := range append(slices.Clone(dmgTypeList), "Elemental") {
+			types = append(types, t+"Damage")
+		}
+		conv := simpleConv(types, dst, "INC", true, 0, "")(nil, src)
+		return r, conv, true
+	case "grantAttribute":
+		// out:NewMod(stat, "BASE", val, data.modSource) on small and notable nodes (ModParser.lua:2666-2672).
+		stat, _ := fn["stat"].(string)
+		val, _ := num(fn["value"])
+		return r, func(n *gamedata.Node, _, _ []Mod) []Mod {
+			if t := nodeType(n); t != "Notable" && t != "Normal" {
+				return nil
+			}
+			grant := mod(stat, "BASE", val)
+			grant.Source = src
+			return []Mod{grant}
+		}, true
+	}
+	return radius{}, nil, false
 }
 
 // bowTransform is Lioneye's Fall: melee and melee weapon type mods of the

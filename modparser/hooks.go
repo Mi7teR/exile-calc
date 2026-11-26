@@ -618,6 +618,63 @@ var hooks = map[string]Hook{
 		return map[string]any{"tag": map[string]any{"type": "Multiplier", "var": "ManaSpentRecently", "div": arg(a, 0),
 			"limit": toNumber(argS(a, 2)), "limitTotal": true}}
 	},
+	// ModParser.lua:1434-1435 ["for each enemy you or your minions have killed recently, up to (%d+)%%( per second)?"] = function(num) return {
+	//   tag = { type = "Multiplier", varList = { "EnemyKilledRecently","EnemyKilledByMinionsRecently" }, limit = tonumber(num), limitTotal = true } } end
+	"modTagList[for each enemy you or your minions have killed recently, up to (%d+)%%]":            killedByYouOrMinionsTag,
+	"modTagList[for each enemy you or your minions have killed recently, up to (%d+)%% per second]": killedByYouOrMinionsTag,
+	// ModParser.lua:1570 ["for each remaining chain, up to (%d+)%%"] = function(limit) return {
+	//   tag = { type = "PerStat", stat = "ChainRemaining", globalLimit = tonumber(limit), globalLimitKey = "FollowThrough" } } end
+	"modTagList[for each remaining chain, up to (%d+)%%]": globalLimitTag(
+		"PerStat",
+		"stat",
+		"ChainRemaining",
+		"FollowThrough",
+		false,
+	),
+	// ModParser.lua:1644 ["if both equipped ([%a%s]+) have a?n? ?([%a%s]+) modifiers?"] = function (_, itemSlotName, conditionSubstring) return {
+	//   tag = { type = "ItemCondition", searchCond = conditionSubstring, itemSlot = itemSlotName:sub(1, #itemSlotName - 1), bothSlots = true } } end
+	"modTagList[if both equipped ([%a%s]+) have a?n? ?([%a%s]+) modifiers?]": func(_ *Parser, a []any) any {
+		slot := argS(a, cap1)
+		if slot != "" {
+			slot = slot[:len(slot)-1]
+		}
+		return map[string]any{
+			"tag": map[string]any{
+				"type":       tagItemCondition,
+				"searchCond": argS(a, cap2),
+				keyItemSlot:  slot,
+				"bothSlots":  true,
+			},
+		}
+	},
+	// ModParser.lua:1500 ["per (%d+) maximum mana, up to a maximum of (%d+)%%"] = function(num, _, limit) return {
+	//   tag = { type = "PerStat", stat = "Mana", div = num, limit = tonumber(limit), limitTotal = true } } end
+	"modTagList[per (%d+) maximum mana, up to a maximum of (%d+)%%]": divLimitTag("PerStat", "stat", "Mana"),
+	// ModParser.lua:1412 ["per (.+) eye jewel affecting you, up to a maximum of %+?(%d+)%%"] = function(type, _, num) return {
+	//   tag = { type = "Multiplier", var = (type:gsub("^%l", string.upper)) .. "EyeJewel", limit = tonumber(num), limitTotal = true } } end
+	"modTagList[per (.+) eye jewel affecting you, up to a maximum of %+?(%d+)%%]": func(_ *Parser, a []any) any {
+		return map[string]any{
+			"tag": map[string]any{"type": "Multiplier", "var": firstToUpper(argS(a, cap1)) + "EyeJewel",
+				"limit": toNumber(argS(a, cap2)), "limitTotal": true},
+		}
+	},
+	// ModParser.lua:1579-1581 ["w?h?i[lf]e? strength|dexterity|intelligence is below (%d+)"] = function(num) return {
+	//   tag = { type = "StatThreshold", stat = "Str"|"Dex"|"Int", threshold = num - 1, upper = true } } end
+	"modTagList[w?h?i[lf]e? strength is below (%d+)]":     statBelowTag("Str"),
+	"modTagList[w?h?i[lf]e? dexterity is below (%d+)]":    statBelowTag("Dex"),
+	"modTagList[w?h?i[lf]e? intelligence is below (%d+)]": statBelowTag("Int"),
+	// ModParser.lua:1762 ["with at least one (%w+) grafted to you"] = function(_, graft) return {
+	//   tag = { type = "Condition", var = "Using"..firstToUpper(graft) } } end
+	"modTagList[with at least one (%w+) grafted to you]": func(_ *Parser, a []any) any {
+		return map[string]any{"tag": condTag("Using" + firstToUpper(argS(a, cap1)))}
+	},
+	// ModParser.lua:1281 ["^hits against enemies (%a+) by you have "] = function(cond)
+	//   return { tag = { type = "ActorCondition", actor = "enemy", var = cond:gsub("^%a", string.upper) } } end
+	"preFlagList[^hits against enemies (%a+) by you have ]": func(_ *Parser, a []any) any {
+		return map[string]any{
+			"tag": map[string]any{"type": "ActorCondition", "actor": "enemy", "var": firstToUpper(argS(a, 0))},
+		}
+	},
 	// ["per minion, up to ?a? ?m?a?x?i?m?u?m? ?o?f? (%d+)%%"] = function(num) return {
 	//   tag = { type = "Multiplier", var = "SummonedMinion", limit = tonumber(num), limitTotal = true } } end
 	"modTagList[per minion, up to ?a? ?m?a?x?i?m?u?m? ?o?f? (%d+)%%]": limitTotalTag("SummonedMinion"),
@@ -1711,4 +1768,27 @@ func poisonChanceMore(a []any, tags ...any) any {
 	more, _ := toNumber(argS(a, 2)).(float64)                                          //nolint:mnd // Lua capture index
 	const kwPoison = 0x200000                                                          // KeywordFlag.Poison
 	return []any{withTags(newMod("Damage", "MORE", more*n/100, 0, kwPoison), tags...)} //nolint:mnd // percent
+}
+
+// killedByYouOrMinionsTag is the tag of ModParser.lua:1434-1435.
+func killedByYouOrMinionsTag(_ *Parser, a []any) any {
+	return map[string]any{"tag": map[string]any{
+		"type": "Multiplier",
+		"varList": []any{
+			"EnemyKilledRecently",
+			"EnemyKilledByMinionsRecently",
+		},
+		"limit":      toNumber(arg(a, 0)),
+		"limitTotal": true,
+	}}
+}
+
+// statBelowTag is { type = "StatThreshold", stat = stat, threshold = num - 1, upper = true } (ModParser.lua:1579-1581).
+func statBelowTag(stat string) Hook {
+	return func(_ *Parser, a []any) any {
+		n, _ := toNumber(arg(a, 0)).(float64)
+		return map[string]any{
+			"tag": map[string]any{"type": "StatThreshold", "stat": stat, "threshold": n - 1, "upper": true},
+		}
+	}
 }

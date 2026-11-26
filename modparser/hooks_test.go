@@ -30,6 +30,26 @@ func TestHookNamesExist(t *testing.T) {
 	}
 }
 
+// TestEveryHookPorted: every Lua function the generated tables name has a
+// Go port, so no line is unsupported for want of one.
+func TestEveryHookPorted(t *testing.T) {
+	p, err := PoE1()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, es := range p.t.t {
+		for _, e := range es {
+			if m, isMap := e.value.(map[string]any); isMap {
+				if h, ok := m["$hook"].(string); ok {
+					if _, ported := hooks[h]; !ported {
+						t.Errorf("hook %q has no port", h)
+					}
+				}
+			}
+		}
+	}
+}
+
 func TestHooks(t *testing.T) {
 	// hookCases maps a line to the mods ModParser.lua gives it (as JSON, in
 	// the generic encoding), one or more per ported specialModList rule.
@@ -350,6 +370,142 @@ func TestHooks(t *testing.T) {
 			"name":"DisableSkill","type":"FLAG","value":true},
 			{"@list":[{"type":"SkillId"}],"flags":0,"keywordFlags":0,"name":"EnableSkill","type":"FLAG","value":true}]`,
 
+		// Round 2: the hooks that had no port. Each case is the PoB v2.68.1
+		// ModParser result of the line (modLib.parseMod in the oracle); the
+		// two ExtraJewelFunc ones carry their Lua function as "$jewelFunc"
+		// data instead of a function.
+		// modTagList for each enemy you or your minions have killed recently, up to (%d+)%% per second (ModParser.lua:1435)
+		"10% increased Damage for each Enemy you or your Minions have Killed Recently, up to 50% per second": `[{"@list":[{"limit":50,"limitTotal":true,"type":"Multiplier","varList":["EnemyKilledRecently","EnemyKilledByMinionsRecently"]}],"flags":0,"keywordFlags":0,"name":"Damage","type":"INC","value":10}]`,
+		// modTagList for each enemy you or your minions have killed recently, up to (%d+)%% (ModParser.lua:1434)
+		"10% increased Movement Speed for each Enemy you or your Minions have Killed Recently, up to 50%": `[{"@list":[{"limit":50,"limitTotal":true,"type":"Multiplier","varList":["EnemyKilledRecently","EnemyKilledByMinionsRecently"]}],"flags":0,"keywordFlags":0,"name":"MovementSpeed","type":"INC","value":10}]`,
+		// modTagList for each remaining chain, up to (%d+)%% (ModParser.lua:1570)
+		"Projectiles deal 10% increased Damage for each remaining Chain, up to 40%": `[{"@list":[{"globalLimit":40,"globalLimitKey":"FollowThrough","stat":"ChainRemaining","type":"PerStat"}],"flags":1024,"keywordFlags":0,"name":"Damage","type":"INC","value":10}]`,
+		// modTagList if both equipped ([%a%s]+) have a?n? ?([%a%s]+) modifiers? (ModParser.lua:1644)
+		"20% increased Attack Speed if both Equipped Rings have an Elder Modifier": `[{"@list":[{"bothSlots":true,"itemSlot":"ring","searchCond":"elder","type":"ItemCondition"}],"flags":1,"keywordFlags":0,"name":"Speed","type":"INC","value":20}]`,
+		// modTagList per (%d+) maximum mana, up to a maximum of (%d+)%% (ModParser.lua:1500)
+		"1% increased Spell Damage per 100 Maximum Mana, up to a maximum of 50%": `[{"@list":[{"div":100,"limit":50,"limitTotal":true,"stat":"Mana","type":"PerStat"}],"flags":2,"keywordFlags":0,"name":"Damage","type":"INC","value":1}]`,
+		// modTagList per (.+) eye jewel affecting you, up to a maximum of %+?(%d+)%% (ModParser.lua:1412)
+		"1% increased Damage per Searching Eye Jewel affecting you, up to a maximum of +30%": `[{"@list":[{"limit":30,"limitTotal":true,"type":"Multiplier","var":"SearchingEyeJewel"}],"flags":0,"keywordFlags":0,"name":"Damage","type":"INC","value":1}]`,
+		// modTagList w?h?i[lf]e? dexterity is below (%d+) (ModParser.lua:1580)
+		"20% increased Attack Speed while Dexterity is below 100": `[{"@list":[{"stat":"Dex","threshold":99,"type":"StatThreshold","upper":true}],"flags":1,"keywordFlags":0,"name":"Speed","type":"INC","value":20}]`,
+		// modTagList w?h?i[lf]e? intelligence is below (%d+) (ModParser.lua:1581)
+		"20% increased Cast Speed while Intelligence is below 100": `[{"@list":[{"stat":"Int","threshold":99,"type":"StatThreshold","upper":true}],"flags":16,"keywordFlags":0,"name":"Speed","type":"INC","value":20}]`,
+		// modTagList w?h?i[lf]e? strength is below (%d+) (ModParser.lua:1579)
+		"20% increased Damage while Strength is below 100": `[{"@list":[{"stat":"Str","threshold":99,"type":"StatThreshold","upper":true}],"flags":0,"keywordFlags":0,"name":"Damage","type":"INC","value":20}]`,
+		// modTagList with at least one (%w+) grafted to you (ModParser.lua:1762)
+		"10% increased maximum Life with at least one Paranoia grafted to you": `[{"@list":[{"type":"Condition","var":"UsingParanoia"}],"flags":0,"keywordFlags":0,"name":"Life","type":"INC","value":10}]`,
+		// preFlagList ^hits against enemies (%a+) by you have  (ModParser.lua:1281)
+		"Hits against Enemies Ignited by you have 20% increased Critical Strike Chance": `[{"@list":[{"actor":"enemy","type":"ActorCondition","var":"Ignited"}],"flags":0,"keywordFlags":0,"name":"CritChance","type":"INC","value":20}]`,
+		// specialModList ^%+([%d%.]+) metres? to discharge radius$ (ModParser.lua:5952)
+		"+1.5 metres to Discharge radius": `[{"@list":[{"includeTransfigured":true,"skillName":"Discharge","type":"SkillName"}],"flags":0,"keywordFlags":0,"name":"AreaOfEffect","type":"BASE","value":15}]`,
+		// specialModList ^%-(%d+)%% of toxic rain physical damage converted to chaos damage$ (ModParser.lua:3612)
+		"-20% of Toxic Rain Physical Damage Converted to Chaos Damage": `[{"@list":[{"includeTransfigured":true,"skillName":"Toxic Rain","type":"SkillName"}],"flags":0,"keywordFlags":0,"name":"SkillPhysicalDamageConvertToChaos","type":"BASE","value":-20}]`,
+		// specialModList ^(%a+) resistance cannot be penetrated$ (ModParser.lua:5159)
+		"Fire Resistance cannot be Penetrated": `[{"flags":0,"keywordFlags":0,"name":"EnemyCannotPenFireResistance","type":"FLAG","value":true}]`,
+		// specialModList ^(%d+)%% chance for bleeding inflicted with cobra lash or venom gyre to deal (%d+)%% more damage$ (ModParser.lua:3965)
+		"25% chance for Bleeding inflicted with Cobra Lash or Venom Gyre to deal 100% more Damage": `[{"@list":[{"skillNameList":["Cobra Lash","Venom Gyre"],"type":"SkillName"}],"flags":0,"keywordFlags":4194304,"name":"Damage","type":"MORE","value":25}]`,
+		// specialModList ^(%d+)%% chance for ignites inflicted with lightning arrow or ice shot to deal (%d+)%% more damage$ (ModParser.lua:3799)
+		"25% chance for Ignites inflicted with Lightning Arrow or Ice Shot to deal 100% more Damage": `[{"@list":[{"includeTransfigured":true,"skillNameList":["Lightning Arrow","Ice Shot"],"type":"SkillName"}],"flags":0,"keywordFlags":8388608,"name":"Damage","type":"MORE","value":25}]`,
+		// specialModList ^(%d+)%% chance for ignites inflicted with lightning strike or frost blades to deal (%d+)%% more damage$ (ModParser.lua:3796)
+		"25% chance for Ignites inflicted with Lightning Strike or Frost Blades to deal 100% more Damage": `[{"@list":[{"includeTransfigured":true,"skillNameList":["Lightning Strike","Frost Blades"],"type":"SkillName"}],"flags":0,"keywordFlags":8388608,"name":"Damage","type":"MORE","value":25}]`,
+		// specialModList ^(%d+)%% chance for ignites inflicted with shock nova or storm call to deal (%d+)%% more damage$ (ModParser.lua:3802)
+		"25% chance for Ignites inflicted with Shock Nova or Storm Call to deal 100% more Damage": `[{"@list":[{"includeTransfigured":true,"skillNameList":["Shock Nova","Storm Call"],"type":"SkillName"}],"flags":0,"keywordFlags":8388608,"name":"Damage","type":"MORE","value":25}]`,
+		// specialModList ^(%d+)%% chance to [c?t?][a?r?][s?i?][t?g?]g?e?r? socketed spells when you spend at least (%d+) mana to use a skill$ (ModParser.lua:3253)
+		"20% chance to Trigger Socketed Spells when you Spend at least 100 Mana to Use a Skill": `[{"flags":0,"keywordFlags":0,"name":"KitavaTriggerChance","source":"Kitava's Thirst","type":"BASE","value":20},{"flags":0,"keywordFlags":0,"name":"KitavaRequiredManaCost","source":"Kitava's Thirst","type":"BASE","value":100},{"@list":[{"slotName":"{SlotName}","type":"SocketedIn"}],"flags":0,"keywordFlags":0,"name":"ExtraSupport","type":"LIST","value":{"level":1,"skillId":"SupportCastOnManaSpent"}}]`,
+		// specialModList ^(%d+)%% chance to defend with double armour$ (ModParser.lua:2502)
+		"50% chance to Defend with Double Armour": `[{"@list":[{"type":"Condition","var":"ArmourMax"}],"flags":0,"keywordFlags":0,"name":"ArmourDefense","source":"Armour Mastery: Max Calc","type":"MAX","value":100},{"@list":[{"type":"Condition","var":"ArmourAvg"}],"flags":0,"keywordFlags":0,"name":"ArmourDefense","source":"Armour Mastery: Average Calc","type":"MAX","value":50},{"@list":[{"neg":true,"type":"Condition","var":"ArmourMax"},{"neg":true,"type":"Condition","var":"ArmourAvg"}],"flags":0,"keywordFlags":0,"name":"ArmourDefense","source":"Armour Mastery: Min Calc","type":"MAX","value":0}]`,
+		// specialModList ^(%d+)%% chance to defend with double your armour for each time you've been hit by an enemy recently, up to (%d+)%%$ (ModParser.lua:2491)
+		"10% chance to Defend with Double your Armour for each time you've been Hit by an Enemy Recently, up to 50%": `[{"@list":[{"type":"Condition","var":"ArmourMax"}],"flags":0,"keywordFlags":0,"name":"ArmourDefense","source":"Armour Mastery: Max Calc","type":"MAX","value":100},{"@list":[{"type":"Condition","var":"ArmourAvg"},{"limit":5,"type":"Multiplier","var":"BeenHitRecently"}],"flags":0,"keywordFlags":0,"name":"ArmourDefense","source":"Armour Mastery: Average Calc","type":"MAX","value":10},{"@list":[{"neg":true,"type":"Condition","var":"ArmourMax"},{"neg":true,"type":"Condition","var":"ArmourAvg"},{"limit":5,"type":"Multiplier","var":"BeenHitRecently"}],"flags":0,"keywordFlags":0,"name":"ArmourDefense","source":"Armour Mastery: Min Calc","type":"MAX","value":0}]`,
+		// specialModList ^(%d+)%% chance to throw up to (%d+) additional mines?$ (ModParser.lua:4493)
+		"50% chance to throw up to 1 additional Mine": `[{"flags":0,"keywordFlags":0,"name":"MineThrowCount","type":"BASE","value":0.5}]`,
+		// specialModList ^(%d+)%% less damage taken for every (%d+)%% life recovery per second from leech$ (ModParser.lua:2232)
+		"5% less Damage taken for every 2% Life Recovery per second from Leech": `[{"@list":[{"div":2,"stat":"MaxLifeLeechRatePercent","type":"PerStat"}],"flags":0,"keywordFlags":0,"name":"DamageTaken","type":"MORE","value":-5}]`,
+		// specialModList ^(%d+)%% more damage for each endurance charge lost recently, up to (%d+)%%$ (ModParser.lua:2650)
+		"5% more Damage for each Endurance Charge lost recently, up to 25%": `[{"@list":[{"limit":25,"limitTotal":true,"type":"Multiplier","var":"EnduranceChargesLostRecently"}],"flags":0,"keywordFlags":0,"name":"Damage","type":"MORE","value":5}]`,
+		// specialModList ^(%d+)%% reduced damage taken while there are at least two rare or unique enemies nearby$ (ModParser.lua:2557)
+		"10% reduced Damage taken while there are at least two Rare or Unique Enemies nearby": `[{"@list":[{"threshold":2,"type":"MultiplierThreshold","var":"NearbyRareOrUniqueEnemies"}],"flags":0,"keywordFlags":0,"name":"DamageTaken","type":"INC","value":-10}]`,
+		// specialModList ^(%d+)%% reduced essence drain and soulrend projectile speed$ (ModParser.lua:4686)
+		"20% reduced Essence Drain and Soulrend Projectile Speed": `[{"@list":[null,{"includeTransfigured":true,"skillNameList":["Essence Drain","Soulrend"],"type":"SkillName"}],"flags":0,"keywordFlags":0,"name":"ProjectileSpeed","type":"INC","value":-20}]`,
+		// specialModList ^+(%d+)%% chance to suppress spell damage if your e?q?u?i?p?p?e?d? ?boots, helmet and gloves have evasion$ (ModParser.lua:4097)
+		"+10% chance to Suppress Spell Damage if your Boots, Helmet and Gloves have Evasion": `[{"@list":[{"stat":"EvasionOnBoots","threshold":1,"type":"StatThreshold"},{"stat":"EvasionOnHelmet","threshold":1,"type":"StatThreshold"},{"stat":"EvasionOnGloves","threshold":1,"type":"StatThreshold"}],"flags":0,"keywordFlags":0,"name":"SpellSuppressionChance","type":"BASE","value":10}]`,
+		// specialModList ^arcane cloak grants life regeneration equal to (%d+)%% of mana spent per second$ (ModParser.lua:5920)
+		"Arcane Cloak grants Life Regeneration equal to 15% of Mana Spent per Second": `[{"@list":[{"skillName":"Arcane Cloak","type":"SkillName"}],"flags":0,"keywordFlags":0,"name":"ExtraSkillMod","type":"LIST","value":{"mod":{"@list":[{"type":"Multiplier","var":"ArcaneCloakConsumedMana"},{"effectType":"Buff","type":"GlobalEffect"}],"flags":0,"keywordFlags":0,"name":"LifeRegen","type":"BASE","value":0.14999999999999999}}}]`,
+		// specialModList ^aura buffs from skills have (%d+)%% increased effect on you for each herald affecting you, up to (%d+)%%$ (ModParser.lua:4137)
+		"Aura Buffs from Skills have 4% increased Effect on you for each Herald affecting you, up to 40%": `[{"@list":[{"globalLimit":40,"globalLimitKey":"PurposefulHarbinger","type":"Multiplier","var":"Herald"}],"flags":0,"keywordFlags":0,"name":"SkillAuraEffectOnSelf","type":"INC","value":4}]`,
+		// specialModList ^auras from your skills have (%d+)%% increased effect on you for each herald affecting you, up to (%d+)%%$ (ModParser.lua:4140)
+		"Auras from your Skills have 4% increased Effect on you for each Herald affecting you, up to 40%": `[{"@list":[{"globalLimit":40,"globalLimitKey":"PurposefulHarbinger","type":"Multiplier","var":"Herald"}],"flags":0,"keywordFlags":0,"name":"SkillAuraEffectOnSelf","type":"INC","value":4}]`,
+		// specialModList ^chain hook has %+([%d%.]+) metres? to radius per (%d+) rage$ (ModParser.lua:5951)
+		"Chain Hook has +0.2 metres to radius per 5 Rage": `[{"@list":[{"div":5,"stat":"Rage","type":"PerStat"},{"includeTransfigured":true,"skillName":"Chain Hook","type":"SkillName"}],"flags":0,"keywordFlags":0,"name":"AreaOfEffect","type":"BASE","value":2}]`,
+		// specialModList ^cobra lash and venom gyre have %-(%d+)%% of physical damage converted to chaos damage$ (ModParser.lua:3615)
+		"Cobra Lash and Venom Gyre have -20% of Physical Damage Converted to Chaos Damage": `[{"@list":[{"skillNameList":["Cobra Lash","Venom Gyre"],"type":"SkillName"}],"flags":0,"keywordFlags":0,"name":"SkillPhysicalDamageConvertToChaos","type":"BASE","value":-20}]`,
+		// specialModList ^corpses you spawn have (%d+)%% reduced maximum life$ (ModParser.lua:2996)
+		"Corpses you Spawn have 20% reduced Maximum Life": `[{"flags":0,"keywordFlags":0,"name":"CorpseLife","type":"INC","value":-20}]`,
+		// specialModList ^damage taken recouped as (%a+) is also recouped as energy shield$ (ModParser.lua:4884)
+		"Damage taken Recouped as Life is also Recouped as Energy Shield": `[{"flags":0,"keywordFlags":0,"name":"AddLifeRecoupToEnergyShieldRecoup","type":"FLAG","value":true}]`,
+		// specialModList ^defend with (%d+)%% of armour while not on low energy shield$ (ModParser.lua:2521)
+		"Defend with 120% of Armour while not on Low Energy Shield": `[{"@list":[{"neg":true,"type":"Condition","var":"LowEnergyShield"}],"flags":0,"keywordFlags":0,"name":"ArmourDefense","source":"Armour and Energy Shield Mastery","type":"MAX","value":20}]`,
+		// specialModList ^enemies have %-(%d+)%% to total physical damage reduction against your hits$ (ModParser.lua:5683)
+		"Enemies have -10% to Total Physical Damage Reduction against your Hits": `[{"flags":0,"keywordFlags":0,"name":"EnemyPhysicalDamageReduction","type":"BASE","value":-10}]`,
+		// specialModList ^enemies you hit with elemental damage temporarily get (%+%d+)%% resistance to those elements and (%-%d+)%% resistance to other elements$ (ModParser.lua:2338)
+		"Enemies you hit with Elemental Damage temporarily get +25% Resistance to those Elements and -50% Resistance to other Elements": `[{"flags":0,"keywordFlags":0,"name":"ElementalEquilibrium","type":"FLAG","value":true},{"flags":0,"keywordFlags":0,"name":"ElementalEquilibriumLegacy","type":"FLAG","value":true},{"flags":0,"keywordFlags":0,"name":"EnemyModifier","type":"LIST","value":{"mod":{"@list":[{"type":"Condition","var":"HitByFireDamage"}],"flags":0,"keywordFlags":0,"name":"FireResist","type":"BASE","value":25}}},{"flags":0,"keywordFlags":0,"name":"EnemyModifier","type":"LIST","value":{"mod":{"@list":[{"neg":true,"type":"Condition","var":"HitByFireDamage"},{"type":"Condition","varList":["HitByColdDamage","HitByLightningDamage"]}],"flags":0,"keywordFlags":0,"name":"FireResist","type":"BASE","value":-50}}},{"flags":0,"keywordFlags":0,"name":"EnemyModifier","type":"LIST","value":{"mod":{"@list":[{"type":"Condition","var":"HitByColdDamage"}],"flags":0,"keywordFlags":0,"name":"ColdResist","type":"BASE","value":25}}},{"flags":0,"keywordFlags":0,"name":"EnemyModifier","type":"LIST","value":{"mod":{"@list":[{"neg":true,"type":"Condition","var":"HitByColdDamage"},{"type":"Condition","varList":["HitByFireDamage","HitByLightningDamage"]}],"flags":0,"keywordFlags":0,"name":"ColdResist","type":"BASE","value":-50}}},{"flags":0,"keywordFlags":0,"name":"EnemyModifier","type":"LIST","value":{"mod":{"@list":[{"type":"Condition","var":"HitByLightningDamage"}],"flags":0,"keywordFlags":0,"name":"LightningResist","type":"BASE","value":25}}},{"flags":0,"keywordFlags":0,"name":"EnemyModifier","type":"LIST","value":{"mod":{"@list":[{"neg":true,"type":"Condition","var":"HitByLightningDamage"},{"type":"Condition","varList":["HitByFireDamage","HitByColdDamage"]}],"flags":0,"keywordFlags":0,"name":"LightningResist","type":"BASE","value":-50}}}]`,
+		// specialModList ^enemies you impale have %-(%d+)%% to total physical damage reduction against impale hits$ (ModParser.lua:5686)
+		"Enemies you Impale have -10% to Total Physical Damage Reduction against Impale Hits": `[{"flags":0,"keywordFlags":0,"name":"EnemyImpalePhysicalDamageReduction","type":"BASE","value":-10}]`,
+		// specialModList ^flamethrower, seismic and lightning spire trap have %-(%d+) cooldown uses?$ (ModParser.lua:5837)
+		"Flamethrower, Seismic and Lightning Spire Trap have -1 Cooldown Uses": `[{"@list":[{"includeTransfigured":true,"skillNameList":["Flamethrower Trap","Seismic Trap","Lightning Spire Trap"],"type":"SkillName"}],"flags":0,"keywordFlags":0,"name":"AdditionalCooldownUses","type":"BASE","value":-1}]`,
+		// specialModList ^focus has (%d+)%% reduced cooldown recovery rate$ (ModParser.lua:5834)
+		"Focus has 25% reduced Cooldown Recovery Rate": `[{"@list":[{"type":"Condition","var":"Focused"}],"flags":0,"keywordFlags":0,"name":"FocusCooldownRecovery","type":"INC","value":-25}]`,
+		// specialModList ^for each element you've been hit by damage of recently, (%d+)%% reduced damage taken of that element$ (ModParser.lua:2709)
+		"For each Element you've been Hit by Damage of Recently, 8% reduced Damage taken of that Element": `[{"@list":[{"type":"Condition","var":"HitByFireDamageRecently"}],"flags":0,"keywordFlags":0,"name":"FireDamageTaken","type":"INC","value":-8},{"@list":[{"type":"Condition","var":"HitByColdDamageRecently"}],"flags":0,"keywordFlags":0,"name":"ColdDamageTaken","type":"INC","value":-8},{"@list":[{"type":"Condition","var":"HitByLightningDamageRecently"}],"flags":0,"keywordFlags":0,"name":"LightningDamageTaken","type":"INC","value":-8}]`,
+		// specialModList ^frozen sweep deals (%d+)%% less damage$ (ModParser.lua:5879)
+		"Frozen Sweep deals 40% less Damage": `[{"@list":[{"includeTransfigured":true,"skillName":"Frozen Sweep","type":"SkillName"}],"flags":0,"keywordFlags":0,"name":"Damage","type":"MORE","value":-40}]`,
+		// specialModList ^grants armour equal to (%d+)%% of your reserved life to you and nearby allies$ (ModParser.lua:2917)
+		"Grants Armour equal to 160% of your Reserved Life to you and nearby Allies": `[{"flags":0,"keywordFlags":0,"name":"GrantReservedLifeAsAura","type":"LIST","value":{"mod":{"flags":0,"keywordFlags":0,"name":"Armour","type":"BASE","value":1.6000000000000001}}}]`,
+		// specialModList ^hits overwhelm (%d+)%% of physical damage reduction while you have sacrificial zeal$ (ModParser.lua:5818)
+		"Hits Overwhelm 15% of Physical Damage Reduction while you have Sacrificial Zeal": `[{"@list":[null,{"type":"Condition","var":"SacrificialZeal"}],"flags":0,"keywordFlags":0,"name":"EnemyPhysicalDamageReduction","type":"BASE","value":-15}]`,
+		// specialModList ^hits with this weapon overwhelm (%d+)%% physical damage reduction$ (ModParser.lua:5689)
+		"Hits with this Weapon Overwhelm 20% Physical Damage Reduction": `[{"@list":[{"type":"Condition","var":"{Hand}Attack"},{"skillType":1,"type":"SkillType"}],"flags":4,"keywordFlags":0,"name":"EnemyPhysicalDamageReduction","type":"BASE","value":-20}]`,
+		// specialModList ^mana is increased by (%d+)%% of overcapped lightning resistance$ (ModParser.lua:6057)
+		"Mana is increased by 50% of Overcapped Lightning Resistance": `[{"flags":0,"keywordFlags":0,"name":"ManaIncreasedByOvercappedLightningRes","type":"FLAG","value":true},{"@list":[{"stat":"LightningResistOverCap","type":"PerStat"}],"flags":0,"keywordFlags":0,"name":"Mana","type":"INC","value":0.5}]`,
+		// specialModList ^minions attacks overwhelm (%d+)%% physical damage reduction$ (ModParser.lua:5827)
+		"Minions Attacks Overwhelm 10% Physical Damage Reduction": `[{"flags":0,"keywordFlags":0,"name":"MinionModifier","type":"LIST","value":{"mod":{"@list":[{"skillType":1,"type":"SkillType"}],"flags":0,"keywordFlags":0,"name":"EnemyPhysicalDamageReduction","type":"BASE","value":-10}}}]`,
+		// specialModList ^minions take (%d+)%% reduced damage$ (ModParser.lua:4838)
+		"Minions take 20% reduced Damage": `[{"flags":0,"keywordFlags":0,"name":"MinionModifier","type":"LIST","value":{"mod":{"flags":0,"keywordFlags":0,"name":"DamageTaken","type":"INC","value":-20}}}]`,
+		// specialModList ^nearby enemies have (%d+)%% less accuracy rating while you have phasing$ (ModParser.lua:3029)
+		"Nearby Enemies have 10% less Accuracy Rating while you have Phasing": `[{"@list":[{"type":"Condition","var":"Phasing"}],"flags":0,"keywordFlags":0,"name":"EnemyModifier","type":"LIST","value":{"mod":{"flags":0,"keywordFlags":0,"name":"Accuracy","type":"MORE","value":-10}}}]`,
+		// specialModList ^nearby enemies have fire, cold and lightning exposure while you have phasing, applying %-(%d+)%% to those resistances$ (ModParser.lua:3031)
+		"Nearby Enemies have Fire, Cold and Lightning Exposure while you have Phasing, applying -10% to those Resistances": `[{"@list":[{"type":"Condition","var":"Phasing"}],"flags":0,"keywordFlags":0,"name":"EnemyModifier","type":"LIST","value":{"mod":{"flags":0,"keywordFlags":0,"name":"FireExposure","type":"BASE","value":-10}}},{"@list":[{"type":"Condition","var":"Phasing"}],"flags":0,"keywordFlags":0,"name":"EnemyModifier","type":"LIST","value":{"mod":{"flags":0,"keywordFlags":0,"name":"ColdExposure","type":"BASE","value":-10}}},{"@list":[{"type":"Condition","var":"Phasing"}],"flags":0,"keywordFlags":0,"name":"EnemyModifier","type":"LIST","value":{"mod":{"flags":0,"keywordFlags":0,"name":"LightningExposure","type":"BASE","value":-10}}}]`,
+		// specialModList ^non%-critical strikes deal (%d+)%% damage$ (ModParser.lua:3642)
+		"Non-Critical Strikes deal 25% Damage": `[{"@list":[{"neg":true,"type":"Condition","var":"CriticalStrike"}],"flags":4,"keywordFlags":0,"name":"Damage","type":"MORE","value":-75}]`,
+		// specialModList ^non%-instant warcries you use yourself have no cooldown$ (ModParser.lua:5640)
+		"Non-Instant Warcries you use yourself have no Cooldown": `[{"@list":[{"neg":true,"skillTypeList":{"@list":[64],"3":37},"type":"SkillType"}],"flags":0,"keywordFlags":4,"name":"CooldownRecovery","type":"OVERRIDE","value":0}]`,
+		// specialModList ^non%-unique jewels cause increases and reductions to other damage types in a (%a+) radius to be transformed to apply to (%a+) damage$ (ModParser.lua:2658)
+		"Non-Unique Jewels cause Increases and Reductions to other Damage Types in a Large Radius to be Transformed to apply to Fire Damage": `[{"@list":[{"itemSlot":"{SlotName}","neg":true,"rarityCond":"UNIQUE","type":"ItemCondition"},{"itemSlot":"{SlotName}","neg":true,"rarityCond":"RELIC","type":"ItemCondition"}],"flags":0,"keywordFlags":0,"name":"ExtraJewelFunc","type":"LIST","value":{"func":{"$jewelFunc":"convertDamageTypes","dst":"FireDamage"},"radius":"Large","type":"Other"}}]`,
+		// specialModList ^non%-unique jewels cause small and notable passive skills in a (%a+) radius to also grant %+(%d+) to (%a+)$ (ModParser.lua:2666)
+		"Non-Unique Jewels cause Small and Notable Passive Skills in a Large Radius to also grant +4 to Strength": `[{"@list":[{"itemSlot":"{SlotName}","neg":true,"rarityCond":"UNIQUE","type":"ItemCondition"},{"itemSlot":"{SlotName}","neg":true,"rarityCond":"RELIC","type":"ItemCondition"}],"flags":0,"keywordFlags":0,"name":"ExtraJewelFunc","type":"LIST","value":{"func":{"$jewelFunc":"grantAttribute","stat":"Str","value":4},"radius":"Large","type":"Other"}}]`,
+		// specialModList ^overwhelm (%d+)%% physical damage reduction$ (ModParser.lua:5692)
+		"Overwhelm 20% Physical Damage Reduction": `[{"flags":0,"keywordFlags":0,"name":"EnemyPhysicalDamageReduction","type":"BASE","value":-20}]`,
+		// specialModList ^projectiles deal (%d+)%% increased damage with hits and ailments for each remaining chain, up to (%d+)%%$ (ModParser.lua:2692)
+		"Projectiles deal 10% increased Damage with Hits and Ailments for each remaining Chain, up to 40%": `[{"@list":[{"globalLimit":40,"globalLimitKey":"FollowThrough","stat":"ChainRemaining","type":"PerStat"},{"skillType":3,"type":"SkillType"}],"flags":0,"keywordFlags":786432,"name":"Damage","type":"INC","value":10}]`,
+		// specialModList ^shield charge and chain hook have (%d+)%% increased attack speed per (%d+) rampage kills$ (ModParser.lua:5877)
+		"Shield Charge and Chain Hook have 4% increased Attack Speed per 10 Rampage Kills": `[{"@list":[{"div":"10","limit":100,"limitTotal":true,"type":"Multiplier","var":"Rampage"},{"includeTransfigured":true,"skillNameList":["Shield Charge","Chain Hook"],"type":"SkillName"}],"flags":1,"keywordFlags":0,"name":"Speed","type":"INC","value":4}]`,
+		// specialModList ^socketed skill gems get a (%d+)%% mana multiplier$ (ModParser.lua:3291)
+		"Socketed Skill Gems get a 80% Mana Multiplier": `[{"@list":[{"slotName":"{SlotName}","type":"SocketedIn"}],"flags":0,"keywordFlags":0,"name":"ExtraSkillMod","type":"LIST","value":{"mod":{"flags":0,"keywordFlags":0,"name":"SupportManaMultiplier","type":"MORE","value":-20}}}]`,
+		// specialModList ^socketed triggered bow skills deal (%d+)%% less damage$ (ModParser.lua:3312)
+		"Socketed Triggered Bow Skills deal 20% less Damage": `[{"@list":[{"keyword":"bow","slotName":"{SlotName}","type":"SocketedIn"},{"skillType":32,"type":"SkillType"}],"flags":0,"keywordFlags":0,"name":"ExtraSkillMod","type":"LIST","value":{"mod":{"flags":0,"keywordFlags":0,"name":"Damage","type":"MORE","value":-20}}}]`,
+		// specialModList ^totems explode on death, dealing (%d+)%% of their life as (.+) damage$ (ModParser.lua:2220)
+		"Totems Explode on Death, dealing 15% of their Life as Physical Damage": `[{"flags":0,"keywordFlags":0,"name":"ExplodeMod","type":"LIST","value":{"amount":15,"chance":1,"keyOfScaledMod":"chance","type":"Physical"}},{"flags":0,"keywordFlags":0,"name":"CanExplode","type":"FLAG","value":true}]`,
+		// specialModList ^traps and mines deal (%d+)%-(%d+) additional physical damage$ (ModParser.lua:4478)
+		"Traps and Mines deal 3-5 additional Physical Damage": `[{"flags":0,"keywordFlags":12288,"name":"PhysicalMin","type":"BASE","value":3},{"flags":0,"keywordFlags":12288,"name":"PhysicalMax","type":"BASE","value":5}]`,
+		// specialModList ^vaal volcanic fissure and vaal molten strike have (%d+)%% reduced soul gain prevention duration$ (ModParser.lua:2327)
+		"Vaal Volcanic Fissure and Vaal Molten Strike have 40% reduced Soul Gain Prevention Duration": `[{"@list":[{"includeTransfigured":true,"skillNameList":["Volcanic Fissure","Molten Strike"],"type":"SkillName"},{"skillType":38,"type":"SkillType"}],"flags":0,"keywordFlags":0,"name":"SoulGainPreventionDuration","type":"INC","value":-40}]`,
+		// specialModList ^while a pinnacle atlas boss is in your presence, flasks gain a charge every (%d+) seconds$ (ModParser.lua:5289)
+		"While a Pinnacle Atlas Boss is in your Presence, Flasks gain a Charge every 3 seconds": `[{"@list":[{"actor":"enemy","type":"ActorCondition","var":"PinnacleBoss"}],"flags":0,"keywordFlags":0,"name":"FlaskChargesGenerated","type":"BASE","value":0.33333333333333331}]`,
+		// specialModList ^while a unique enemy is in your presence, flasks gain a charge every (%d+) seconds$ (ModParser.lua:5286)
+		"While a Unique Enemy is in your Presence, Flasks gain a Charge every 3 seconds": `[{"@list":[{"actor":"enemy","type":"ActorCondition","var":"RareOrUnique"}],"flags":0,"keywordFlags":0,"name":"FlaskChargesGenerated","type":"BASE","value":0.33333333333333331}]`,
+		// specialModList ^while stationary, gain (%d+)%% increased area of effect every second, up to a maximum of (%d+)%%$ (ModParser.lua:5764)
+		"While stationary, gain 5% increased Area of Effect every second, up to a maximum of 50%": `[{"@list":[{"globalLimit":50,"globalLimitKey":"ExpansiveMight","type":"Multiplier","var":"StationarySeconds"},{"type":"Condition","var":"Stationary"}],"flags":0,"keywordFlags":0,"name":"AreaOfEffect","type":"INC","value":5}]`,
+		// specialModList ^while stationary, gain ([%d%.]+)%% of life regenerated per second every second, up to a maximum of (%d+)%%$ (ModParser.lua:5893)
+		"While stationary, gain 0.5% of Life Regenerated per second every second, up to a maximum of 2%": `[{"@list":[{"limit":2,"limitTotal":true,"type":"Multiplier","var":"StationarySeconds"},{"type":"Condition","var":"Stationary"}],"flags":0,"keywordFlags":0,"name":"LifeRegenPercent","type":"BASE","value":0.5}]`,
 		// m_huge (ModParser.lua:12) resolves to +Inf, which ModCache writes as {"$ref":"math.huge"}.
 		"Your Hexes have infinite Duration": `[{"@list":[{"skillType":69,"type":"SkillType"}],"flags":0,"keywordFlags":0,"name":"Duration","type":"BASE",
 			"value":{"$ref":"math.huge"}}]`,
