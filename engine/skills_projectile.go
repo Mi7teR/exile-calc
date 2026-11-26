@@ -132,6 +132,7 @@ func kineticFusilladePostCrit(s *activeSkill, _, global map[string]float64) {
 func sparkPreDamage(_ *ModDB, s *activeSkill, out map[string]float64) {
 	if s.part == 2 {
 		mulDPS(s.data, 1+math.Floor(out["Duration"]/0.66))
+		out["SkillDPSMultiplier"] = s.data.dpsMultiplier.or(1) // the whole multiplier, as PoB
 	}
 }
 
@@ -162,15 +163,17 @@ func shrapnelBallistaPreDamage(_ *ModDB, s *activeSkill, out map[string]float64)
 }
 
 // Data/Skills/act_int.lua Ball Lightning of Orbiting preDamageFunc.
-func ballLightningOfOrbitingPreDamage(_ *ModDB, s *activeSkill, _ map[string]float64) {
+func ballLightningOfOrbitingPreDamage(_ *ModDB, s *activeSkill, out map[string]float64) {
 	data := s.data
 	if s.part == 2 || s.part == 3 {
 		interval, _ := num(data.val("strikeInterval"))
 		dur, _ := data.duration.get()
 		if interval > 0 {
-			if n := math.Floor(dur / interval); n != 1 {
-				data.dpsMultiplier = optF{data.dpsMultiplier.or(1) * n, true}
+			n := math.Floor(dur / interval)
+			if n != 1 {
+				applySkillDPSMultiplier(s, out, n)
 			}
+			out["NormalHitsPerCast"] = n
 		}
 	}
 }

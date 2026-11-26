@@ -81,3 +81,22 @@ func TestSkillTypeOutputs(t *testing.T) {
 		"TotemBlockChance", "TotemArmour", "DurationSecondary", "SoulGainPreventionDuration", "TotemDurationMod",
 		"TotemDuration")
 }
+
+// TestOffenceMiscOutputs: CalcOffence.lua:565-566 (with CalcSetup.lua:
+// 949-952, 1071-1076), 2025, 2206-2210, 2267-2270, 2435-2446, 2502-2504,
+// 2627-2630, 2945-2998 (pacts), 3022-3048 (Ruthless, Fist of War),
+// 3315-3336, 3505-3519, 3834-3844, 6170, 6191-6193, 6304-6306, CalcPerform.
+// lua:2186-2193 (Req*String when a number) and the skills' SkillDPSMultiplier.
+func TestOffenceMiscOutputs(t *testing.T) {
+	oracleStats(t, false, "enemyBlockChance", "CastRate", "BrandTicks", "QuantityMultiplier", "PreciseTechnique",
+		"CreatePactOffensiveCalcSection", "PactOfBeidatCooldown", "PactOfBeidatCastTime", "PactOfBeidatCalculated",
+		"BeidatEmpoweredCount", "PactOfGhorrCooldown", "PactOfGhorrCastTime", "PactOfGhorrCalculated",
+		"GhorrEmpoweredCount", "PactOfLyciaCooldown", "PactOfLyciaCastTime", "PactOfLyciaCalculated",
+		"LyciaEmpoweredCount", "RuthlessBlowHitMultiplier", "RuthlessBlowAilmentMultiplier", "FistOfWarCooldown",
+		"FistOfWarDamageMultiplier", "FistOfWarUptimeRatio", "AvgFistOfWarDamage", "AvgFistOfWarDamageEffect",
+		"MaxFistOfWarDamageEffect", "ScaledDamageEffect", "TripleDamageChanceOnCrit", "TripleDamageEffect",
+		"DoubleDamageChanceOnCrit", "DoubleDamageEffect", "DamageRolls", "CritDamageRolls",
+		"AverageHitToMonsterLifePercentage", "AverageBurstHits", "AverageBurstDamage", "ShowBurst", "CombinedAvg",
+		"CombinedAvgToMonsterLife", "showTotalDotDPS", "ReqStrString", "ReqDexString", "ReqIntString",
+		"ReqOmniString", "LifeFlaskRecovery", "LifeFlaskCharges", "SkillDPSMultiplier", "NormalHitsPerCast")
+}

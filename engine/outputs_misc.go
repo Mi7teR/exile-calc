@@ -482,3 +482,46 @@ func skillDurations(actor *ModDB, s *activeSkill, out map[string]float64) {
 	out["TotemDuration"] = math.Ceil(list.SumCfg(cfg, "BASE", "TotemDuration")*out["TotemDurationMod"]*
 		serverTickRate) / serverTickRate
 }
+
+// burstOutputs is CalcOffence.lua:3834-3844 after a pass's AverageDamage:
+// the monster explosion share, and the burst of a sealed skill.
+func burstOutputs(s *activeSkill, p *hitPass, global map[string]float64, monsterLife float64) {
+	out, list := p.out, s.mods
+	if s.flags["monsterExplode"] {
+		out["AverageHitToMonsterLifePercentage"] = out["AverageHit"] / monsterLife * 100
+	}
+	global["AverageBurstHits"] = outOr(out, "AverageBurstHits", 1)
+	repeatPenalty := 1.0
+	if list.Flag("HasSeals") && s.types[stCanRapidFire] && !list.Flag("NoRepeatBonuses") {
+		repeatPenalty = calcMod(list, s.cfg, "SealRepeatPenalty")
+	}
+	global["AverageBurstDamage"] = out["AverageDamage"] + out["AverageDamage"]*(global["AverageBurstHits"]-1)*repeatPenalty
+	global["ShowBurst"] = b2f(global["AverageBurstHits"] > 1)
+}
+
+// lifeFlaskMultipliers is env.itemModDB.multipliers LifeFlaskRecovery and
+// LifeFlaskCharges (CalcSetup.lua:949-952, 1071-1076), the highest total
+// recovery and maximum charges of the equipped Life flasks, which
+// calcs.offence copies to the output (CalcOffence.lua:565-566) and
+// PercentStat tags read.
+func (c *Calculator) lifeFlaskMultipliers(db *ModDB, slots []flaskSlot) {
+	recovery, charges, found := 0.0, 0.0, false
+	for _, sl := range slots {
+		if sl.item == nil {
+			continue
+		}
+		it, mods := c.itemMods(sl.item, &Result{})
+		if it == nil || it.Base == nil || it.Base.Flask == nil || it.Base.SubType != "Life" {
+			continue
+		}
+		found = true
+		f := it.Base.Flask
+		base := f.Life * (1 + float64(it.Quality)/100) * (1 + calcLocal(mods, "FlaskRecovery", "INC")/100)
+		instant := calcLocal(mods, "FlaskInstantRecovery", "BASE")
+		recovery = math.Max(recovery, base*instant/100+base*(1-instant/100))
+		charges = math.Max(charges, float64(f.ChargesMax)+calcLocal(mods, "FlaskCharges", "BASE"))
+	}
+	if found {
+		db.output["LifeFlaskRecovery"], db.output["LifeFlaskCharges"] = recovery, charges
+	}
+}

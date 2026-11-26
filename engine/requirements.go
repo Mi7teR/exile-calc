@@ -202,7 +202,15 @@ func (c *Calculator) attributeRequirements(db *ModDB, b *pobcode.Build, compared
 		if ignore {
 			best = 0
 		}
+		// CalcPerform.lua:2186-2193: Req<attr>String is 0, or the new
+		// requirement; with a breakdown an unmet one is a coloured string
+		// (left out here: Stats holds numbers).
+		db.output["Req"+attr+"String"] = 0
 		if best > db.output["Req"+target] {
+			db.output["Req"+target+"String"] = best
+			if db.buildBreakdown && best > db.output[target] {
+				delete(db.output, "Req"+target+"String")
+			}
 			db.output["Req"+target] = best
 		}
 	}

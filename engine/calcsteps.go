@@ -745,6 +745,14 @@ func stepSkills(c *Calculator, st *calcState) error {
 func stepFlasks(c *Calculator, st *calcState) error {
 	db, res := st.db, st.res
 	st.keystones = map[string]bool{}
+	// CalcSetup.lua:153-154: an allocated keystone node adds its Keystone
+	// LIST mod, so mergeKeystones marks it in env.keystonesAdded; the
+	// engine adds the node's stats directly and records the name here.
+	for _, id := range st.spec.Nodes {
+		if n := c.data.Tree.Nodes[id]; n != nil && n.IsKeystone {
+			st.keystones[n.Name] = true
+		}
+	}
 	if db.Flag("AlchemistsGenius") {
 		effect := 1 + db.Sum("INC", "BuffEffectOnSelf")/100
 		db.NewMod("FlaskEffect", "INC", math.Floor(10*effect), "Alchemist's Genius")
@@ -755,6 +763,7 @@ func stepFlasks(c *Calculator, st *calcState) error {
 	// with a breakdown, which MAIN mode always has.
 	db.output["TinctureEffect"], db.output["TinctureLimit"] = st.tinctures.inc, st.tinctures.limit
 	st.flaskSt = c.applyFlasks(db, res, st.flasks)
+	c.lifeFlaskMultipliers(db, st.flasks)
 	c.mergeKeystones(db, st.keystones, res)
 	return nil
 }
@@ -1017,6 +1026,11 @@ func stepOffence(c *Calculator, st *calcState) error {
 			debugPlayerSkill(s)
 		}
 		gemLevelQuality(db, s)
+		// CalcOffence.lua:2025: env.keystonesAdded, attacks only (nil when
+		// the keystone was not added).
+		if s.flags["attack"] && st.keystones["Precise Technique"] {
+			db.output["PreciseTechnique"] = 1
+		}
 	}
 	res.Incomplete = append(res.Incomplete, db.incomplete...)
 	return nil

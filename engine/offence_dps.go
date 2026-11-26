@@ -184,7 +184,7 @@ func cullAndReservation(actor *ModDB, s *activeSkill, p *hitPass, global map[str
 }
 
 // combinedDPS is "Calculate combined DPS estimate, including DoTs".
-func combinedDPS(s *activeSkill, out map[string]float64, passes []*hitPass, dpsMult, quantity float64) {
+func combinedDPS(s *activeSkill, out map[string]float64, passes []*hitPass, dpsMult, quantity, monsterLife float64) {
 	baseDPS := out["TotalDPS"]
 	showAverage := truthy(s.data.val("showAverage"))
 	if showAverage {
@@ -200,6 +200,7 @@ func combinedDPS(s *activeSkill, out map[string]float64, passes []*hitPass, dpsM
 		}
 	}
 	if showAverage {
+		out["CombinedAvg"] += out["TotalPoisonAverageDamage"] // CalcOffence.lua:6170
 		out["WithPoisonDPS"] = baseDPS + out["TotalPoisonAverageDamage"]
 	} else {
 		out["WithPoisonDPS"] = baseDPS + out["TotalPoisonDPS"]
@@ -219,6 +220,9 @@ func combinedDPS(s *activeSkill, out map[string]float64, passes []*hitPass, dpsM
 		default:
 			out["WithIgniteDPS"] = baseDPS + out["IgniteDPS"]
 		}
+	}
+	if s.flags["monsterExplode"] {
+		out["CombinedAvgToMonsterLife"] = out["CombinedAvg"] / monsterLife * 100 // CalcOffence.lua:6191-6193
 	}
 	if s.flags["impale"] {
 		impaleDPS := func(o map[string]float64) float64 {
@@ -266,6 +270,9 @@ func combinedDPS(s *activeSkill, out map[string]float64, passes []*hitPass, dpsM
 		math.Max(out["BurningGroundDPS"], out["MirageBurningGroundDPS"]) +
 		out["BleedDPS"] + out["CorruptingBloodDPS"] + out["DecayDPS"]
 	out["TotalDotDPS"] = math.Min(total, dotDpsCap)
+	if out["TotalDotDPS"] != total {
+		out["showTotalDotDPS"] = 1 // CalcOffence.lua:6304-6306
+	}
 	if !showAverage {
 		out["CombinedDPS"] += out["TotalDotDPS"]
 	}

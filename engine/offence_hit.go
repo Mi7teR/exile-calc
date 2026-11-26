@@ -107,10 +107,12 @@ func (c *Calculator) hitDamage(actor *ModDB, s *activeSkill, p *hitPass) {
 		selfTriple = enemy.SumCfg(p.cfg, "BASE", "SelfTripleDamageChance")
 		selfDouble = enemy.SumCfg(p.cfg, "BASE", "SelfDoubleDamageChance")
 	}
+	out["TripleDamageChanceOnCrit"] = math.Min(list.SumCfg(p.cfg, "BASE", "TripleDamageChanceOnCrit"), 100)
+	out["DoubleDamageChanceOnCrit"] = math.Min(list.SumCfg(p.cfg, "BASE", "DoubleDamageChanceOnCrit"), 100)
 	triple := math.Min(list.SumCfg(p.cfg, "BASE", "TripleDamageChance")+selfTriple+
-		math.Min(list.SumCfg(p.cfg, "BASE", "TripleDamageChanceOnCrit"), 100)*out["CritChance"]/100, 100)
+		out["TripleDamageChanceOnCrit"]*out["CritChance"]/100, 100)
 	double := math.Min(list.SumCfg(p.cfg, "BASE", "DoubleDamageChance")+selfDouble+
-		math.Min(list.SumCfg(p.cfg, "BASE", "DoubleDamageChanceOnCrit"), 100)*out["CritChance"]/100, 100)
+		out["DoubleDamageChanceOnCrit"]*out["CritChance"]/100, 100)
 	if r, ok := p.global["IntimidatingUpTimeRatio"]; ok {
 		if list.Flag("Condition:WarcryMaxHit") {
 			double = 100
@@ -122,7 +124,9 @@ func (c *Calculator) hitDamage(actor *ModDB, s *activeSkill, p *hitPass) {
 		double = math.Max(double-triple*double/100, 0)
 	}
 	out["DoubleDamageChance"], out["TripleDamageChance"] = double, triple
-	scaled := 1 + double/100 + 2*triple/100
+	out["TripleDamageEffect"], out["DoubleDamageEffect"] = 2*triple/100, double/100 // CalcOffence.lua:3320, 3335
+	scaled := 1 + out["DoubleDamageEffect"] + out["TripleDamageEffect"]
+	out["ScaledDamageEffect"] = scaled
 	warcry := p.global["OffensiveWarcryEffect"]
 	if list.Flag("Condition:WarcryMaxHit") {
 		warcry = p.global["MaxOffensiveWarcryEffect"]
@@ -218,6 +222,19 @@ func (c *Calculator) hitDamage(actor *ModDB, s *activeSkill, p *hitPass) {
 			}
 			if list.FlagCfg(cfg, "Unexciting") {
 				rolls, lucky = 2, 0
+			}
+			// CalcOffence.lua:3505-3519: the luck chance, doubled by
+			// Extreme Luck, 0 with Unexciting.
+			dmgRolls := lucky
+			if list.FlagCfg(cfg, "ExtremeLuck") {
+				dmgRolls *= 2
+			}
+			if list.FlagCfg(cfg, "Unexciting") {
+				dmgRolls = 0
+			}
+			out["DamageRolls"] = dmgRolls
+			if pass == 1 {
+				out["CritDamageRolls"] = dmgRolls
 			}
 			avg := (mn + mx) / 2
 			if lucky >= 0 {

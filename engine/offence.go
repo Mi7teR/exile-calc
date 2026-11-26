@@ -351,12 +351,16 @@ func (c *Calculator) offence(actor *ModDB, s *activeSkill, w1 hitSource, w2 *hit
 	}
 	dpsMult := data.dpsMultiplier.or(1) * dpsMod
 	quantity := math.Max(list.SumCfg(cfg, "BASE", "QuantityMultiplier"), 1)
+	if quantity > 1 {
+		out["QuantityMultiplier"] = quantity // CalcOffence.lua:2627-2630
+	}
 	warcries(actor, s, passes[0].cfg, out)
 	pacts(actor, s, out)
 	for _, p := range passes {
 		ruthlessAndFistOfWar(s, p, out)
 		p.global, p.dpsMod = out, dpsMod
 		c.hitDamage(actor, s, p)
+		burstOutputs(s, p, out, monsterLife)
 		// After hitDamage: postCritFunc may change it too (CalcOffence reads
 		// skillData.dpsMultiplier for TotalDPS after postCritFunc).
 		dpsMult = data.dpsMultiplier.or(1) * dpsMod
@@ -406,7 +410,7 @@ func (c *Calculator) offence(actor *ModDB, s *activeSkill, w1 hitSource, w2 *hit
 	// output.OffHand; only combineStat's stats reach the skill's output.
 	dropsBurningGround(actor, s, out)
 	skillDot(actor, s, out, dpsMult, quantity)
-	combinedDPS(s, out, passes, dpsMult, quantity)
+	combinedDPS(s, out, passes, dpsMult, quantity, monsterLife)
 	perSecondCosts(actor, s, out)
 	return out
 }
@@ -491,6 +495,10 @@ func pacts(actor *ModDB, s *activeSkill, out map[string]float64) {
 			effect = 100
 		}
 		out[key+"UpTimeRatio"] = uptime
+		// CalcOffence.lua:2945-2948, 2998.
+		out["CreatePactOffensiveCalcSection"] = 1
+		out["PactOf"+key+"Cooldown"], out["PactOf"+key+"CastTime"] = cooldown, castTime
+		out[key+"EmpoweredCount"] = count
 		if l := v.mods.List(v.cfg, key+"PactDamage"); len(l) > 0 {
 			if mv, ok := l[0].Value.(map[string]any); ok {
 				if mm, ok := mv["mod"].(map[string]any); ok {
@@ -527,6 +535,7 @@ func pacts(actor *ModDB, s *activeSkill, out map[string]float64) {
 			}
 		}
 		done[key] = true
+		out["PactOf"+key+"Calculated"] = 1
 	}
 }
 

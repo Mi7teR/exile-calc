@@ -26,6 +26,10 @@
     }
   },
   "fmxcrOoQ46rS": {
+    "AverageBurstDamage": {
+      "reason": "Format-1 spec (no clusterHashFormatVersion): PoB maps the Watcher's Eye socket 16218 to 29712 (ApplyLegacyClusterNodeRemap), but the item slots have already written jewels[29712] = 0 and pairs order lets the 0 win, so PoB unequips the jewel. Value: the oracle on the same build with the jewel in 29712 and clusterHashFormatVersion 2.",
+      "value": 704131.2102805
+    },
     "AverageDamage": {
       "reason": "Format-1 spec (no clusterHashFormatVersion): PoB maps the Watcher's Eye socket 16218 to 29712 (ApplyLegacyClusterNodeRemap), but the item slots have already written jewels[29712] = 0 and pairs order lets the 0 win, so PoB unequips the jewel. Value: the oracle on the same build with the jewel in 29712 and clusterHashFormatVersion 2.",
       "value": 704131.2102805
@@ -53,6 +57,10 @@
     "ColdMaximumHitTaken": {
       "reason": "Format-1 spec (no clusterHashFormatVersion): PoB maps the Watcher's Eye socket 16218 to 29712 (ApplyLegacyClusterNodeRemap), but the item slots have already written jewels[29712] = 0 and pairs order lets the 0 win, so PoB unequips the jewel. Value: the oracle on the same build with the jewel in 29712 and clusterHashFormatVersion 2.",
       "value": 22750
+    },
+    "CombinedAvg": {
+      "reason": "Format-1 spec (no clusterHashFormatVersion): PoB maps the Watcher's Eye socket 16218 to 29712 (ApplyLegacyClusterNodeRemap), but the item slots have already written jewels[29712] = 0 and pairs order lets the 0 win, so PoB unequips the jewel. Value: the oracle on the same build with the jewel in 29712 and clusterHashFormatVersion 2.",
+      "value": 2511401.3166671
     },
     "CombinedDPS": {
       "reason": "Format-1 spec (no clusterHashFormatVersion): PoB maps the Watcher's Eye socket 16218 to 29712 (ApplyLegacyClusterNodeRemap), but the item slots have already written jewels[29712] = 0 and pairs order lets the 0 win, so PoB unequips the jewel. Value: the oracle on the same build with the jewel in 29712 and clusterHashFormatVersion 2.",
@@ -270,9 +278,17 @@
     }
   },
   "s6VBtCrbXmk1": {
+    "AverageBurstDamage": {
+      "reason": "PoB counts summoned totems in calcs.perform (CalcPerform.lua:1359-1376) before it computes attributes (doActorAttribsConditions, CalcPerform.lua:1978), so Replica Iron Commander's \"+1 to maximum number of Summoned Totems per 200 Strength\" is 0 there: TotemsSummoned is fewer than 20 for the defence and per-totem buffs, 20 in calcs.offence (CalcOffence.lua:1436). The engine counts the totems after the attributes. Value: the oracle on the same build with the config input TotemsSummoned = 20.",
+      "value": 77141.376375024
+    },
     "AverageDamage": {
       "reason": "PoB counts summoned totems in calcs.perform (CalcPerform.lua:1359-1376) before it computes attributes (doActorAttribsConditions, CalcPerform.lua:1978), so Replica Iron Commander's \"+1 to maximum number of Summoned Totems per 200 Strength\" is 0 there: TotemsSummoned is fewer than 20 for the defence and per-totem buffs, 20 in calcs.offence (CalcOffence.lua:1436). The engine counts the totems after the attributes. Value: the oracle on the same build with the config input TotemsSummoned = 20.",
       "value": 77141.376375024
+    },
+    "CombinedAvg": {
+      "reason": "PoB counts summoned totems in calcs.perform (CalcPerform.lua:1359-1376) before it computes attributes (doActorAttribsConditions, CalcPerform.lua:1978), so Replica Iron Commander's \"+1 to maximum number of Summoned Totems per 200 Strength\" is 0 there: TotemsSummoned is fewer than 20 for the defence and per-totem buffs, 20 in calcs.offence (CalcOffence.lua:1436). The engine counts the totems after the attributes. Value: the oracle on the same build with the config input TotemsSummoned = 20.",
+      "value": 117193.17898894
     },
     "CombinedDPS": {
       "reason": "PoB counts summoned totems in calcs.perform (CalcPerform.lua:1359-1376) before it computes attributes (doActorAttribsConditions, CalcPerform.lua:1978), so Replica Iron Commander's \"+1 to maximum number of Summoned Totems per 200 Strength\" is 0 there: TotemsSummoned is fewer than 20 for the defence and per-totem buffs, 20 in calcs.offence (CalcOffence.lua:1436). The engine counts the totems after the attributes. Value: the oracle on the same build with the config input TotemsSummoned = 20.",
@@ -323,6 +339,10 @@
     "BleedDPS": {
       "reason": "Kinetic Fusillade's attack-speed efficiency applies once; PoB's postCritFunc scales dpsMultiplier on every pass, so a dual wielder's off hand (and what follows from it) gets it twice.",
       "value": 214.29073551208845
+    },
+    "CombinedAvg": {
+      "reason": "Kinetic Fusillade's attack-speed efficiency applies once; PoB's postCritFunc scales dpsMultiplier on every pass, so a dual wielder's off hand (and what follows from it) gets it twice. CombinedAvg is that TotalDPS (CalcOffence.lua:6162).",
+      "value": 60087710.06324643
     },
     "CombinedDPS": {
       "reason": "Kinetic Fusillade's attack-speed efficiency applies once; PoB's postCritFunc scales dpsMultiplier on every pass, so a dual wielder's off hand (and what follows from it) gets it twice.",

@@ -172,10 +172,16 @@ func ruthlessAndFistOfWar(s *activeSkill, p *hitPass, global map[string]float64)
 	out["RuthlessBlowHitEffect"] = 1 - chance/100 + chance/100*hitMult
 	ailmentMult := 1 + list.SumCfg(cfg, "BASE", "RuthlessBlowAilmentMultiplier")/100
 	out["RuthlessBlowAilmentEffect"] = 1 - chance/100 + chance/100*ailmentMult
+	out["RuthlessBlowHitMultiplier"], out["RuthlessBlowAilmentMultiplier"] = hitMult, ailmentMult // CalcOffence.lua:3022-3023
 	cd := list.SumCfg(cfg, "BASE", "FistOfWarCooldown")
+	global["FistOfWarCooldown"] = cd // CalcOffence.lua:3027
 	if cd != 0 && s.types[stSlam] && !s.types[stVaal] && !s.types[stOtherThingUsesSkill] && global["Speed"] != 0 {
 		mult := list.Sum("BASE", "FistOfWarDamageMultiplier") / 100
 		up := math.Min((1/global["Speed"])/cd, 1) * 100
+		// CalcOffence.lua:3030-3048.
+		global["FistOfWarDamageMultiplier"], global["FistOfWarUptimeRatio"] = mult, up
+		global["AvgFistOfWarDamage"], global["AvgFistOfWarDamageEffect"] = mult, 1+mult*(up/100)
+		global["MaxFistOfWarDamageEffect"] = 1 + mult
 		incAoE := list.Sum("BASE", "FistOfWarIncAoE")
 		if list.Flag("Condition:WarcryMaxHit") {
 			out["FistOfWarDamageEffect"] = 1 + mult

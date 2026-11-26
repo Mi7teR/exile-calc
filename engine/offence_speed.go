@@ -31,6 +31,12 @@ func (c *Calculator) hitAndSpeed(actor *ModDB, s *activeSkill, p *hitPass) {
 	list, cfg, data, out := s.mods, s.cfg, s.data, p.out
 	enemy := actor.enemy
 	isAttack := s.flags["attack"]
+	// CalcOffence.lua:2206-2210.
+	if v, ok := num(data.val("averageBurstHits")); ok {
+		out["AverageBurstHits"] = v
+	} else if r := out["Repeats"]; r > 1 { // the pass's own output: nil for a hand pass
+		out["AverageBurstHits"] = r
+	}
 	// PoB calls skillModList:More("MORE", cfg, ...): the cfg is the string
 	// "MORE", so only mods without flags count.
 	out["Accuracy"] = math.Max(0, math.Floor(list.SumCfg(p.cfg, "BASE", "Accuracy")*
@@ -63,6 +69,7 @@ func (c *Calculator) hitAndSpeed(actor *ModDB, s *activeSkill, p *hitPass) {
 	if enemy.Flag("CannotBlockAttacks") && isAttack {
 		block = 0
 	}
+	out["enemyBlockChance"] = block // CalcOffence.lua:2267-2270
 	out["HitChance"] = out["AccuracyHitChance"] * (1 - block/100)
 
 	ge := s.active.ge
@@ -138,12 +145,15 @@ func (c *Calculator) hitAndSpeed(actor *ModDB, s *activeSkill, p *hitPass) {
 	} else {
 		out["Speed"] = 1 / (baseTime/round((1+inc/100)*more, 2) + list.SumCfg(p.cfg, "BASE", "TotalAttackTime") + list.SumCfg(p.cfg, "BASE", "TotalCastTime"))
 	}
+	out["CastRate"] = out["Speed"] // CalcOffence.lua:2435
 	if s.flags["selfCast"] {
 		out["Speed"] *= actor.output["ActionSpeedMod"]
+		out["CastRate"] = out["Speed"] // CalcOffence.lua:2439
 	}
 	if s.flags["totem"] {
 		out["TotemActionSpeed"] = 1 + actor.Sum("INC", "TotemActionSpeed")/100
 		out["Speed"] *= out["TotemActionSpeed"]
+		out["CastRate"] = out["Speed"] // CalcOffence.lua:2446
 		// Totems that fire once (Siege Ballista of Trarthus) hit once per
 		// placement and attack.
 		if truthy(data.val("totemFireOnce")) {
@@ -178,6 +188,10 @@ func hitTime(s *activeSkill, out map[string]float64, tickCap bool) {
 	}
 	if v, ok := data.hitTimeOverride.get(); ok && v != 0 {
 		out["HitTime"], out["HitSpeed"] = v, 1/v
+		// CalcOffence.lua:2502-2504.
+		if s.types[stBrand] && !s.mods.Flag("UnlimitedBrandDuration") {
+			out["BrandTicks"] = math.Floor(out["Duration"] * out["HitSpeed"])
+		}
 		return
 	}
 	m, ok := num(data.val("hitTimeMultiplier"))
