@@ -149,6 +149,30 @@ func luaPortCases() []luaPortCase {
 			output: map[string]float64{"Life": 6525, "EnergyShield": 120},
 		},
 		{
+			skill: "Ball Lightning", hook: "preDamageFunc", part: 1,
+			data:   map[string]any{"strikeInterval": 0.15, "projectileSpeed": 40.0, "duration": 2.0},
+			output: map[string]float64{"AreaOfEffectRadius": 22},
+		},
+		{
+			// All bolts in range: no skillDist in the case's skillCfg, so the
+			// ball is cast at one strike radius from the enemy.
+			skill: "Ball Lightning",
+			hook:  "preDamageFunc",
+			part:  2,
+			stats: []luaPortMod{
+				{"ProjectileSpeed", "INC", 40, "Tree"},
+				{"ProjectileSpeed", "MORE", 33, "Gem"},
+				{"EnemyRadius", "BASE", 5, "Config"},
+			},
+			data: map[string]any{
+				"strikeInterval":  0.15,
+				"projectileSpeed": 40.0,
+				"duration":        2.0,
+				"dpsMultiplier":   2.0,
+			},
+			output: map[string]float64{"AreaOfEffectRadius": 22},
+		},
+		{
 			skill: "Blood Sacrament", hook: "initialFunc",
 			data:   map[string]any{"LifeReservedPercent": 4.5, "LifeReservedBase": 312.0},
 			output: map[string]float64{"LifeReservedPercent": 40},

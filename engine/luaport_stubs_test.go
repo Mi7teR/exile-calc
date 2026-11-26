@@ -188,7 +188,8 @@ ModStoreClass = { }
 ModListClass = setmetatable({ }, { __index = ModStoreClass })
 ModListClass.__index = ModListClass`,
 		"data = { misc = { " + pobField(t, dir, "Modules/Data.lua", "ServerTickRate") + ", " +
-			pobField(t, dir, "Modules/Data.lua", "BuffExpirationSlowCap") + " } }",
+			pobField(t, dir, "Modules/Data.lua", "BuffExpirationSlowCap") + ", " +
+			pobField(t, dir, "Modules/Data.lua", "ProjectileDistanceCap") + " } }",
 		pobFunc(t, dir, "Modules/Data.lua", "data.highPrecisionMods = {"),
 		pobFunc(t, dir, "Modules/Common.lua", "function round("),
 		pobFunc(t, dir, "Modules/Common.lua", "function floor("),
@@ -205,6 +206,7 @@ ModListClass.__index = ModListClass`,
 		pobFunc(t, dir, "Classes/ModList.lua", "function ModListClass:FlagInternal("),
 		pobFunc(t, dir, "Classes/ModList.lua", "function ModListClass:OverrideInternal("),
 		pobFunc(t, dir, "Modules/CalcTools.lua", "function calcLib.mod("),
+		pobFunc(t, dir, "Modules/CalcTools.lua", "function calcLib.mods("),
 		pobFunc(t, dir, "Modules/CalcOffence.lua", "function calcSkillDuration("),
 		pobFunc(t, dir, "Modules/Data.lua", "local function makeSkillMod("),
 		pobFunc(t, dir, "Modules/Data.lua", "local function makeFlagMod("),

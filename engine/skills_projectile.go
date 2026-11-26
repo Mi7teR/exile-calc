@@ -24,6 +24,8 @@ func init() {
 		skillHooks{preDamage: shrapnelBallistaPreDamage},
 	)
 	registerSkill([]string{"Ball Lightning of Orbiting"}, skillHooks{preDamage: ballLightningOfOrbitingPreDamage})
+	registerSkill([]string{"Ball Lightning"}, skillHooks{preDamage: ballLightningPreDamage})
+	registerSkill([]string{"Eye of Winter"}, skillHooks{preDamage: eyeOfWinterPreDamage})
 }
 
 // Data/Skills/act_dex.lua Barrage/Blast Rain/Vaal Lightning Arrow preDamageFunc.
@@ -171,4 +173,58 @@ func ballLightningOfOrbitingPreDamage(_ *ModDB, s *activeSkill, _ map[string]flo
 			}
 		}
 	}
+}
+
+// projectileDistanceCap is data.misc.ProjectileDistanceCap (Modules/Data.lua:273).
+const projectileDistanceCap = 150
+
+// Data/Skills/act_int.lua:1086-1165 Ball Lightning preDamageFunc: one
+// strike per ball (part 1), or the strikes of a ball travelling past the
+// enemy from the cast distance (part 2, "All Bolts in Range").
+func ballLightningPreDamage(_ *ModDB, s *activeSkill, out map[string]float64) {
+	data := s.data
+	mult := 0.0
+	switch s.part {
+	case 1:
+		mult = 1
+	case 2:
+		perStrike := numOr(data.val("strikeInterval"), 0)
+		maxStrikes := math.Floor(data.duration.or(0) / perStrike)
+		distPerStrike := numOr(data.val("projectileSpeed"), 0) * calcMod(s.mods, s.cfg, "ProjectileSpeed") * perStrike
+		enemyRadius, ok := s.mods.OverrideCfg(s.cfg, "EnemyRadius")
+		if !ok {
+			enemyRadius = s.mods.SumCfg(s.cfg, "BASE", "EnemyRadius")
+		}
+		baseRadius := out["AreaOfEffectRadius"]
+		strikeRadius := baseRadius + enemyRadius
+		var castDist float64
+		switch {
+		case s.cfg != nil && s.cfg.HasSkillDist:
+			castDist = s.cfg.SkillDist
+		case s.flags["triggered"]:
+			castDist = math.Floor(baseRadius / 2)
+		default:
+			castDist = baseRadius
+		}
+		first := math.Max(1, math.Ceil((castDist-strikeRadius)/distPerStrike))
+		last := math.Floor(math.Min(projectileDistanceCap, castDist+strikeRadius) / distPerStrike)
+		mult = math.Max(0, math.Min(maxStrikes, last+1-first))
+	}
+	if mult != 1 {
+		mulDPS(data, mult)
+		if v, ok := out["SkillDPSMultiplier"]; ok {
+			out["SkillDPSMultiplier"] = v * mult
+		} else {
+			out["SkillDPSMultiplier"] = mult
+		}
+	}
+}
+
+// Data/Skills/act_int.lua:5519-5521 Eye of Winter preDamageFunc: more
+// damage ramping up with the distance travelled.
+func eyeOfWinterPreDamage(_ *ModDB, s *activeSkill, out map[string]float64) {
+	r := 60 * out["ProjectileSpeedMod"]
+	s.mods.Add(Mod{Name: "Damage", Type: "MORE", Value: s.mods.SumCfg(s.cfg, "BASE", "EyeOfWinterRamp"),
+		Source: "Skill:EyeOfWinter",
+		Tags:   []map[string]any{{"type": "DistanceRamp", "ramp": []any{[]any{0.0, 0.0}, []any{r, 1.0}}}}})
 }
