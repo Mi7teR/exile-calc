@@ -96,10 +96,14 @@ func (c *Calculator) hitDamage(actor *ModDB, s *activeSkill, p *hitPass) {
 
 	c.crit(s, p, enemy, actor)
 
-	// Double and triple damage. PoB differs: its
-	// Sum(TripleDamageChance) or 0 + self + onCrit parses as
-	// Sum or (0 + ...), so it drops the enemy's SelfTripleDamageChance and
-	// triple damage on crit; both count here.
+	// Double and triple damage. Deliberate difference from PoB (user
+	// decision): CalcOffence.lua:3317 writes
+	//   m_min(Sum("TripleDamageChance") or 0 + self + onCrit * crit / 100, 100)
+	// and Lua's "or" binds looser than "+", so it is Sum or (0 + ...): Sum is
+	// always a number, and PoB drops the enemy's SelfTripleDamageChance and
+	// triple damage on crit. The engine keeps the game-correct sum
+	// (tripleDamageChance). PoB 2.68.1 has no mod that sets either stat, so
+	// no corpus build differs.
 	// The enemy's SelfTripleDamageChance and SelfDoubleDamageChance count
 	// only with env.mode_effective (CalcOffence.lua:3319, 3324).
 	selfTriple, selfDouble := 0.0, 0.0
@@ -109,8 +113,8 @@ func (c *Calculator) hitDamage(actor *ModDB, s *activeSkill, p *hitPass) {
 	}
 	out["TripleDamageChanceOnCrit"] = math.Min(list.SumCfg(p.cfg, "BASE", "TripleDamageChanceOnCrit"), 100)
 	out["DoubleDamageChanceOnCrit"] = math.Min(list.SumCfg(p.cfg, "BASE", "DoubleDamageChanceOnCrit"), 100)
-	triple := math.Min(list.SumCfg(p.cfg, "BASE", "TripleDamageChance")+selfTriple+
-		out["TripleDamageChanceOnCrit"]*out["CritChance"]/100, 100)
+	triple := tripleDamageChance(list.SumCfg(p.cfg, "BASE", "TripleDamageChance"), selfTriple,
+		out["TripleDamageChanceOnCrit"], out["CritChance"])
 	double := math.Min(list.SumCfg(p.cfg, "BASE", "DoubleDamageChance")+selfDouble+
 		out["DoubleDamageChanceOnCrit"]*out["CritChance"]/100, 100)
 	if r, ok := p.global["IntimidatingUpTimeRatio"]; ok {
@@ -395,4 +399,12 @@ func (c *Calculator) enemyEffMult(actor, list *ModDB, cfg *Cfg, s *activeSkill, 
 		eff *= 1 - r/100
 	}
 	return eff
+}
+
+// tripleDamageChance is output.TripleDamageChance as the game sums it:
+// the skill's chance, the enemy's SelfTripleDamageChance and triple damage
+// on crit weighted by the crit chance, capped at 100. PoB 2.68.1
+// (CalcOffence.lua:3317) gives min(base, 100) through its "or" precedence.
+func tripleDamageChance(base, self, onCrit, critChance float64) float64 {
+	return math.Min(base+self+onCrit*critChance/100, 100)
 }

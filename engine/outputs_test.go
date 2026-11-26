@@ -1,6 +1,10 @@
 package engine
 
-import "testing"
+import (
+	"os"
+	"strings"
+	"testing"
+)
 
 // The outputs below are compared with the oracle (PoB v2.68.1) on every
 // corpus build, one test per family.
@@ -108,4 +112,41 @@ func TestSelfHitAndTriggerOutputs(t *testing.T) {
 	oracleStats(t, false, "SelfHitDamage", "LifeReservedMod", "ManaReservedMod", "DurationUptime",
 		"DurationSecondaryUptime", "ChannelTimeToTrigger", "VixensTooMuchCastSpeedWarn",
 		"VixenModeNoVixenGlovesWarn")
+}
+
+// TestTripleDamageChance pins the user's decision to keep the game-correct
+// triple damage sum where PoB's "Sum or 0 + self + onCrit" (CalcOffence.lua:
+// 3317) keeps only Sum: 10 base, 5 from the enemy and 40 on crit at 50%
+// crit chance give 35, not PoB's 10; the cap is 100.
+func TestTripleDamageChance(t *testing.T) {
+	if got := tripleDamageChance(10, 5, 40, 50); got != 35 {
+		t.Errorf("tripleDamageChance = %v, want 35 (PoB: 10)", got)
+	}
+	if got := tripleDamageChance(90, 20, 0, 0); got != 100 {
+		t.Errorf("tripleDamageChance = %v, want the cap 100", got)
+	}
+}
+
+// TestPlayerOutputCrossCheck compares every key of
+// testdata/golden/player-output-keys.txt with the oracle on all corpus
+// builds. zKMTzbWQ2h1C's leech keys wait for map mods (TestLeechStats).
+func TestPlayerOutputCrossCheck(t *testing.T) {
+	raw, err := os.ReadFile("../testdata/golden/player-output-keys.txt")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var keys []string
+	for l := range strings.SplitSeq(string(raw), "\n") {
+		if l = strings.TrimSpace(l); l != "" && !strings.HasPrefix(l, "#") {
+			keys = append(keys, l)
+		}
+	}
+	var leech []string
+	for _, k := range keys {
+		if (strings.HasPrefix(k, "Life") || strings.HasPrefix(k, "Mana")) && strings.Contains(k, "Leech") &&
+			!strings.HasPrefix(k, "Max") {
+			leech = append(leech, k)
+		}
+	}
+	oracleStatsExcept(t, false, map[string][]string{"zKMTzbWQ2h1C": leech}, keys...)
 }
