@@ -11,6 +11,7 @@ func init() {
 		skillHooks{preDamage: tornadoOfElementalTurbulencePreDamage},
 	)
 	registerSkill([]string{"Bodyswap", "Bodyswap of Sacrifice"}, skillHooks{preDamage: bodyswapPreDamage})
+	registerSkill([]string{"Blade Blast", "Blade Blast of Unloading"}, skillHooks{preDamage: bladeBlastPreDamage})
 	registerSkill([]string{"Righteous Fire"}, skillHooks{preDamage: righteousFirePreDamage})
 	registerSkill(
 		[]string{"Righteous Fire of Arcane Devotion"},
@@ -114,5 +115,16 @@ func seismicCryWarcryShare(db *ModDB, s, main *activeSkill) {
 	if !db.Flag("SeismicActive") {
 		db.NewMod("SeismicMoreAoE", "BASE", s.mods.SumCfg(main.cfg, "BASE", "SeismicAoEMoreMultiplier"), "")
 		db.Add(Mod{Name: "SeismicActive", Type: "FLAG", Value: true})
+	}
+}
+
+// Data/Skills/act_dex.lua:1374-1379 Blade Blast (and Blade Blast of
+// Unloading, :1468-1473) preDamageFunc: one hit per detonated blade (the
+// stage count, dpsBaseMultiplier), once per second for "Blade Hits Per
+// Sec".
+func bladeBlastPreDamage(_ *ModDB, s *activeSkill, _ map[string]float64) {
+	mulDPS(s.data, numOr(s.data.val("dpsBaseMultiplier"), 0))
+	if s.part == 2 {
+		s.data.hitTimeOverride = optF{1, true}
 	}
 }

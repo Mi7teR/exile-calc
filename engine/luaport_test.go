@@ -191,6 +191,14 @@ func luaPortCases() []luaPortCase {
 			output: map[string]float64{"AreaOfEffectRadius": 20, "AreaOfEffectRadiusSecondary": 10},
 		},
 		{
+			skill: "Blade Blast", hook: "preDamageFunc", part: 2,
+			data: map[string]any{"dpsBaseMultiplier": 7.0, "dpsMultiplier": 1.5}, output: map[string]float64{},
+		},
+		{
+			skill: "Blade Blast of Unloading", hook: "preDamageFunc", part: 1,
+			data: map[string]any{"dpsBaseMultiplier": 4.0}, output: map[string]float64{},
+		},
+		{
 			skill: "Blood Sacrament", hook: "initialFunc",
 			data:   map[string]any{"LifeReservedPercent": 4.5, "LifeReservedBase": 312.0},
 			output: map[string]float64{"LifeReservedPercent": 40},
