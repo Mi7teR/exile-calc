@@ -142,12 +142,12 @@ func (l *leechPass) finish(s *activeSkill, actor *ModDB, out map[string]float64,
 		portion = out["CritChance"] / 100
 	}
 	if ghostReaver {
-		*ghostLeech += l.life * portion
+		*ghostLeech += float64(l.life * portion)
 	} else {
-		out["LifeLeech"] += l.life * portion
+		out["LifeLeech"] += float64(l.life * portion)
 	}
-	out["EnergyShieldLeech"] += l.es * portion
-	out["ManaLeech"] += l.mana * portion
+	out["EnergyShieldLeech"] += float64(l.es * portion)
+	out["ManaLeech"] += float64(l.mana * portion)
 }
 
 // damageTypeConditions is CalcOffence.lua:3736-3763 after a hit pass:
@@ -267,7 +267,7 @@ func pvpDamage(actor *ModDB, s *activeSkill, p *hitPass, speed, dpsMult, totalHi
 	ele := 1 - nonEle
 	portionNonEle := math.Pow(out["AverageHit"]/tv/pvpNonElemental2, pvpNonElemental1) * tv * pvpNonElemental2 * nonEle
 	portionEle := math.Pow(out["AverageHit"]/tv/pvpElemental2, pvpElemental1) * tv * pvpElemental2 * ele
-	out["PvpAverageHit"] = (portionNonEle + portionEle) * mult
+	out["PvpAverageHit"] = (float64(portionNonEle) + float64(portionEle)) * mult
 	out["PvpAverageDamage"] = out["PvpAverageHit"] * out["HitChance"] / 100
 	out["PvpTotalDPS"] = out["PvpAverageDamage"] * speed * dpsMult
 	// "fix for these being nan".
@@ -307,9 +307,9 @@ func leechRates(actor *ModDB, s *activeSkill, out map[string]float64) {
 	}
 	for _, r := range leechPools {
 		maxRate, recovery := global["Max"+r+"LeechRate"], global[r+"RecoveryRateMod"]
-		out[r+"LeechRate"] = out[r+"LeechInstantRate"] + math.Min(out[r+"LeechRate"], maxRate)*recovery
+		out[r+"LeechRate"] = out[r+"LeechInstantRate"] + float64(math.Min(out[r+"LeechRate"], maxRate)*recovery)
 		out[r+"LeechPerHit"] = out[r+"LeechInstant"] +
-			math.Min(out[r+"LeechPerHit"], maxRate)*out[r+"LeechDuration"]*recovery
+			float64(math.Min(out[r+"LeechPerHit"], maxRate)*out[r+"LeechDuration"]*recovery)
 	}
 	s.flags["leechLife"] = out["LifeLeechRate"] > 0
 	s.flags["leechES"] = out["EnergyShieldLeechRate"] > 0

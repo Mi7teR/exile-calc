@@ -277,10 +277,10 @@ func unleashSeals(actor *ModDB, s *activeSkill, out map[string]float64) {
 			m.Name, m.Value = "Damage", v*sealMax
 			list.Add(m)
 		}
-		data.dpsMultiplier = optF{1 + sealMax*calcMod(list, cfg, "SealRepeatPenalty"), true}
+		data.dpsMultiplier = optF{1 + float64(sealMax*calcMod(list, cfg, "SealRepeatPenalty")), true}
 		data.hitTimeOverride = optF{math.Max(cooldown*sealMax, castRate), true}
 	} else {
-		data.dpsMultiplier = optF{1 + 1/cooldown/castRate*calcMod(list, cfg, "SealRepeatPenalty"), true}
+		data.dpsMultiplier = optF{1 + float64(1/cooldown/castRate*calcMod(list, cfg, "SealRepeatPenalty")), true}
 	}
 }
 
@@ -398,7 +398,10 @@ func repeats(actor *ModDB, s *activeSkill, out map[string]float64) {
 		v := val(m) * (n - 1)
 		if avg {
 			if finalMore != 1 {
-				v = ((100+val(m)*(n-2)/2)*(n-1)+(100+val(m)*(n-1))*finalMore)/(n+moreTotal/100) - 100
+				// Every product rounds before its sum (FMA, see dump-cross).
+				first := float64((100 + float64(val(m)*(n-2)/2)) * (n - 1))
+				rest := float64((100 + float64(val(m)*(n-1))) * finalMore)
+				v = float64((first+rest)/(n+float64(moreTotal/100))) - 100
 			} else {
 				v /= 2
 			}
@@ -429,7 +432,7 @@ func repeats(actor *ModDB, s *activeSkill, out map[string]float64) {
 	}
 	if list.Flag("FinalRepeatSumsDamage") {
 		for _, m := range appliedMods(list, cfg, "FLAG", "FinalRepeatSumsDamage") {
-			add(m, "Damage", "MORE", (100*n+finalMore)/(1+finalMore/100)-100)
+			add(m, "Damage", "MORE", (float64(100*n)+finalMore)/(1+finalMore/100)-100)
 		}
 	}
 	if s.flags["trap"] || s.flags["mine"] {

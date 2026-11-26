@@ -79,7 +79,7 @@ func (c *Calculator) crit(s *activeSkill, p *hitPass, enemy *ModDB, actor *ModDB
 			}
 			if rolls != 0 {
 				if actor.Flag("Unexciting") {
-					cc = (3*math.Pow(cc/100, 2) - 2*math.Pow(cc/100, 3)) * 100 //nolint:staticcheck // matches PoB CalcOffence.lua:3155
+					cc = (float64(3*math.Pow(cc/100, 2)) - float64(2*math.Pow(cc/100, 3))) * 100 //nolint:staticcheck // matches PoB CalcOffence.lua:3155
 				} else {
 					cc = (1 - math.Pow(1-cc/100, rolls+1)) * 100
 				}
@@ -97,7 +97,7 @@ func (c *Calculator) crit(s *activeSkill, p *hitPass, enemy *ModDB, actor *ModDB
 					n    float64
 				}{{"Every3UseCrit", 3}, {"Every5UseCrit", 5}, {"Every6UseCrit", 6}} {
 					if list.FlagCfg(s.cfg, x.flag) {
-						cc = ((x.n-1)*cc + 100) / x.n
+						cc = (float64((x.n-1)*cc) + 100) / x.n
 					}
 				}
 				cc = cc * out["AccuracyHitChance"] / 100
@@ -140,13 +140,13 @@ func (c *Calculator) crit(s *activeSkill, p *hitPass, enemy *ModDB, actor *ModDB
 					cond = multiChance / out["CritChance"]
 				}
 				out["CritBifurcates"] = 1 + cond
-				extra += cond * extra
+				extra += float64(cond * extra)
 				list.Add(Mod{Name: "CritMultiplier", Type: "MORE", Value: floorTo(cond*100, 2), Flags: mfHit, Source: "Bifurcated Crit Damage Bonus"})
 			}
 			out["CritMultiplier"] = 1 + math.Max(0, extra)
 		}
 		cc := out["CritChance"] / 100
-		out["CritEffect"] = 1 - cc + cc*out["CritMultiplier"]
+		out["CritEffect"] = 1 - cc + float64(cc*out["CritMultiplier"])
 		out["BonusCritDotMultiplier"] = (list.SumCfg(cfg, "BASE", "CritMultiplier") - 50) * list.SumCfg(cfg, "BASE", "CritMultiplierAppliesToDegen") / 10000
 	}
 	if out["CritChance"] != 0 {

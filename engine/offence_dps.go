@@ -77,9 +77,9 @@ func skillDot(actor *ModDB, s *activeSkill, out map[string]float64, dpsMult, qua
 		total := baseVal * (1 + dinc/100) * dmore * (1 + mult/100) * aura * effMult
 		if out[t+"Dot"] == 0 {
 			out[t+"Dot"] = total
-			out["TotalDotInstance"] = math.Min(out["TotalDotInstance"]+total, dotDpsCap)
+			out["TotalDotInstance"] = math.Min(float64(out["TotalDotInstance"])+float64(total), dotDpsCap)
 		} else {
-			out["TotalDotInstance"] = math.Min(out["TotalDotInstance"]+total+out[t+"Dot"], dotDpsCap)
+			out["TotalDotInstance"] = math.Min(float64(out["TotalDotInstance"])+float64(total)+float64(out[t+"Dot"]), dotDpsCap)
 		}
 	}
 	switch {
@@ -230,7 +230,7 @@ func combinedDPS(s *activeSkill, out map[string]float64, passes []*hitPass, dpsM
 			if !ok {
 				mod = 1
 			}
-			return o["impaleStoredHitAvg"] * (mod - 1) * o["HitChance"] / 100 * dpsMult
+			return float64(o["impaleStoredHitAvg"] * (mod - 1) * o["HitChance"] / 100 * dpsMult)
 		}
 		if s.flags["attack"] && truthy(s.data.val("doubleHitsWhenDualWielding")) && len(passes) == 2 {
 			out["ImpaleDPS"] = impaleDPS(passes[0].out) + impaleDPS(passes[1].out)

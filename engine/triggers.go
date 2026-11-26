@@ -261,7 +261,9 @@ func rotationImpact(main *activeSkill, rotation []*simSkill, sourceRate, trigger
 		for {
 			if rotation[cur].nextTrig <= next {
 				rotation[cur].count++
-				rotation[cur].nextTrig = serverTickTime * math.Ceil((serverTickTime*math.Floor(next/serverTickTime)+rotation[cur].cd)/serverTickTime)
+				rotation[cur].nextTrig = serverTickTime * math.Ceil(
+					(float64(serverTickTime*math.Floor(next/serverTickTime))+rotation[cur].cd)/serverTickTime,
+				)
 				break
 			}
 			cur = (cur + 1) % n
@@ -276,7 +278,7 @@ func rotationImpact(main *activeSkill, rotation []*simSkill, sourceRate, trigger
 			if s.count == 0 {
 				return 0
 			}
-			return 1 / (simTime/s.count + inc/chance*100 - inc)
+			return 1 / (simTime/s.count + float64(inc/chance*100) - inc)
 		}
 	}
 	return 0

@@ -12,7 +12,7 @@ func (est *defenceEstimations) maximumHitTaken(db *ModDB) {
 		k := t + "TotalHitPool"
 		if bypass := db.Sum("BASE", "WardBypass"); bypass > 0 {
 			protected := out["Ward"] / (1 - bypass/100) * (bypass / 100)
-			out[k] = math.Max(out[k]-protected, 0) + math.Min(out[k], protected)/(bypass/100)
+			out[k] = math.Max(float64(out[k])-float64(protected), 0) + float64(math.Min(out[k], protected)/(bypass/100))
 		} else {
 			out[k] += out["Ward"]
 		}
@@ -28,7 +28,7 @@ func (est *defenceEstimations) maximumHitTaken(db *ModDB) {
 				out[k] += absorb
 			} else {
 				protected := absorb / (rate / 100) * (1 - rate/100)
-				out[k] = math.Max(out[k]-protected, 0) + math.Min(out[k], protected)/(1-rate/100)
+				out[k] = math.Max(float64(out[k])-float64(protected), 0) + float64(math.Min(out[k], protected)/(1-float64(rate/100)))
 			}
 		}
 		for i := len(allyLifePoolList) - 1; i >= 0; i-- {
@@ -41,7 +41,7 @@ func (est *defenceEstimations) maximumHitTaken(db *ModDB) {
 				out[k] += life
 			} else {
 				protected := life / (m / 100) * (1 - m/100)
-				out[k] = math.Max(out[k]-protected, 0) + math.Min(out[k], protected)/(1-m/100)
+				out[k] = math.Max(float64(out[k])-float64(protected), 0) + float64(math.Min(out[k], protected)/(1-float64(m/100)))
 			}
 		}
 	}
@@ -80,12 +80,12 @@ func (est *defenceEstimations) maximumHitTaken(db *ModDB) {
 					overwhelm = 0
 				}
 				rc := resist * conv
-				a := 5 * (1 - flatDR + overwhelm/100) * takenMulti * rc * rc
-				b := ((overwhelm/100-flatDR)*applied*takenMulti - 5*(pool-flat*takenMulti)) * rc
-				c := -applied * (pool - flat*takenMulti)
+				a := 5 * (1 - flatDR + float64(overwhelm/100)) * takenMulti * float64(rc*rc)
+				b := (float64((overwhelm/100-flatDR)*applied*takenMulti) - float64(5*(pool-float64(flat*takenMulti)))) * rc
+				c := -applied * (pool - float64(flat*takenMulti))
 				raw := math.Inf(1)
 				if a != 0 {
-					raw = (math.Sqrt(math.Max(b*b-4*a*c, 0)) - b) / (2 * a)
+					raw = (math.Sqrt(math.Max(float64(b*b)-float64(4*a*c), 0)) - float64(b)) / (2 * a)
 				}
 				noDR := pool / conv / resist / takenMulti * (1 - flat*takenMulti/pool)
 				maxDR := noDR / (1 - (out["DamageReductionMax"]-overwhelm)/100)
@@ -207,7 +207,7 @@ func (est *defenceEstimations) numberOfHitsToDie(db *ModDB, in *damageIn) float6
 		damageTotal = 0
 		vaalMult := 1.0
 		if vaalLeft > 0 {
-			vaalMult = 1 - out["VaalArcticArmourMitigation"]*math.Min(vaalLeft/iterMult, 1)
+			vaalMult = 1 - float64(out["VaalArcticArmourMitigation"]*math.Min(vaalLeft/iterMult, 1))
 		}
 		vaalLeft -= iterMult
 		for _, t := range dmgTypes {
@@ -220,15 +220,15 @@ func (est *defenceEstimations) numberOfHitsToDie(db *ModDB, in *damageIn) float6
 		if (in.gainWhenHit || in.missingLifeBefore != 0 || in.missingManaBefore != 0) && (iterMult > 1 || in.cycles > 1) {
 			gain := iterMult * in.cycles
 			if in.missingLifeBefore != 0 {
-				pool.life = math.Min(pool.life+in.missingLifeBefore*(out["LifeUnreserved"]-pool.life)*(gain-1)/100, gain*out["LifeRecoverable"])
+				pool.life = math.Min(float64(pool.life)+float64(in.missingLifeBefore*(float64(out["LifeUnreserved"])-float64(pool.life))*(float64(gain)-1)/100), gain*out["LifeRecoverable"])
 			}
 			if in.missingManaBefore != 0 {
-				pool.mana = math.Min(pool.mana+in.missingManaBefore*(out["ManaUnreserved"]-pool.mana)*(gain-1)/100, gain*out["ManaUnreserved"])
+				pool.mana = math.Min(float64(pool.mana)+float64(in.missingManaBefore*(float64(out["ManaUnreserved"])-float64(pool.mana))*(float64(gain)-1)/100), gain*out["ManaUnreserved"])
 			}
 			if in.gainWhenHit {
-				pool.life = math.Min(pool.life+in.lifeWhenHit*(gain-1), gain*out["LifeRecoverable"])
-				pool.mana = math.Min(pool.mana+in.manaWhenHit*(gain-1), gain*out["ManaUnreserved"])
-				pool.energyShield = math.Min(pool.energyShield+in.esWhenHit*(gain-1), gain*out["EnergyShieldRecoveryCap"])
+				pool.life = math.Min(float64(pool.life)+float64(in.lifeWhenHit*(float64(gain)-1)), gain*out["LifeRecoverable"])
+				pool.mana = math.Min(pool.mana+float64(in.manaWhenHit*(gain-1)), gain*out["ManaUnreserved"])
+				pool.energyShield = math.Min(pool.energyShield+float64(in.esWhenHit*(gain-1)), float64(gain*out["EnergyShieldRecoveryCap"]))
 			}
 		}
 		if in.missingLifeBefore != 0 && pool.life > 0 {
@@ -261,7 +261,7 @@ func (est *defenceEstimations) numberOfHitsToDie(db *ModDB, in *damageIn) float6
 				next.gainWhenHit = true
 				next.lifeWhenHit, next.manaWhenHit, next.esWhenHit = in.lifeWhenHit, in.manaWhenHit, in.esWhenHit
 			}
-			iterMult = math.Max((est.numberOfHitsToDie(db, next)-1)*speedUp-1, 1)
+			iterMult = math.Max(float64((est.numberOfHitsToDie(db, next)-1)*speedUp)-1, 1)
 			if math.IsInf(iterMult, 1) {
 				return math.Inf(1)
 			}
@@ -284,7 +284,7 @@ func (est *defenceEstimations) numberOfHitsToDie(db *ModDB, in *damageIn) float6
 	}
 	damageTotal = 0
 	for _, t := range dmgTypes {
-		damageTotal += in.damage[t] * numHits
+		damageTotal += float64(in.damage[t] * numHits)
 	}
 	if pool.life >= 0 && damageTotal >= ehpCalcMaxDamage {
 		return math.Inf(1)
@@ -318,14 +318,14 @@ func (est *defenceEstimations) totalEHP(db *ModDB, category string) {
 	suppress, suppressEffect, extraAvoid, avgAvoid := 0.0, 1.0, 0.0, 0.0
 	gainOnBlock := !env.checks["DisableEHPGainOnBlock"] && out["NumberOfDamagingHits"] > 1
 	if gainOnBlock {
-		in.lifeWhenHit = out["LifeOnBlock"] * block
-		in.manaWhenHit = out["ManaOnBlock"] * block
-		in.esWhenHit = out["EnergyShieldOnBlock"] * block
+		in.lifeWhenHit = float64(out["LifeOnBlock"] * block)
+		in.manaWhenHit = float64(out["ManaOnBlock"] * block)
+		in.esWhenHit = float64(out["EnergyShieldOnBlock"] * block)
 		switch category {
 		case "Spell", "SpellProjectile":
-			in.esWhenHit += out["EnergyShieldOnSpellBlock"] * block
+			in.esWhenHit += float64(out["EnergyShieldOnSpellBlock"] * block)
 		case "Average":
-			in.esWhenHit += out["EnergyShieldOnSpellBlock"] / 2 * block
+			in.esWhenHit += float64(out["EnergyShieldOnSpellBlock"] / 2 * block)
 		}
 	}
 	if category == "Spell" || category == "SpellProjectile" || category == "Average" {
@@ -335,22 +335,22 @@ func (est *defenceEstimations) totalEHP(db *ModDB, category string) {
 		if category == "Average" {
 			suppress /= 2
 		}
-		in.esWhenHit += out["EnergyShieldOnSuppress"] * suppress
-		in.lifeWhenHit += out["LifeOnSuppress"] * suppress
+		in.esWhenHit += float64(out["EnergyShieldOnSuppress"] * suppress)
+		in.lifeWhenHit += float64(out["LifeOnSuppress"] * suppress)
 		suppressEffect = 1 - suppress*out["SpellSuppressionEffect"]/100
 	} else {
 		half := 1.0
 		if category == "Average" {
 			half = 0.5
 		}
-		in.esWhenHit += out["EnergyShieldOnSuppress"] * half
-		in.lifeWhenHit += out["LifeOnSuppress"] * half
+		in.esWhenHit += float64(out["EnergyShieldOnSuppress"] * half)
+		in.lifeWhenHit += float64(out["LifeOnSuppress"] * half)
 	}
 	switch category {
 	case "Projectile", "SpellProjectile":
 		extraAvoid += out["AvoidProjectilesChance"]
 	case "Average":
-		extraAvoid += out["AvoidProjectilesChance"] / 2
+		extraAvoid += float64(out["AvoidProjectilesChance"] / 2)
 	}
 	if gainOnBlock {
 		in.missingLifeBefore = db.Sum("BASE", "MissingLifeBeforeEnemyHit")

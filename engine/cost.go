@@ -84,7 +84,7 @@ func skillCosts(actor *ModDB, s *activeSkill, out map[string]float64) {
 		val.noMult += noMult
 		val.fin = math.Floor(val.baseCost*mult) + val.noMult + correction
 		if val.hasRaw {
-			val.baseCostRaw = val.baseCost*mult + val.noMult + correction
+			val.baseCostRaw = float64(val.baseCost*mult) + val.noMult + correction
 		}
 		switch val.typ {
 		case "Life":
@@ -220,7 +220,7 @@ func perSecondCosts(actor *ModDB, s *activeSkill, out map[string]float64) {
 			refund = 0.5
 		}
 		out[used+"PerSecondHasCost"] = 1
-		out[used+"PerSecondCost"] += out[res+"Cost"] * speed * refund
+		out[used+"PerSecondCost"] += float64(out[res+"Cost"] * speed * refund)
 	}
 }
 

@@ -12,8 +12,8 @@ func calcDamage(list *ModDB, p *hitPass, t string, typeFlags int, convDst bool) 
 		}
 		if m := p.conv[o].to[t]; m > 0 {
 			mn, mx := calcDamage(list, p, o, typeFlags, true)
-			addMin += mn * m
-			addMax += mx * m
+			addMin += float64(mn * m)
+			addMax += float64(mx * m)
 		}
 	}
 	b := p.base[t]
@@ -29,9 +29,9 @@ func calcDamage(list *ModDB, p *hitPass, t string, typeFlags int, convDst bool) 
 	if debugCalcDamage != nil {
 		debugCalcDamage(list, p, t, inc, more, names)
 	}
-	mn := ((b[0]*inc*more)*list.MoreCfg(p.cfg, "MinDamage") + addMin) *
+	mn := (float64((b[0]*inc*more)*list.MoreCfg(p.cfg, "MinDamage")) + addMin) *
 		list.MoreCfg(p.cfg, "Min"+t+"Damage") * (1 + list.SumCfg(p.cfg, "INC", "Min"+t+"Damage")/100)
-	mx := ((b[1]*inc*more)*list.MoreCfg(p.cfg, "MaxDamage") + addMax) *
+	mx := (float64((b[1]*inc*more)*list.MoreCfg(p.cfg, "MaxDamage")) + addMax) *
 		list.MoreCfg(p.cfg, "Max"+t+"Damage") * (1 + list.SumCfg(p.cfg, "INC", "Max"+t+"Damage")/100)
 	if convDst {
 		return mn, mx
@@ -162,8 +162,8 @@ func (c *Calculator) hitDamage(actor *ModDB, s *activeSkill, p *hitPass) {
 		addedMax := list.SumCfg(p.cfg, "BASE", t+"Max") + enemy.SumCfg(p.cfg, "BASE", "Self"+t+"Max")
 		addedMult := calcMod(list, p.cfg, "Added"+t+"Damage", "AddedDamage")
 		p.base[t] = [2]float64{
-			p.src.min[t]*baseMult + addedMin*eff*addedMult,
-			p.src.max[t]*baseMult + addedMax*eff*addedMult,
+			float64(p.src.min[t]*baseMult) + float64(addedMin*eff*addedMult),
+			float64(p.src.max[t]*baseMult) + float64(addedMax*eff*addedMult),
 		}
 		out[t+"MinBase"], out[t+"MaxBase"] = p.base[t][0], p.base[t][1]
 	}
@@ -240,11 +240,11 @@ func (c *Calculator) hitDamage(actor *ModDB, s *activeSkill, p *hitPass) {
 			if pass == 1 {
 				out["CritDamageRolls"] = dmgRolls
 			}
-			avg := (mn + mx) / 2
+			avg := (float64(mn) + float64(mx)) / 2
 			if lucky >= 0 {
-				avg = avg*(1-lucky) + (mn+(rolls-1)*mx)/rolls*lucky
+				avg = float64(avg*(1-float64(lucky))) + float64((float64(mn)+float64((float64(rolls)-1)*mx))/rolls*lucky)
 			} else {
-				avg = avg*(1+lucky) + ((rolls-1)*mn+mx)/rolls*(-lucky)
+				avg = float64(avg*(1+float64(lucky))) + float64((float64((float64(rolls)-1)*mn)+float64(mx))/rolls*(-lucky))
 			}
 			// CalcOffence.lua:3529: enemy resistances, damage taken and
 			// armour, and the impale's stored hit, only with
@@ -255,7 +255,7 @@ func (c *Calculator) hitDamage(actor *ModDB, s *activeSkill, p *hitPass) {
 					if pass == 1 {
 						out["impaleStoredHitAvg"] += avg * out["CritChance"] / 100
 					} else {
-						out["impaleStoredHitAvg"] += avg * (1 - out["CritChance"]/100)
+						out["impaleStoredHitAvg"] += float64(avg * (1 - out["CritChance"]/100))
 					}
 				}
 				// output[type.."EffMult"] is set only in CALCS mode
@@ -282,7 +282,7 @@ func (c *Calculator) hitDamage(actor *ModDB, s *activeSkill, p *hitPass) {
 	leechAndGain(actor, s, p, ghostLeech, hitRate)
 	p.totalHitMin, p.totalHitMax = totalHitMin, totalHitMax
 
-	out["AverageHit"] = totalHitAvg*(1-out["CritChance"]/100) + totalCritAvg*out["CritChance"]/100
+	out["AverageHit"] = float64(totalHitAvg*(1-out["CritChance"]/100)) + totalCritAvg*out["CritChance"]/100
 	if s.flags["monsterExplode"] && truthy(s.data.val("hitChanceIsExplodeChance")) {
 		out["HitChance"] = out["ExplodeChance"]
 	}
@@ -388,13 +388,13 @@ func (c *Calculator) enemyEffMult(actor, list *ModDB, cfg *Cfg, s *activeSkill, 
 	case isElemental[t] && list.FlagCfg(cfg, "CannotElePenIgnore"):
 		r := resist
 		if invert > 0 {
-			r = resist - 2*invert*resist
+			r = resist - float64(2*invert*resist)
 		}
 		eff *= 1 - r/100
 	case useResChance > 0:
 		r := (resist - pen) * useResChance
 		if invert > 0 {
-			r = ((resist-pen)*(1-invert) + (-resist-pen)*invert) * useResChance
+			r = (float64((resist-pen)*(1-invert)) + float64((-resist-pen)*invert)) * useResChance
 		}
 		eff *= 1 - r/100
 	}

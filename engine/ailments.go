@@ -246,9 +246,9 @@ func ailmentModeCrit(actor *ModDB) bool {
 // ailmentDamage is calcAilmentDamage: the chance of type over hits and
 // crits (into out[type+"Chance"]) and the base damage weighted by it.
 func ailmentDamage(out map[string]float64, typ string, critChance, hitDmg, critDmg float64) float64 {
-	fromHit := out[typ+"ChanceOnHit"] * (1 - critChance/100)
-	fromCrit := out[typ+"ChanceOnCrit"] * critChance / 100
-	out[typ+"Chance"] = fromHit + fromCrit
+	fromHit := float64(out[typ+"ChanceOnHit"] * (1 - critChance/100))
+	fromCrit := float64(out[typ+"ChanceOnCrit"] * critChance / 100)
+	out[typ+"Chance"] = float64(fromHit) + float64(fromCrit)
 	return hitDmg*fromHit/(fromHit+fromCrit) + critDmg*fromCrit/(fromHit+fromCrit)
 }
 
@@ -267,11 +267,11 @@ func critDotMulti(actor *ModDB, out map[string]float64, typ string, hitCrit, ail
 	if !ok || critMulti == out[typ+"DotMulti"] {
 		return
 	}
-	fromHit := out[typ+"ChanceOnHit"] / 100 * (1 - hitCrit/100)   //nolint:mnd // percent
-	fromCrit := out[typ+"ChanceOnCrit"] / 100 * ailmentCrit / 100 //nolint:mnd // percent
-	totalFromHit := fromHit / (fromHit + fromCrit)
+	fromHit := float64(out[typ+"ChanceOnHit"] / 100 * (1 - hitCrit/100))
+	fromCrit := float64(out[typ+"ChanceOnCrit"] / 100 * ailmentCrit / 100)
+	totalFromHit := fromHit / (float64(fromHit) + float64(fromCrit))
 	totalFromCrit := fromCrit / (fromHit + fromCrit)
-	out[typ+"DotMulti"] = out[typ+"DotMulti"]*totalFromHit + critMulti*totalFromCrit
+	out[typ+"DotMulti"] = float64(out[typ+"DotMulti"]*totalFromHit) + float64(critMulti*totalFromCrit)
 }
 
 // ailmentDotCfg is the igniteCfg/bleedCfg/poisonCfg of a pass: a DoT +
@@ -347,14 +347,14 @@ func combineAilment(out map[string]float64, passes []*hitPass, stat, chanceStat 
 			smax = 1
 		}
 		k := math.Min(1, stacks/smax)
-		out[stat] = math.Max(mh, oh)*k + math.Min(mh, oh)*(1-k)
+		out[stat] = float64(math.Max(mh, oh)*k) + float64(math.Min(mh, oh)*(1-k))
 		return
 	}
 	if doubleHits {
 		out[stat] = mh*mc/10000 + oh*oc/10000
 		return
 	}
-	out[stat] = mh*mc/(mc+oc) + oh*oc/(mc+oc)
+	out[stat] = float64(mh*mc/(float64(mc)+float64(oc))) + float64(oh*oc/(float64(mc)+float64(oc)))
 }
 
 // combineAilments is "Combine secondary effect stats" for attacks (the

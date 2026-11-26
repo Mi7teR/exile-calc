@@ -191,7 +191,7 @@ func addMirageDPS(s *activeSkill, out map[string]float64) float64 {
 	}
 	n := s.mirage.count
 	out["MirageDPS"] = total * n
-	out["CombinedDPS"] += total * n
+	out["CombinedDPS"] += float64(total * n)
 	if v, ok := mo["BurningGroundDPS"]; ok {
 		out["MirageBurningGroundDPS"] = v
 	}
@@ -210,8 +210,8 @@ func addMirageDPS(s *activeSkill, out map[string]float64) float64 {
 	}
 	for _, k := range []string{"PoisonDPS", "ImpaleDPS"} {
 		if v, ok := mo[k]; ok {
-			out["MirageDPS"] += v * n
-			out["CombinedDPS"] += v * n
+			out["MirageDPS"] += float64(v * n)
+			out["CombinedDPS"] += float64(v * n)
 		}
 	}
 	if v, ok := mo["DecayDPS"]; ok {

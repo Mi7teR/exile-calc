@@ -59,7 +59,7 @@ func itemArmour(it *itemtext.Item, mods []modparser.Mod) armourData {
 				pct = round(math.Max(math.Min((v/scale-base)/variance, 1), 0), 4)
 			}
 		}
-		return round((base+flat+variance*pct)*scale, 0)
+		return round((base+flat+float64(variance*pct))*scale, 0)
 	}
 	ae, aes, ees := local("ArmourAndEvasion", "BASE"), local("ArmourAndEnergyShield", "BASE"), local("EvasionAndEnergyShield", "BASE")
 	aeInc, aesInc, eesInc := local("ArmourAndEvasion", "INC"), local("ArmourAndEnergyShield", "INC"), local("EvasionAndEnergyShield", "INC")
@@ -119,7 +119,7 @@ func itemWeapon(it *itemtext.Item, mods []modparser.Mod) (hitSource, string, boo
 	out := hitSource{min: map[string]float64{}, max: map[string]float64{}}
 	out.attackRate = round(w.AttackRateBase*(1+speedInc/100), 2)
 	// Item.lua: weaponData.range = base range + rangeBonus.
-	out.rangeBonus = local("WeaponRange", "BASE") + 10*local("WeaponRangeMetre", "BASE") +
+	out.rangeBonus = local("WeaponRange", "BASE") + float64(10*local("WeaponRangeMetre", "BASE")) +
 		math.Floor(quality/10*local("AlternateQualityLocalWeaponRangePer10Quality", "BASE"))
 	out.rng = float64(w.Range) + out.rangeBonus
 	out.hasRange = true

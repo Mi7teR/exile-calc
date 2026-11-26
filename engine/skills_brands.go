@@ -48,15 +48,19 @@ func wintertideBrandPreDamage(actor *ModDB, s *activeSkill, _ map[string]float64
 			return
 		}
 		maxStages := math.Min(math.Floor(duration/hitTime), skillMaxStages)
-		timeAtMaxStages := math.Max(duration-maxStages*hitTime, 0)
+		timeAtMaxStages := math.Max(float64(duration)-float64(maxStages*hitTime), 0)
 		damagePerStage := list.SumCfg(cfg, "BASE", "Multiplier:WintertideBrandDamagePerStage")
-		averageStages := (maxStages*(maxStages-1)/2*hitTime + maxStages*timeAtMaxStages) / duration
+		averageStages := (float64(maxStages*(maxStages-1)/2*hitTime) + float64(maxStages*timeAtMaxStages)) / duration
 		endBase := numOr(data.val("durationTertiary"), 0) + list.SumCfg(cfg, "BASE", "Duration", "TertiaryDuration")
 		endMod := math.Max(calcMod(list, cfg, "Duration", "TertiaryDuration"), 0)
 		endDuration := math.Ceil(endBase*endMod*debuffDurationMult*serverTickRate) / serverTickRate
 		endUptime := math.Min(endDuration/duration, 1)
 		attached := numOr(data.val("attachedBrandCount"), 0)
-		mult := attached*(100+averageStages*damagePerStage) + endUptime*(100+maxStages*damagePerStage) - 100
+		mult := float64(
+			attached*(100+float64(averageStages*damagePerStage)),
+		) + float64(
+			endUptime*(100+float64(maxStages*damagePerStage)),
+		) - 100
 		list.NewMod("Damage", "MORE", mult, "Wintertide Brand Average Multiplier")
 	}
 }

@@ -90,14 +90,25 @@ func (c *Calculator) defence(db *ModDB, gearMods map[string][]modparser.Mod, key
 		out["SpellBlockChance"] = math.Min(total, out["SpellBlockChanceMax"])
 		out["SpellBlockChanceOverCap"] = math.Max(0, total-out["SpellBlockChanceMax"])
 	}
-	out["ProjectileBlockChance"] = math.Min(out["BlockChance"]+db.Sum("BASE", "ProjectileBlockChance")*calcMod(db, nil, "BlockChance"), out["BlockChanceMax"])
+	out["ProjectileBlockChance"] = math.Min(
+		out["BlockChance"]+float64(db.Sum("BASE", "ProjectileBlockChance")*calcMod(db, nil, "BlockChance")),
+		out["BlockChanceMax"],
+	)
 	switch {
 	case db.Flag("MaxSpellBlockIfNotBlockedRecently"):
 		out["SpellProjectileBlockChance"] = out["SpellBlockChanceMax"]
 	case db.Flag("SpellBlockChanceIsBlockChance"):
 		out["SpellProjectileBlockChance"] = out["ProjectileBlockChance"]
 	default:
-		out["SpellProjectileBlockChance"] = math.Max(math.Min(out["SpellBlockChance"]+db.Sum("BASE", "ProjectileSpellBlockChance")*calcMod(db, nil, "SpellBlockChance"), out["SpellBlockChanceMax"]), 0)
+		out["SpellProjectileBlockChance"] = math.Max(
+			math.Min(
+				out["SpellBlockChance"]+float64(
+					db.Sum("BASE", "ProjectileSpellBlockChance")*calcMod(db, nil, "SpellBlockChance"),
+				),
+				out["SpellBlockChanceMax"],
+			),
+			0,
+		)
 	}
 	if db.Flag("CannotBlockAttacks") {
 		out["BlockChance"], out["ProjectileBlockChance"] = 0, 0
@@ -200,7 +211,21 @@ func (c *Calculator) defence(db *ModDB, gearMods map[string][]modparser.Mod, key
 		if slot == "Body Armour" && db.Flag("ConvertBodyArmourArmourEvasionToWard") {
 			conv := math.Min(db.Sum("BASE", "BodyArmourArmourEvasionToWardPercent")/100, 1)
 			ca, ce := armBase*conv, evaBase*conv
-			armBase, evaBase, wardBase = armBase-ca, evaBase-ce, wardBase+ca+ce
+			armBase, evaBase, wardBase = float64(
+				armBase,
+			)-float64(
+				ca,
+			), float64(
+				evaBase,
+			)-float64(
+				ce,
+			), float64(
+				wardBase,
+			)+float64(
+				ca,
+			)+float64(
+				ce,
+			)
 		}
 		if wardBase > 0 {
 			if esToWard {
@@ -361,9 +386,15 @@ func (c *Calculator) evadeChance(db *ModDB) {
 			stat = out["Ward"] * o / 100
 			melee, proj = stat, stat
 		}
-		out["EvadeChance"] = 100 - (hitChance(stat, acc)-evade)*hit
+		out["EvadeChance"] = 100 - float64((hitChance(stat, acc)-evade)*hit)
 		chance := func(s float64, name string) float64 {
-			return math.Max(0, math.Min(evadeChanceCap, (100-(hitChance(s, acc)-evade)*hit)*calcMod(db, nil, "EvadeChance", name)))
+			return math.Max(
+				0,
+				math.Min(
+					evadeChanceCap,
+					(100-float64((hitChance(s, acc)-evade)*hit))*calcMod(db, nil, "EvadeChance", name),
+				),
+			)
 		}
 		out["MeleeEvadeChance"] = chance(melee, "MeleeEvadeChance")
 		out["ProjectileEvadeChance"] = chance(proj, "ProjectileEvadeChance")

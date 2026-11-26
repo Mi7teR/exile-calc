@@ -29,7 +29,7 @@ func moltenStrikePreDamage(_ *ModDB, s *activeSkill, out map[string]float64) {
 		if s.part == 6 {
 			// Zenith: the weighted average of normal and 5th attack balls.
 			fifth := 1 + numOr(data.val("FifthStrikeDamage"), 0)/100
-			mult = 0.8*mult + 0.2*fifth*overlap*(proj+numOr(data.val("FifthStrikeProjectiles"), 0))
+			mult = float64(0.8*mult) + float64(0.2*fifth*overlap*(proj+numOr(data.val("FifthStrikeProjectiles"), 0)))
 		}
 	}
 	if mult != 1 {

@@ -185,7 +185,7 @@ func (a *fullDPSAcc) addSkill(r *Result, info SkillInfo, count float64) {
 		if mo["TotalDPS"] > 0 {
 			minionCounted = true
 			entry(withPart(name, m.Minion+": "+partName(s, m)), mo["TotalDPS"], count, s.infoTrigger)
-			a.combined += mo["TotalDPS"] * count
+			a.combined += float64(mo["TotalDPS"] * count)
 		}
 		a.addAilments(mo, count)
 		a.dot += math.Max(mo["TotalDot"], 0)
@@ -202,7 +202,7 @@ func (a *fullDPSAcc) addSkill(r *Result, info SkillInfo, count float64) {
 			// trigger = activeSkill.mirage.infoTrigger: CalcMirages.lua never sets
 			// it in v2.68.1 (only the mirage's infoMessage2), so it is "".
 			entry(withPart(name+" (Mirage)", partName(s, nil)), mo["TotalDPS"], n, "")
-			a.combined += mo["TotalDPS"] * n
+			a.combined += float64(mo["TotalDPS"] * n)
 		}
 		a.addAilments(mo, n)
 		// (usedEnv.player.output.TotalDot and usedEnv.player.output.TotalDot == 0): absent is not 0.
@@ -221,7 +221,7 @@ func (a *fullDPSAcc) addSkill(r *Result, info SkillInfo, count float64) {
 			part = minionPart
 		}
 		entry(withPart(name, part), out["TotalDPS"], count, s.infoTrigger)
-		a.combined += out["TotalDPS"] * count
+		a.combined += float64(out["TotalDPS"] * count)
 	}
 	a.addAilments(out, count)
 	a.corruptingBlood = math.Max(a.corruptingBlood, out["CorruptingBloodDPS"])
@@ -246,10 +246,10 @@ func (a *fullDPSAcc) addAilments(o map[string]float64, n float64) {
 	a.bleed = math.Max(a.bleed, o["BleedDPS"])
 	a.ignite = math.Max(a.ignite, o["IgniteDPS"])
 	if o["PoisonDPS"] > 0 {
-		a.poison += o["TotalPoisonDPS"] * n
+		a.poison += float64(o["TotalPoisonDPS"] * n)
 	}
 	if o["ImpaleDPS"] > 0 {
-		a.impale += o["ImpaleDPS"] * n
+		a.impale += float64(o["ImpaleDPS"] * n)
 	}
 	a.decay += math.Max(o["DecayDPS"], 0)
 	if o["CullMultiplier"] > 1 {
@@ -269,7 +269,7 @@ func (a *fullDPSAcc) addDot(o map[string]float64, s *activeSkill, n float64) {
 		return
 	}
 	if s.flags["DotCanStack"] {
-		a.dot += o["TotalDot"] * n
+		a.dot += float64(o["TotalDot"] * n)
 	} else {
 		a.dot += o["TotalDot"]
 	}
@@ -317,7 +317,7 @@ func (a *fullDPSAcc) finish() *FullDPSResult {
 	if a.cullingMulti > 0 {
 		cull := a.combined * (a.cullingMulti - 1)
 		total("Full Culling DPS", cull)
-		a.combined += cull
+		a.combined += float64(cull)
 	}
 	return &FullDPSResult{FullDPS: a.combined, FullDotDPS: dot, Skills: a.skills}
 }

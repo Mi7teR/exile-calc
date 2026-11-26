@@ -299,7 +299,7 @@ func selfAilment(db *ModDB, name string, shockAvoid bool) (float64, bool) {
 		avoid += db.Sum("BASE", "AvoidShock")
 	}
 	if db.Flag("SpellSuppressionAppliesToAilmentAvoidance") {
-		avoid += db.Sum("BASE", "SpellSuppressionChance") / 2
+		avoid += float64(db.Sum("BASE", "SpellSuppressionChance") / 2)
 	}
 	if math.Floor(math.Min(avoid, 100)) == 100 {
 		return 0, true
@@ -326,11 +326,11 @@ func elusive(db *ModDB, main *activeSkill) {
 	peak := mod
 	if incDuration > 0 {
 		rate := 20 / (1 + db.Sum("INC", "ElusiveEffectLossSlower")/100)
-		peak = mod + rate*incDuration
+		peak = float64(mod) + float64(rate*incDuration)
 		decDuration := (peak - minThreshold) / rate
-		out["ElusiveEffectMod"] = ((mod+peak)/2*incDuration + (peak+minThreshold)/2*decDuration) / (incDuration + decDuration)
+		out["ElusiveEffectMod"] = (float64((float64(mod)+float64(peak))/2*incDuration) + float64((float64(peak)+float64(minThreshold))/2*decDuration)) / (float64(incDuration) + float64(decDuration))
 	} else {
-		out["ElusiveEffectMod"] = (mod + minThreshold) / 2
+		out["ElusiveEffectMod"] = (float64(mod) + float64(minThreshold)) / 2
 	}
 	db.NewMod("ElusiveEffect", "INC", maxSkillInc, "Max Skill Effect")
 	if o, ok := db.Override("ElusiveEffect"); ok {

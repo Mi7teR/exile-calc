@@ -53,7 +53,9 @@ func (c *Calculator) cursePriorityOf(name string, s *activeSkill) float64 {
 	if source != "" && (slotPriority == cursePriority["Ring 2"] || slotPriority == cursePriority["Ring 3"]) {
 		slotPriority = cursePriority["Ring 1"]
 	}
-	return cursePriority[name] + float64(socket)*cursePriority["SocketPriorityBase"] + slotPriority + sourcePriority
+	return cursePriority[name] + float64(
+		float64(socket)*cursePriority["SocketPriorityBase"],
+	) + slotPriority + sourcePriority
 }
 
 // skillCurse is the Curse/CurseBuff branch of the buff loop in

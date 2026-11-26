@@ -474,7 +474,7 @@ func (db *ModDB) target(t map[string]any) (*ModDB, bool) {
 // round is PoB's round(v, places) (Modules/Common.lua): floor(v*10^p + 0.5).
 func round(v float64, places int) float64 {
 	p := math.Pow(10, float64(places))
-	return math.Floor(v*p+0.5) / p
+	return math.Floor(float64(v*p)+0.5) / p
 }
 
 // modfInt truncates toward zero like Lua's math.modf integer part.

@@ -17,7 +17,7 @@ func (db *ModDB) eval(m *Mod, cfg *Cfg) (any, bool) {
 	scale := func(mult float64, t map[string]any) {
 		base, _ := tagNum(t, "base")
 		if f, ok := num(value); ok {
-			value = f*mult + base
+			value = float64(f*mult) + base
 			return
 		}
 		v, ok := value.(map[string]any)
@@ -34,11 +34,11 @@ func (db *ModDB) eval(m *Mod, cfg *Cfg) (any, bool) {
 				for k, x := range mm {
 					m2[k] = x
 				}
-				m2["value"] = f*mult + base
+				m2["value"] = float64(f*mult) + base
 				cp["mod"] = m2
 			}
 		} else if f, isNum := num(v["value"]); isNum {
-			cp["value"] = f*mult + base
+			cp["value"] = float64(f*mult) + base
 		}
 		value = cp
 	}
@@ -181,7 +181,7 @@ func (db *ModDB) eval(m *Mod, cfg *Cfg) (any, bool) {
 			}
 			if f, isNum := num(value); isNum {
 				b, _ := tagNum(t, "base")
-				v := math.Ceil(f*mult + b)
+				v := math.Ceil(float64(f*mult) + b)
 				if hasLimit && tagBool(t, "limitTotal") {
 					v = math.Min(v, limit)
 				}
@@ -254,7 +254,7 @@ func (db *ModDB) eval(m *Mod, cfg *Cfg) (any, bool) {
 			case d <= 15:
 				scale(mx, nil)
 			case d >= 16 && d <= 39:
-				scale(mx-(mx/25)*(d-15), nil)
+				scale(mx-float64((mx/25)*(d-15)), nil)
 			case d >= 40:
 				scale(0, nil)
 			}

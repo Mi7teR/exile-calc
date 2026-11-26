@@ -96,7 +96,7 @@ func chainStats(actor *ModDB, s *activeSkill, out map[string]float64) {
 	chainMax *= list.MoreCfg(cfg, "ChainCountMax")
 	chain := math.Min(chainMax, list.SumCfg(cfg, "BASE", "ChainCount"))
 	for _, o := range []map[string]float64{out, actor.output} {
-		o["ChainMax"], o["Chain"], o["ChainRemaining"] = chainMax, chain, math.Max(0, chainMax-chain)
+		o["ChainMax"], o["Chain"], o["ChainRemaining"] = chainMax, chain, math.Max(0, float64(chainMax)-float64(chain))
 	}
 	out["ChainMaxString"] = chainMax // CalcOffence.lua:1076
 }
@@ -185,7 +185,7 @@ func trapMineStats(actor *ModDB, s *activeSkill, out map[string]float64) {
 		}
 		out["MineThrowCount"] = count
 		if count >= 1 {
-			speed /= 1 + (count-1)*0.1
+			speed /= 1 + float64((count-1)*0.1)
 		}
 		out["MineLayingSpeed"] = math.Min(speed, serverTickRate)
 		out["MineLayingTime"] = 1 / out["MineLayingSpeed"]
@@ -284,12 +284,12 @@ func enemyExplode(s *activeSkill, out map[string]float64) {
 					data.set(el+"EffectiveExplodePercentage", numOr(data.val(el+"EffectiveExplodePercentage"), 0)+ac/3)
 				}
 			} else {
-				data.set(k.t+"EffectiveExplodePercentage", numOr(data.val(k.t+"EffectiveExplodePercentage"), 0)+ac)
+				data.set(k.t+"EffectiveExplodePercentage", numOr(data.val(k.t+"EffectiveExplodePercentage"), 0)+float64(ac))
 			}
 			if k.t == "Physical" {
-				phys = 1 - (1-phys)*(1-c)
+				phys = 1 - float64((1-phys)*(1-c))
 			}
-			chance = 1 - (1-chance)*(1-c)
+			chance = 1 - float64((1-chance)*(1-c))
 		}
 		if phys != 0 {
 			s.mods.NewMod("CalcArmourAsThoughDealing", "MORE", 100/math.Min(phys, 1)-100, "Skill:EnemyExplode")
@@ -328,9 +328,9 @@ func explodeSource(s *activeSkill) string {
 // roundSymmetric is Common.lua roundSymmetric (no decimals).
 func roundSymmetric(v float64) float64 {
 	if v >= 0 {
-		return math.Floor(v + 0.5)
+		return math.Floor(float64(v) + 0.5)
 	}
-	return math.Ceil(v - 0.5)
+	return math.Ceil(float64(v) - 0.5)
 }
 
 // calcAreaMod is CalcOffence.lua calcAreaMod.
@@ -402,19 +402,19 @@ func areaOfEffect(s *activeSkill, out map[string]float64) {
 		speedMod := round(round(si*sm, 10), 2)
 		out["SpeedModTertiary"] = speedMod
 		// calcMoltenStrikeTertiaryRadius: the deadzone is the secondary radius.
-		maxDist := math.Sqrt(base*base*areaMod - secondary*secondary*(areaMod-1))
-		out["AreaOfEffectRadiusTertiary"] = math.Floor((maxDist-secondary)*speedMod + secondary)
+		maxDist := math.Sqrt(float64(base*base*areaMod) - float64(secondary*secondary*(areaMod-1)))
+		out["AreaOfEffectRadiusTertiary"] = math.Floor(float64((maxDist-secondary)*speedMod) + secondary)
 	case data.val("radiusTertiaryBaseMargin") != nil:
 		marginPct := numOr(data.val("radiusTertiaryBaseMargin"), 0)
 		margin := marginPct / 100
-		width := marginPct*2 + 1
+		width := float64(marginPct*2) + 1
 		occ := map[float64]float64{}
 		for d := 1 - margin; d <= 1+margin+0.01; d += 0.01 {
 			occ[math.Floor(base*d)]++
 		}
 		sum := 0.0
 		for b, n := range occ {
-			sum += calcRadius(b, areaMod, radiusMod) * n
+			sum += float64(calcRadius(b, areaMod, radiusMod) * n)
 		}
 		out["AreaOfEffectRadiusTertiary"] = sum / width
 	default:
@@ -435,9 +435,9 @@ func weaponRange(s *activeSkill, w1 hitSource, w2 *hitSource, out map[string]flo
 	list, cfg := s.mods, s.cfg
 	rangeOf := func(w *hitSource, wcfg *Cfg) float64 {
 		if w != nil && w.hasRange {
-			return w.rng + list.SumCfg(wcfg, "BASE", "MeleeWeaponRange") + 10*list.SumCfg(wcfg, "BASE", "MeleeWeaponRangeMetre")
+			return w.rng + list.SumCfg(wcfg, "BASE", "MeleeWeaponRange") + float64(10*list.SumCfg(wcfg, "BASE", "MeleeWeaponRangeMetre"))
 		}
-		return 6 + list.SumCfg(cfg, "BASE", "UnarmedRange") + 10*list.SumCfg(cfg, "BASE", "UnarmedRangeMetre")
+		return 6 + list.SumCfg(cfg, "BASE", "UnarmedRange") + float64(10*list.SumCfg(cfg, "BASE", "UnarmedRangeMetre"))
 	}
 	if s.flags["weapon1Attack"] {
 		s.weaponRange1 = rangeOf(&w1, s.weapon1Cfg)

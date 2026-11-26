@@ -68,7 +68,7 @@ func lightningTendrilsOfEccentricityPostCrit(s *activeSkill, out, _ map[string]f
 	interval := numOr(s.data.val("pulseInterval"), 0)
 	pulse := numOr(s.data.val("pulseDamage"), 0) / 100
 	crit, eff, multi := out["PreEffectiveCritChance"]/100, out["CritChance"]/100, out["CritMultiplier"]
-	avg := 100 * (((interval-1)*(1+crit*(multi-1))+(1+pulse)*multi)/(interval*((1-eff)+multi*eff)) - 1)
+	avg := 100 * ((float64((interval-1)*(1+float64(crit*(multi-1))))+float64((1+pulse)*multi))/(interval*((1-eff)+float64(multi*eff))) - 1)
 	s.mods.Add(
 		Mod{Name: "Damage", Type: "MORE", Value: avg, Source: "Average Pulse Damage", KeywordFlags: kfHit | kfAilment,
 			Tags: []map[string]any{{"type": "SkillPart", "skillPart": 1.0}}},
@@ -85,9 +85,11 @@ func stormBurstPreDamage(_ *ModDB, s *activeSkill, out map[string]float64) {
 		// duration * 10 / (jump * 10) avoids floating point issues; +1 tick on spawn.
 		mulDPS(data, 1+math.Floor(dur*10/(freq*10)))
 	case 3:
-		jumps := math.Floor((dur + 0.001) / freq)
+		jumps := math.Floor((float64(dur) + 0.001) / freq)
 		per, _ := num(data.val("remainingDurationDamage"))
-		s.mods.Add(Mod{Name: "Damage", Type: "MORE", Value: math.Max(per*jumps-100, 0), Source: "Skill:StormBurst"})
+		s.mods.Add(
+			Mod{Name: "Damage", Type: "MORE", Value: math.Max(float64(per*jumps)-100, 0), Source: "Skill:StormBurst"},
+		)
 	}
 }
 
@@ -124,7 +126,7 @@ func cycloneMeleeRange(s *activeSkill, w1 hitSource, w2 *hitSource, source strin
 	list := s.mods
 	bonus := func(w *hitSource, wcfg *Cfg) float64 {
 		weaponRange := list.SumCfg(wcfg, "BASE", "MeleeWeaponRange")
-		return weaponRange + 10*list.SumCfg(wcfg, "BASE", "MeleeWeaponRangeMetre") + w.rangeBonus
+		return weaponRange + float64(10*list.SumCfg(wcfg, "BASE", "MeleeWeaponRangeMetre")) + w.rangeBonus
 	}
 	var r float64
 	if s.flags["weapon1Attack"] && w1.hasRange {
@@ -133,7 +135,7 @@ func cycloneMeleeRange(s *activeSkill, w1 hitSource, w2 *hitSource, source strin
 			r = (r + bonus(w2, s.weapon2Cfg)) / 2
 		}
 	} else {
-		r = list.SumCfg(s.cfg, "BASE", "UnarmedRange") + 10*list.SumCfg(s.cfg, "BASE", "UnarmedRangeMetre")
+		r = list.SumCfg(s.cfg, "BASE", "UnarmedRange") + float64(10*list.SumCfg(s.cfg, "BASE", "UnarmedRangeMetre"))
 	}
 	list.NewMod("Multiplier:AdditionalMeleeRange", "BASE", r, source)
 }

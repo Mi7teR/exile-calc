@@ -227,7 +227,7 @@ func (s *hitSim) cast(projectiles, strikes int) {
 		s.area(px, py)
 	case slam:
 		px, py, dx, dy := s.stance(true)
-		s.area(px+dx*meleeGap, py+dy*meleeGap)
+		s.area(px+float64(dx*meleeGap), py+float64(dy*meleeGap))
 	case targetArea:
 		s.area(uniformInDisk(s.rng, s.aim, 0, aimScatter))
 	case cone:
@@ -363,7 +363,7 @@ func (s *hitSim) projectiles(n int) {
 	for k := range n {
 		ang := base
 		if n > 1 {
-			ang += fan * math.Pi / 180 * (float64(k)/float64(n-1) - 0.5)
+			ang += float64(fan * math.Pi / 180 * (float64(k)/float64(n-1) - 0.5))
 		}
 		hit := shared
 		if s.sh.canShotgun {
@@ -405,11 +405,11 @@ func (s *hitSim) travel(x, y, dx, dy, maxLen, w float64, hit []bool) (float64, f
 			if math.IsInf(maxLen, 1) {
 				return x, y
 			}
-			return x + dx*maxLen, y + dy*maxLen
+			return x + float64(dx*maxLen), y + float64(dy*maxLen)
 		}
 		hit[i] = true
 		s.hits[i] += w
-		x, y, maxLen = x+dx*d, y+dy*d, maxLen-d
+		x, y, maxLen = x+float64(dx*d), y+float64(dy*d), maxLen-d
 		if pierce > 0 {
 			pierce--
 			continue
@@ -496,12 +496,12 @@ func (s *hitSim) firstOnRay(x, y, dx, dy, maxLen float64, hit []bool) (int, floa
 // t's hitbox (0 when it starts inside), and whether it meets it at all.
 func rayEntry(x, y, dx, dy float64, t target) (float64, bool) {
 	cx, cy := t.x-x, t.y-y
-	tca := cx*dx + cy*dy
-	d2 := cx*cx + cy*cy - tca*tca
+	tca := float64(cx*dx) + float64(cy*dy)
+	d2 := float64(cx*cx) + float64(cy*cy) - float64(tca*tca)
 	if d2 > t.r*t.r {
 		return 0, false
 	}
-	thc := math.Sqrt(t.r*t.r - d2)
+	thc := math.Sqrt(float64(t.r*t.r) - d2)
 	if tca+thc < 0 {
 		return 0, false
 	}
@@ -519,7 +519,7 @@ func inCone(px, py, dx, dy, r float64, t target) bool {
 	if d <= t.r {
 		return true
 	}
-	ang := math.Acos(math.Max(-1, math.Min(1, (vx*dx+vy*dy)/d)))
+	ang := math.Acos(math.Max(-1, math.Min(1, (float64(vx*dx)+float64(vy*dy))/d)))
 	return ang-math.Asin(t.r/d) <= coneHalfDeg*math.Pi/180
 }
 
@@ -532,5 +532,5 @@ func circleHits(x, y, r float64, t target) bool {
 func uniformInDisk(rng *rand.Rand, x, y, r float64) (float64, float64) {
 	rho := r * math.Sqrt(rng.Float64())
 	a := 2 * math.Pi * rng.Float64()
-	return x + rho*math.Cos(a), y + rho*math.Sin(a)
+	return x + float64(rho*math.Cos(a)), y + float64(rho*math.Sin(a))
 }

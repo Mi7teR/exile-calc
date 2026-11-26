@@ -360,10 +360,10 @@ func combatDPS(res *Result, m targetModel, isBoss bool, seed uint64, spread cont
 	dotTargets, dotStacks := 0.0, stackingDot("TotalDot", s)
 	for t, h := range hits {
 		d.HitsPerCast += h
-		effHits += h * ovs[t]
+		effHits += float64(h * ovs[t])
 		switch {
 		case dotStacks:
-			dotTargets += h * ovs[t]
+			dotTargets += float64(h * ovs[t])
 		case h > 0 || spreadTo[t]:
 			dotTargets += math.Min(math.Max(h, b2f(spreadTo[t])), 1)
 		}
@@ -413,7 +413,7 @@ func combatDPS(res *Result, m targetModel, isBoss bool, seed uint64, spread cont
 			}
 		}
 		if contagion > 0 {
-			d.Components["Contagion"] += contagion * capScale
+			d.Components["Contagion"] += float64(contagion * capScale)
 		}
 	}
 	// Sum in a fixed order: float addition over map iteration order changes
@@ -443,7 +443,7 @@ func combatDPS(res *Result, m targetModel, isBoss bool, seed uint64, spread cont
 		if dotStacks {
 			n *= src.burstHits
 		}
-		d.Burst += dotBurst(math.Min(out["TotalDot"], dotDpsCap), dur, n, mult)
+		d.Burst += float64(dotBurst(math.Min(out["TotalDot"], dotDpsCap), dur, n, mult))
 	}
 
 	if !isBoss {
@@ -614,5 +614,5 @@ func dotBurst(dot, dur, n, mult float64) float64 {
 	if dot <= 0 || dur <= 0 || math.IsInf(dur, 0) || math.IsNaN(dur) {
 		return 0
 	}
-	return dot * dur * n * mult
+	return float64(dot * dur * n * mult)
 }

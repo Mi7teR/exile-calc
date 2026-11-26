@@ -39,7 +39,7 @@ formatters:
   exclusions:
     # why: same verbatim-moved files as in linters.exclusions; reflowing their long lines would edit moved bodies.
     paths:
-      - 'engine/(calc(items|tree)|offence_(area|crit|hit|speed|warcry|dps)|skill(setup|mods|buffs)|ailments_dot|ehp_(pools|maxhit)|misc_(counts|enemy)|moddb_eval)\.go'
+      - 'engine/(calc(items|tree)|offence_(area|crit|hit|speed|warcry|dps)|skill(setup|mods|buffs)|ailments_dot|ehp(_pools|_maxhit)?|misc_(counts|enemy)|moddb_eval)\.go'
 
   settings:
     goimports:
@@ -469,6 +469,10 @@ linters:
         linters: [ testpackage, paralleltest, cyclop, gocognit, musttag ]
       - source: 'TODO'
         linters: [ godot ]
+      # why: the arm64 FMA fix wraps products in float64() so they round before the following add, as PoB
+      # (and amd64) do (make dump-cross). That touches lines whose PoB literals predate the fix.
+      - source: 'float64\([^/]*\*|float64\([^/]*/[^/]'
+        linters: [ mnd ]
       # why: the skill hook files hold ported PoB skill formulas: PoB's literal numbers (skill parts, tick
       # values) and mod name/type strings stay inline like the rest of the port, and each group file registers
       # its hooks from init() into the package-level skillHookRegistry (switchCases is the test's fixture).
@@ -494,7 +498,7 @@ linters:
       # ehp.go, misc.go and moddb.go (Task 6 split, no body edits); new-from-rev sees moved lines as new. Only
       # style and complexity linters are excluded here (PoB literals, long ported functions); correctness linters
       # still run, and their findings on legacy lines carry line-level nolint directives.
-      - path: 'engine/(calc(items|tree)|offence_(area|crit|hit|speed|warcry|dps)|skill(setup|mods|buffs)|ailments_dot|ehp_(pools|maxhit)|misc_(counts|enemy)|moddb_eval)\.go'
+      - path: 'engine/(calc(items|tree)|offence_(area|crit|hit|speed|warcry|dps)|skill(setup|mods|buffs)|ailments_dot|ehp(_pools|_maxhit)?|misc_(counts|enemy)|moddb_eval)\.go'
         linters: [ mnd, funlen, gocognit, gocyclo, cyclop, nestif, goconst, gochecknoglobals, exhaustive, intrange,
                    modernize, revive ]
       # why: these files port one calcs section each in order (the non-damaging ailments, knockback and stun of

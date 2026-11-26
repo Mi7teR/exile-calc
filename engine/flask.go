@@ -75,7 +75,7 @@ func flaskBreakdown(db *ModDB, effectInc float64, used int) {
 	generated := db.Sum("BASE", "FlaskChargesGenerated")
 	const flaskSlots = 5
 	perFlask := db.Sum("BASE", "FlaskChargesGeneratedPerEmptyFlask") * float64(flaskSlots-used)
-	total := generated + perFlask
+	total := float64(generated) + float64(perFlask)
 	out["FlaskEffect"] = effectInc
 	out["FlaskChargeGen"] = total
 	out["LifeFlaskChargeGen"] = total + db.Sum("BASE", "LifeFlaskChargesGenerated")

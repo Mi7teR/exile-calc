@@ -78,9 +78,9 @@ func righteousFirePreDamage(actor *ModDB, s *activeSkill, out map[string]float64
 	switch {
 	case s.flags["totem"] && out["TotemLife"] > 1:
 		es := s.mods.SumCfg(s.cfg, "BASE", "TotemEnergyShield") // CalcOffence.lua output.TotemEnergyShield
-		s.data.set("FireDot", out["TotemLife"]*lifeMult+es*esMult)
+		s.data.set("FireDot", float64(out["TotemLife"]*lifeMult)+float64(es*esMult))
 	case actor.output["LifeUnreserved"] > 1:
-		s.data.set("FireDot", actor.output["Life"]*lifeMult+actor.output["EnergyShield"]*esMult)
+		s.data.set("FireDot", float64(actor.output["Life"]*lifeMult)+float64(actor.output["EnergyShield"]*esMult))
 	}
 }
 

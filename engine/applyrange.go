@@ -35,7 +35,7 @@ func applyRange(line string, r, scalar float64) string {
 			return v
 		}
 		p := math.Pow(10, float64(precision))
-		return math.Trunc(v*scalar*p+1e-9) / p
+		return math.Trunc(float64(v*scalar*p)+1e-9) / p
 	}
 	// Every range match has a "(": most lines have none.
 	ranged := strings.Contains(line, "(") && rangeRe.MatchString(line)
@@ -44,7 +44,7 @@ func applyRange(line string, r, scalar float64) string {
 		lo, _ := strconv.ParseFloat(m[2], 64)
 		hi, _ := strconv.ParseFloat(m[3], 64)
 		p := math.Pow(10, float64(precision))
-		v := scale(math.Floor((lo+r*(hi-lo))*p+0.5) / p)
+		v := scale(math.Floor(float64((lo+float64(r*(hi-lo)))*p)+0.5) / p)
 		plus := m[1]
 		if v < 0 {
 			plus = ""

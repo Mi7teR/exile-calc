@@ -46,7 +46,7 @@ func skillStats(e *skillEffect, actorLevel float64) map[string]float64 {
 				if be == 0 {
 					be = 1
 				}
-				eff := (3.885209 + 0.360246*(actorLevel-1)) * be * math.Pow(1+ge.IncrementalEffectiveness, actorLevel-1)
+				eff := (3.885209 + float64(0.360246*(actorLevel-1))) * be * math.Pow(1+ge.IncrementalEffectiveness, actorLevel-1)
 				v = round(eff*v, 0)
 			case 2:
 				v = linearStat(ge, e.level, i, actorLevel)

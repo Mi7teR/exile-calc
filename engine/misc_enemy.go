@@ -86,7 +86,7 @@ func enemyAilments(db *ModDB, skills []*activeSkill, guaranteedBonechill bool) {
 			if scales {
 				db.Add(Mod{Name: a.name + "Override", Type: "BASE", Value: effect, Flags: m.Flags, KeywordFlags: m.KeywordFlags, Tags: m.Tags, Source: m.Source})
 				if m.Name == a.name+"Minimum" {
-					minimum += effect
+					minimum += float64(effect)
 				}
 			}
 			override = math.Max(math.Max(override, effect), minimum)

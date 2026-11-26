@@ -165,7 +165,7 @@ func avoidanceAndRecovery(db *ModDB) {
 		if db.Flag("UnaffectedBy" + res + "Regen") {
 			regenPart = 0
 		}
-		out[res+"RegenRecovery"] = regenPart - degenRate + recovery
+		out[res+"RegenRecovery"] = float64(regenPart) - float64(degenRate) + float64(recovery)
 		if out[res+"RegenRecovery"] > 0 {
 			db.Add(Mod{Name: "Condition:CanGain" + res, Type: "FLAG", Value: true, Source: display + "Regen"})
 		}
@@ -332,7 +332,7 @@ func luckyRolls(db *ModDB, chance, rolls float64) float64 {
 	p := chance / 100
 	switch {
 	case db.Flag("Unexciting"):
-		return (3*p*p - 2*p*p*p) * 100
+		return (float64(3*p*p) - float64(2*p*p*p)) * 100
 	case rolls > 0:
 		return (1 - math.Pow(1-p, rolls+1)) * 100
 	}

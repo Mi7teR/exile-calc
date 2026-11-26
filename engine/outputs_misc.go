@@ -210,7 +210,7 @@ func stun(db *ModDB, category string) {
 		out["BlockDuration"] = math.Ceil(stunBaseDuration*duration/blockRecovery*serverTickRate) / serverTickRate
 	}
 	out["InterruptStunAvoidChance"] = math.Min(db.Sum("BASE", "AvoidInterruptStun"), 100)
-	damage := out["totalTakenHit"] + out["PhysicalTakenHit"]*0.25
+	damage := out["totalTakenHit"] + float64(out["PhysicalTakenHit"]*0.25)
 	// As PoB: "~= Average" first, so a Melee hit also takes the mixed
 	// factor and only Average reaches the second branch.
 	if category != "Average" {
@@ -264,7 +264,7 @@ func recoupRecovery(db *ModDB, category string) {
 	_, lostHalf := out["LifeBelowHalfLossLostOverTime"]
 	if out["preventedLifeLossTotal"] > 0 && lost && lostHalf {
 		below := db.Sum("BASE", "LifeLossBelowHalfLost") / 100
-		v := out["LifeLossLostOverTime"] + out["LifeBelowHalfLossLostOverTime"]*below
+		v := out["LifeLossLostOverTime"] + float64(out["LifeBelowHalfLossLostOverTime"]*below)
 		out["LifeLossLostMax"] = v / 4
 		out["LifeLossLostAvg"] = v / (out["EHPSurvivalTime"] + 4)
 	}
@@ -319,13 +319,13 @@ func recoupRates(db *ModDB) {
 
 // recoupTotal is Total<r>RecoupRecovery (CalcDefence.lua:3022-3030).
 func recoupTotal(out map[string]float64, r string, total, totalEle float64) float64 {
-	rec := out[r+"Recoup"] / 100 * total
+	rec := float64(out[r+"Recoup"] / 100 * total)
 	if out["Elemental"+r+"Recoup"] > 0 && totalEle > 0 {
-		rec += out["Elemental"+r+"Recoup"] / 100 * totalEle
+		rec += float64(out["Elemental"+r+"Recoup"] / 100 * totalEle)
 	}
 	for _, t := range dmgTypes {
 		if out[t+r+"Recoup"] > 0 && out[t+"RecoupableDamageTaken"] > 0 {
-			rec += out[t+r+"Recoup"] / 100 * out[t+"RecoupableDamageTaken"]
+			rec += float64(out[t+r+"Recoup"] / 100 * out[t+"RecoupableDamageTaken"])
 		}
 	}
 	return rec
@@ -349,9 +349,9 @@ func dotEHPAndDegens(db *ModDB, est *defenceEstimations) {
 		for _, to := range dmgTypes {
 			if pct := est.dotShift[t][to]; pct > 0 {
 				v := base * (pct / 100) * out[to+"TakenDotMult"]
-				degen[to] += v
+				degen[to] += float64(v)
 				out[to+"BuildDegen"] = degen[to]
-				totalDegen += v
+				totalDegen += float64(v)
 			}
 		}
 	}
@@ -534,7 +534,9 @@ func burstOutputs(s *activeSkill, p *hitPass, global map[string]float64, monster
 	if list.Flag("HasSeals") && s.types[stCanRapidFire] && !list.Flag("NoRepeatBonuses") {
 		repeatPenalty = calcMod(list, s.cfg, "SealRepeatPenalty")
 	}
-	global["AverageBurstDamage"] = out["AverageDamage"] + out["AverageDamage"]*(global["AverageBurstHits"]-1)*repeatPenalty
+	global["AverageBurstDamage"] = out["AverageDamage"] + float64(
+		out["AverageDamage"]*(global["AverageBurstHits"]-1)*repeatPenalty,
+	)
 	global["ShowBurst"] = b2f(global["AverageBurstHits"] > 1)
 }
 
@@ -593,7 +595,7 @@ func selfHitDamage(actor *ModDB, s *activeSkill, out map[string]float64) {
 	if s.active.ge.Name == "Summon Skeletons" {
 		if t, v, ok := listDamage("HeartboundLoopSelfDamage", "baseDamage", false); ok {
 			perCast := math.Max(math.Floor(valCfg(list, s.cfg, "MinionPerCastCount")), 1) // SummonedMinionsPerCast
-			total += applyDmgTakenConversion(actor, s, t, v) * perCast
+			total += float64(applyDmgTakenConversion(actor, s, t, v) * perCast)
 			found = true
 		}
 	}
@@ -697,12 +699,12 @@ func applyDmgTakenConversion(actor *ModDB, s *activeSkill, src string, base floa
 				eff = global["Ward"] * m / 100
 			}
 			if eff != 0 && damage*resMult != 0 {
-				armourReduct = round(eff/(eff+damage*resMult*5)*100, 0)
+				armourReduct = round(eff/(eff+float64(damage*resMult*5))*100, 0)
 			}
 			armourReduct = math.Min(global["DamageReductionMax"], armourReduct)
 		}
 		reductMult := (1 - math.Max(math.Min(global["DamageReductionMax"], armourReduct+reduction), 0)/100) * takenMods
-		total += damage * (resMult * reductMult)
+		total += float64(damage * (resMult * reductMult))
 	}
 	return total
 }
@@ -723,7 +725,7 @@ func (c *Calculator) lifeFlaskData(item *pobcode.Item) ([2]float64, bool) {
 		f := it.Base.Flask
 		base := f.Life * (1 + float64(it.Quality)/100) * (1 + calcLocal(mods, "FlaskRecovery", "INC")/100)
 		instant := calcLocal(mods, "FlaskInstantRecovery", "BASE")
-		d = [2]float64{base*instant/100 + base*(1-instant/100),
+		d = [2]float64{base*instant/100 + float64(base*(1-instant/100)),
 			float64(f.ChargesMax) + calcLocal(mods, "FlaskCharges", "BASE")}
 	}
 	if c.reqCount.Load() < grantCacheCap {

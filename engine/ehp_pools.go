@@ -35,7 +35,7 @@ func buildAllyPools(out map[string]float64) map[string]*allyPool {
 // lifeHitPoolWithLossPrevention is calcLifeHitPoolWithLossPrevention.
 func lifeHitPoolWithLossPrevention(life, maxLife, prevented, belowHalfPrevented float64) float64 {
 	half := maxLife * 0.5
-	above := math.Max(life-half, 0)
+	above := math.Max(float64(life)-float64(half), 0)
 	return above/(1-prevented/100) + math.Min(life, half)/(1-belowHalfPrevented/100)/(1-prevented/100)
 }
 
@@ -70,7 +70,7 @@ func pools(db *ModDB) {
 	out["preventedLifeLossBelowHalf"] = (1 - prevented/100) * belowHalf
 	if !env.checks["conditionLowLife"] {
 		portion := math.Min(out["Life"]*0.5/recoverable, 1)
-		out["preventedLifeLossTotal"] = prevented + out["preventedLifeLossBelowHalf"]*portion
+		out["preventedLifeLossTotal"] = prevented + float64(out["preventedLifeLossBelowHalf"]*portion)
 	} else {
 		out["preventedLifeLossTotal"] = prevented + out["preventedLifeLossBelowHalf"]
 	}
@@ -118,7 +118,7 @@ func pools(db *ModDB) {
 		maxES := 0.0
 		if db.Flag("EnergyShieldProtectsMana") && bypass < 1 {
 			maxES = math.Floor(math.Min(math.Min(out["EnergyShieldRecoveryCap"], maxPool*(1-bypass)),
-				(lifePool+maxMana)/(1-(1-bypass)*effect)-(lifePool+maxMana)))
+				(lifePool+maxMana)/(1-float64((1-bypass)*effect))-(lifePool+maxMana)))
 		}
 		used := math.Floor(math.Min(maxPool-maxES, maxMana))
 		return lifePool + used + maxES
@@ -237,7 +237,7 @@ func pools(db *ModDB) {
 			if b := out[t+"EnergyShieldBypass"]; b > 0 {
 				protected := out["EnergyShieldRecoveryCap"] / (1 - b/100) * (b / 100)
 				for _, k := range []string{"TotalPool", "TotalHitPool"} {
-					out[t+k] = math.Max(out[t+k]-protected, 0) + math.Min(out[t+k], protected)/(b/100)
+					out[t+k] = math.Max(float64(out[t+k])-float64(protected), 0) + float64(math.Min(out[t+k], protected)/(b/100))
 				}
 			} else {
 				out[t+"TotalPool"] += out["EnergyShieldRecoveryCap"]
@@ -252,7 +252,7 @@ func armourReductionF(armour, raw float64) float64 {
 	if armour == 0 && raw == 0 {
 		return 0
 	}
-	return armour / (armour + raw*5) * 100
+	return armour / (armour + float64(raw*5)) * 100
 }
 
 // takenHitFromDamage is calcs.takenHitFromDamage: the damage each type
@@ -281,8 +281,8 @@ func (est *defenceEstimations) takenHitFromDamage(db *ModDB, raw float64, t stri
 			overwhelm = 0
 		}
 		drMult := 1 - math.Max(math.Min(out["DamageReductionMax"], total-overwhelm), 0)/100
-		reduced := round(math.Max(converted*resist*drMult+flat, 0)*out[to+"AfterReductionTakenHitMulti"], 0) * (1 - vaal)
-		sum += reduced
+		reduced := round(math.Max(float64(converted*resist*drMult)+flat, 0)*out[to+"AfterReductionTakenHitMulti"], 0) * (1 - vaal)
+		sum += float64(reduced)
 		if reduced > 0 || pct > 0 {
 			damages[to] = reduced
 		}
@@ -377,7 +377,7 @@ func reducePoolsByDamage(db *ModDB, in *poolState, damage map[string]float64) *p
 			esPool = math.Min(lifePlus/bypass-lifePlus, es)
 		}
 		if protectsMana && bypass < 1 {
-			esLeft[t] = math.Floor(math.Min(math.Min(maxMoM*(1-bypass), es), lifePlus/(1-(1-bypass)*mom)-lifePlus))
+			esLeft[t] = math.Floor(math.Min(math.Min(maxMoM*(1-bypass), es), lifePlus/(1-float64((1-bypass)*mom))-lifePlus))
 			momLeft[t] = math.Floor(math.Min(maxMoM-esLeft[t], momPool))
 		} else {
 			esLeft[t] = math.Floor(esPool)
@@ -431,7 +431,7 @@ func reducePoolsByDamage(db *ModDB, in *poolState, damage map[string]float64) *p
 		if ward > 0 && (wardBypassBelow == 0 || total >= wardBefore*wardBypassBelow) {
 			d := math.Min(rem*(1-db.Sum("BASE", "WardBypass")/100), ward)
 			ward -= d
-			rem -= d * wardActive
+			rem -= float64(d * wardActive)
 		}
 		mom := math.Min(out["sharedMindOverMatter"]+out[t+"MindOverMatter"], 100) / 100
 		bypass := out[t+"EnergyShieldBypass"] / 100
@@ -465,7 +465,7 @@ func reducePoolsByDamage(db *ModDB, in *poolState, damage map[string]float64) *p
 		if out["preventedLifeLossTotal"] > 0 {
 			half := out["Life"] * 0.5
 			prevent := out["preventedLifeLoss"] / 100
-			aboveLow := math.Max(life-half, 0) / (1 - prevent)
+			aboveLow := math.Max(float64(life)-float64(half), 0) / (1 - float64(prevent))
 			preventBelow := belowHalfPrevented / 100
 			canTake := aboveLow + math.Max(math.Min(life, half), 0)/(1-preventBelow)/(1-prevent)
 			if canTake < rem {
@@ -475,20 +475,20 @@ func reducePoolsByDamage(db *ModDB, in *poolState, damage map[string]float64) *p
 			if out["preventedLifeLossBelowHalf"] != 0 {
 				split := math.Min(rem, aboveLow)
 				rem -= split
-				lost += split * prevent
-				life -= split * (1 - prevent)
+				lost += float64(split * prevent)
+				life -= float64(split * (1 - prevent))
 				if life <= half {
 					u := rem * prevent
-					lost += u
-					rem -= u
+					lost += float64(u)
+					rem -= float64(u)
 					s := rem * preventBelow
-					belowLost += s
-					rem -= s
+					belowLost += float64(s)
+					rem -= float64(s)
 				}
 			} else {
 				d := rem * prevent
-				lost += d
-				rem -= d
+				lost += float64(d)
+				rem -= float64(d)
 			}
 		}
 		if life > 0 {

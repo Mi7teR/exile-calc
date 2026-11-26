@@ -11,7 +11,7 @@ func ignite(actor *ModDB, s *activeSkill, p *hitPass, global map[string]float64,
 	}
 	dotCfg := ailmentDotCfg(s, p, kfIgnite|kfDot["Fire"])
 	critChance := out["CritChance"]
-	global["IgniteChancePerHit"] = out["IgniteChanceOnHit"]*(1-critChance/100) + out["IgniteChanceOnCrit"]*critChance/100
+	global["IgniteChancePerHit"] = float64(out["IgniteChanceOnHit"]*(1-critChance/100)) + out["IgniteChanceOnCrit"]*critChance/100
 	maxStacks := 1.0
 	if s.flags["igniteCanStack"] {
 		if v, ok := list.OverrideCfg(cfg, "IgniteStacks"); ok {
@@ -30,7 +30,7 @@ func ignite(actor *ModDB, s *activeSkill, p *hitPass, global map[string]float64,
 		calcMod(enemy, nil, "SelfIgniteDuration", "SelfAilmentDuration", "SelfElementalAilmentDuration"), 0)
 	debuffDurationMult := debuffDurationMult(actor, s.cfg)
 	global["IgniteDuration"] = durationBase * durationMod / rateMod * debuffDurationMult
-	chance := out["IgniteChanceOnHit"]/100*(1-critChance/100) + out["IgniteChanceOnCrit"]/100*critChance/100
+	chance := float64(out["IgniteChanceOnHit"]/100*(1-critChance/100)) + out["IgniteChanceOnCrit"]/100*critChance/100
 	stacks := out["HitChance"] / 100 * chance * dpsMult
 	if !truthy(s.data.val("triggeredOnDeath")) {
 		speed := global["Speed"]
@@ -54,7 +54,7 @@ func ignite(actor *ModDB, s *activeSkill, p *hitPass, global map[string]float64,
 	}
 	rollAvg := 50.0
 	if global["IgniteStackPotential"] > 1 {
-		rollAvg = (stacks - (maxStacks-1)/2) / (stacks + 1) * 100
+		rollAvg = (float64(stacks) - float64((float64(maxStacks)-1)/2)) / (float64(stacks) + 1) * 100
 	}
 	global["IgniteRollAverage"] = rollAvg
 
@@ -189,7 +189,7 @@ func bleed(actor *ModDB, s *activeSkill, p *hitPass, global map[string]float64, 
 	debuffDurationMult := debuffDurationMult(actor, s.cfg)
 	global["BleedDuration"] = durationBase * durationMod / rateMod * debuffDurationMult
 	critChance := out["CritChance"]
-	chance := out["BleedChanceOnHit"]/100*(1-critChance/100) + out["BleedChanceOnCrit"]/100*critChance/100
+	chance := float64(out["BleedChanceOnHit"]/100*(1-critChance/100)) + out["BleedChanceOnCrit"]/100*critChance/100
 	stacks := out["HitChance"] / 100 * chance * dpsMult
 	if speed := hitSpeed(global); speed > 0 {
 		stacks *= global["BleedDuration"] * speed
@@ -214,7 +214,7 @@ func bleed(actor *ModDB, s *activeSkill, p *hitPass, global map[string]float64, 
 	}
 	rollAvg := 50.0
 	if global["BleedStackPotential"] > 1 {
-		rollAvg = (stacks - (maxStacks-1)/2) / (stacks + 1) * 100
+		rollAvg = (float64(stacks) - float64((float64(maxStacks)-1)/2)) / (float64(stacks) + 1) * 100
 	}
 	global["BleedRollAverage"] = rollAvg
 	var avgCrit, maxCrit, avgHit, minHit, maxHit float64
@@ -232,12 +232,12 @@ func bleed(actor *ModDB, s *activeSkill, p *hitPass, global map[string]float64, 
 			}
 			minCrit := mn * out["CritBleedDotMulti"]
 			maxCrit = mx * out["CritBleedDotMulti"]
-			avgCrit = minCrit + (maxCrit-minCrit)*rollAvg/100
+			avgCrit = float64(minCrit) + float64((float64(maxCrit)-float64(minCrit))*rollAvg/100)
 		} else {
 			out["BleedDotMulti"] = dotMultiFor(list, dotCfg, "Physical")
 			minHit = mn * out["BleedDotMulti"]
 			maxHit = mx * out["BleedDotMulti"]
-			avgHit = minHit + (maxHit-minHit)*rollAvg/100
+			avgHit = float64(minHit) + float64((float64(maxHit)-float64(minHit))*rollAvg/100)
 		}
 	}
 	basePercent := numOr(data.val("bleedBasePercent"), bleedPercentBase)
@@ -293,7 +293,7 @@ func poison(actor *ModDB, s *activeSkill, p *hitPass, global map[string]float64,
 	}
 	onHit := math.Min(100, out["PoisonChanceOnHit"]+chaosChance)
 	onCrit := math.Min(100, out["PoisonChanceOnCrit"]+chaosChance)
-	chance := onHit/100*(1-critChance/100) + onCrit/100*critChance/100
+	chance := float64(onHit/100*(1-critChance/100)) + onCrit/100*critChance/100
 	additional := 1.0
 	if !list.Flag("CannotMultiplePoison") {
 		additional = 1 + math.Min(list.SumCfg(cfg, "BASE", "AdditionalPoisonChance")/100, 1) + list.SumCfg(cfg, "BASE", "AdditionalPoisonStacks")
@@ -339,8 +339,8 @@ func poison(actor *ModDB, s *activeSkill, p *hitPass, global map[string]float64,
 			}
 			mn, mx := ailmentSourceDamage(list, p, dotCfg, x.t, chaosFlag)
 			out["Poison"+x.t+"Min"], out["Poison"+x.t+"Max"] = mn, mx
-			totalMin += mn * nonChaosMult
-			totalMax += mx * nonChaosMult
+			totalMin += float64(mn * nonChaosMult)
+			totalMax += float64(mx * nonChaosMult)
 		}
 		if sub == 2 {
 			if actor.Flag("AilmentsAreNeverFromCrit") {
@@ -408,12 +408,12 @@ func impale(actor *ModDB, s *activeSkill, p *hitPass, global map[string]float64)
 	}
 	s.flags["impale"] = true
 	crit := out["CritChance"] / 100
-	chance := math.Min(out["ImpaleChance"]/100, 1)*(1-crit) + math.Min(out["ImpaleChanceOnCrit"]/100, 1)*crit
+	chance := float64(math.Min(out["ImpaleChance"]/100, 1)*(1-crit)) + float64(math.Min(out["ImpaleChanceOnCrit"]/100, 1)*crit)
 	maxStacks := list.SumCfg(cfg, "BASE", "ImpaleStacksMax") * (1 + list.SumCfg(cfg, "BASE", "ImpaleAdditionalDurationChance")/100)
 	stacks := math.Min(maxStacks, enemy.SumCfg(cfg, "BASE", "Multiplier:ImpaleStacks"))
 	const impaleStoredDamageBase = 0.1
 	onBleed := list.SumCfg(cfg, "INC", "ImpaleEffectOnBleed") * math.Min(list.SumCfg(cfg, "BASE", "BleedChance")/100, 1)
-	inc := (list.SumCfg(cfg, "INC", "ImpaleEffect") + onBleed) / 100
+	inc := (list.SumCfg(cfg, "INC", "ImpaleEffect") + float64(onBleed)) / 100
 	more := round(list.MoreCfg(cfg, "ImpaleEffect"), 2)
 	stored := impaleStoredDamageBase * (1 + inc) * more
 	hitMod := stored * stacks
@@ -429,5 +429,5 @@ func impale(actor *ModDB, s *activeSkill, p *hitPass, global map[string]float64)
 	global["ImpaleStacksMax"] = maxStacks
 	global["ImpaleStacks"] = stacks
 	out["ImpaleStoredDamage"] = stored * 100
-	out["ImpaleModifier"] = 1 + hitMod*(1-resist/100)*chance*taken
+	out["ImpaleModifier"] = 1 + float64(hitMod*(1-resist/100)*chance*taken)
 }

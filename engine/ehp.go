@@ -29,11 +29,15 @@ func buildDefenceEstimations(db *ModDB) *defenceEstimations {
 			projAvoid = 0
 		}
 		all := 1 - out["AvoidAllDamageFromHitsChance"]/100
-		out["MeleeNotHitChance"] = 100 - (1-out["MeleeEvadeChance"]/100)*(1-out["EffectiveAttackDodgeChance"]/100)*all*100
-		out["ProjectileNotHitChance"] = 100 - (1-out["ProjectileEvadeChance"]/100)*(1-out["EffectiveAttackDodgeChance"]/100)*all*(1-projAvoid/100)*100
-		out["SpellNotHitChance"] = 100 - (1-out["EffectiveSpellDodgeChance"]/100)*all*100
-		out["SpellProjectileNotHitChance"] = 100 - (1-out["EffectiveSpellDodgeChance"]/100)*all*(1-projAvoid/100)*100
-		out["UntypedNotHitChance"] = 100 - all*100
+		// Each hit chance rounds before "100 -" (FMA, see dump-cross).
+		dodge, spellDodge := 1-out["EffectiveAttackDodgeChance"]/100, 1-out["EffectiveSpellDodgeChance"]/100
+		melee := float64((1 - out["MeleeEvadeChance"]/100) * dodge * all * 100)
+		proj := float64((1 - out["ProjectileEvadeChance"]/100) * dodge * all * (1 - projAvoid/100) * 100)
+		spell := float64(spellDodge * all * 100)
+		spellProj := float64(spellDodge * all * (1 - projAvoid/100) * 100)
+		out["MeleeNotHitChance"], out["ProjectileNotHitChance"] = 100-melee, 100-proj
+		out["SpellNotHitChance"], out["SpellProjectileNotHitChance"] = 100-spell, 100-spellProj
+		out["UntypedNotHitChance"] = 100 - float64(all*100)
 		out["AverageNotHitChance"] = (out["MeleeNotHitChance"] + out["ProjectileNotHitChance"] + out["SpellNotHitChance"] + out["SpellProjectileNotHitChance"]) / 4
 		out["AverageEvadeChance"] = (out["MeleeEvadeChance"] + out["ProjectileEvadeChance"]) / 4
 		out["ConfiguredNotHitChance"] = out[category+"NotHitChance"]
@@ -78,7 +82,7 @@ func buildDefenceEstimations(db *ModDB) *defenceEstimations {
 		}
 		out["EnemyCritChance"] = crit
 		critDamage := math.Max(env.value("enemyCritDamage")+enemy.Sum("BASE", "CritMultiplier"), 0)
-		out["EnemyCritEffect"] = 1 + crit/100*(critDamage/100)*(1-out["CritExtraDamageReduction"]/100)
+		out["EnemyCritEffect"] = 1 + float64(crit/100*(critDamage/100)*(1-out["CritExtraDamageReduction"]/100))
 		allKeywords := &Cfg{KeywordFlags: ^uint64(0)} // keywordFlags = bnot(KeywordFlag.MatchAll)
 		conversion := map[string]map[string]float64{}
 		for _, t := range dmgTypes {
@@ -86,7 +90,8 @@ func buildDefenceEstimations(db *ModDB) *defenceEstimations {
 			dmg := env.value("enemy" + t + "Damage")
 			pen := env.value("enemy" + t + "Pen")
 			overwhelm := env.value("enemy" + t + "Overwhelm")
-			dmg += (enemy.SumCfg(allKeywords, "BASE", t+"Min") + enemy.SumCfg(allKeywords, "BASE", t+"Max")) / 2
+			minMax := enemy.SumCfg(allKeywords, "BASE", t+"Min") + enemy.SumCfg(allKeywords, "BASE", t+"Max")
+			dmg += float64(minMax / 2)
 			conversionTotal := 0.0
 			if t == "Physical" {
 				conv, skill := map[string]float64{}, map[string]float64{}
@@ -126,7 +131,7 @@ func buildDefenceEstimations(db *ModDB) *defenceEstimations {
 						if conversion[to] == nil {
 							conversion[to] = map[string]float64{}
 						}
-						conversion[to][t] = dmg*gainAs + dmg*pct
+						conversion[to][t] = float64(dmg*gainAs) + float64(dmg*pct)
 					}
 				}
 			}
@@ -144,7 +149,7 @@ func buildDefenceEstimations(db *ModDB) *defenceEstimations {
 				if isElemental[from] {
 					names = append(names, "ElementalDamage")
 				}
-				out[t+"EnemyDamage"] += d * calcMod(enemy, nil, names...) * out["EnemyCritEffect"]
+				out[t+"EnemyDamage"] += float64(d * calcMod(enemy, nil, names...) * out["EnemyCritEffect"])
 			}
 			out["totalEnemyDamage"] += out[t+"EnemyDamage"]
 		}
@@ -260,7 +265,7 @@ func armourReduction(armour, raw float64) float64 {
 	if armour == 0 && raw == 0 {
 		return 0
 	}
-	return round(armour/(armour+raw*5)*100, 0)
+	return round(armour/(armour+float64(raw*5))*100, 0)
 }
 
 // incomingHitMultipliers is "Incoming hit damage multipliers".
@@ -322,8 +327,12 @@ func incomingHitMultipliers(db *ModDB, category string) {
 		case "Spell", "SpellProjectile":
 			flat += db.Sum("BASE", "DamageTakenFromSpells", t+"DamageTakenFromSpells", t+"DamageTakenFromSpellProjectiles")
 		case "Average":
-			flat += db.Sum("BASE", "DamageTakenFromAttacks", t+"DamageTakenFromAttacks")/2 + db.Sum("BASE", t+"DamageTakenFromProjectileAttacks")/4 +
-				db.Sum("BASE", "DamageTakenFromSpells", t+"DamageTakenFromSpells")/2 + db.Sum("BASE", "DamageTakenFromSpellProjectiles", t+"DamageTakenFromSpellProjectiles")/4
+			// Each quarter and half is rounded before the sum (FMA, see dump-cross).
+			attacks := float64(db.Sum("BASE", "DamageTakenFromAttacks", t+"DamageTakenFromAttacks") / 2)
+			projAttacks := float64(db.Sum("BASE", t+"DamageTakenFromProjectileAttacks") / 4)
+			spells := float64(db.Sum("BASE", "DamageTakenFromSpells", t+"DamageTakenFromSpells") / 2)
+			spellProj := float64(db.Sum("BASE", "DamageTakenFromSpellProjectiles", t+"DamageTakenFromSpellProjectiles") / 4)
+			flat += attacks + projAttacks + spells + spellProj
 		}
 		out[t+"takenFlat"] = flat
 		drMax := out["DamageReductionMax"]
@@ -335,7 +344,7 @@ func incomingHitMultipliers(db *ModDB, category string) {
 		}
 		total := math.Min(drMax, armourReduct+reduction)
 		reductMult := 1 - math.Max(math.Min(drMax, total-overwhelm), 0)/100
-		out[t+"DamageReduction"] = 100 - reductMult*100
+		out[t+"DamageReduction"] = 100 - float64(reductMult*100)
 		if impale > 0 {
 			impale *= resMult * (1 - math.Max(math.Min(drMax, math.Min(drMax, impaleArmourReduct+reduction)-overwhelm), 0)/100)
 			impale *= impaleChance / 100 * 5 * out[t+"TakenReflect"]
@@ -353,7 +362,7 @@ func incomingHitMultipliers(db *ModDB, category string) {
 		case "Average":
 			takenMult = (out[t+"SpellTakenHitMult"] + out[t+"AttackTakenHitMult"]) / 2
 			if out["EffectiveSpellSuppressionChance"] == 100 {
-				suppress = 1 - out["SpellSuppressionEffect"]/100/2
+				suppress = 1 - float64(out["SpellSuppressionEffect"]/100/2)
 			}
 		}
 		out[t+"EffectiveAppliedArmour"] = applied
@@ -362,7 +371,7 @@ func incomingHitMultipliers(db *ModDB, category string) {
 		out[t+"AfterReductionTakenHitMulti"] = after
 		baseMult := resMult * reductMult
 		out[t+"BaseTakenHitMult"] = baseMult * after
-		out[t+"TakenHit"] = math.Max(damage*baseMult+flat, 0)*takenMult*suppress + impale
+		out[t+"TakenHit"] = float64(math.Max(float64(damage*baseMult)+flat, 0)*takenMult*suppress) + impale
 		out[t+"TakenHitMult"] = 0
 		if damage > 0 {
 			out[t+"TakenHitMult"] = out[t+"TakenHit"] / damage

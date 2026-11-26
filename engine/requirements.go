@@ -43,7 +43,7 @@ func gemStatRequirement(level int, support bool, multi int) float64 {
 	if support {
 		statType = 0.5
 	}
-	req := round((20+float64(level-3)*3)*math.Pow(float64(multi)/100, 0.9)*statType, 0)
+	req := round((20+float64(float64(level-3)*3))*math.Pow(float64(multi)/100, 0.9)*statType, 0)
 	if req < 14 {
 		return 0
 	}

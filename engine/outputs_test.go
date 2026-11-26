@@ -150,3 +150,18 @@ func TestPlayerOutputCrossCheck(t *testing.T) {
 	}
 	oracleStatsExcept(t, false, map[string][]string{"zKMTzbWQ2h1C": leech}, keys...)
 }
+
+// TestRoundNoFMA: Common.lua round and floor round val * 10^dec before the
+// addition. A fused multiply-add (arm64) would keep 0.0049999999999999992
+// * 100 + 0.5 below 1 and give 0; PoB (and amd64) give 0.01.
+func TestRoundNoFMA(t *testing.T) {
+	if got := round(0.0049999999999999992, 2); got != 0.01 {
+		t.Errorf("round = %v, want 0.01", got)
+	}
+	if got := floorTo(0.0049999999999999992, 2); got != 0 {
+		t.Errorf("floorTo = %v, want 0", got)
+	}
+	if got := floorTo(1.2999999999999998, 1); got != 1.3 {
+		t.Errorf("floorTo = %v, want 1.3 (the 0.0001 slack)", got)
+	}
+}

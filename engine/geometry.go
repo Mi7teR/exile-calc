@@ -43,7 +43,7 @@ func nodePositions(t *gamedata.Tree) map[int]point {
 		g := t.Groups[n.Group-1]
 		a := angles[n.Orbit][n.OrbitIndex]
 		r := t.Constants.OrbitRadii[n.Orbit]
-		out[id] = point{g.X + math.Sin(a)*r, g.Y - math.Cos(a)*r}
+		out[id] = point{g.X + float64(math.Sin(a)*r), g.Y - float64(math.Cos(a)*r)}
 	}
 	return out
 }
@@ -95,7 +95,7 @@ func nodesInRadius(t *gamedata.Tree, pos map[int]point, socket int, r radius) []
 			continue
 		}
 		dx, dy := p.x-s.x, p.y-s.y
-		d := dx*dx + dy*dy
+		d := float64(dx*dx) + float64(dy*dy)
 		if d <= r.outer*r.outer && r.inner*r.inner <= d {
 			out = append(out, id)
 		}

@@ -58,7 +58,7 @@ func forbiddenRitePreDamage(actor *ModDB, s *activeSkill, out map[string]float64
 		chaosRes = actor.output["TotemChaosResist"]
 	}
 	lifeAs, esAs := numOr(data.val("lifeDealtAsChaos"), 0), numOr(data.val("energyShieldDealtAsChaos"), 0)
-	add := life*lifeAs + es*esAs
+	add := float64(life*lifeAs) + float64(es*esAs)
 	selfTaken := func(pool float64, key string) float64 {
 		return math.Floor(round(pool*numOr(data.val(key), 0), 0) * (100 - chaosRes) / 100 * taken)
 	}
@@ -112,7 +112,7 @@ func kineticFusilladePostCrit(s *activeSkill, _, global map[string]float64) {
 	if s.part == 1 {
 		n = global["ProjectileCount"]
 	}
-	delay := (s.data.duration.or(0) + numOr(s.data.val("delayPerProjectile"), 0)*(n-1)) * global["DurationMod"]
+	delay := (s.data.duration.or(0) + float64(numOr(s.data.val("delayPerProjectile"), 0)*(n-1))) * global["DurationMod"]
 	maxAPS := 1 / (math.Ceil(delay/serverTickTime) * serverTickTime)
 	// PoB differs: it scales the current dpsMultiplier on every pass, so
 	// a dual wielder's off hand gets the efficiency twice. It applies

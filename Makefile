@@ -3,7 +3,7 @@ STATSDUMP_DIR := $(HOME)/.cache/poe-lib/statsdump-base
 # (engine.TimelessCacheEnv; "off" turns the cache off).
 export POE_LIB_TIMELESS_CACHE ?= $(CURDIR)/.timeless-cache
 
-.PHONY: test test-short lint bench dump-base dump-check luaport
+.PHONY: test test-short lint bench dump-base dump-check dump-cross luaport
 
 test:
 	go vet ./... && go test ./...
@@ -32,3 +32,7 @@ dump-base:
 # Fail on any difference against the snapshot taken by dump-base.
 dump-check:
 	STATSDUMP_BASE=$(STATSDUMP_DIR) go test ./engine -run '^TestStatsDump$$' -count=1 -timeout 30m -v
+
+# Compare the native dump with an amd64 (Rosetta) dump; FMA differences.
+dump-cross:
+	sh tools/dumpcross.sh

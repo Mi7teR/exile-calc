@@ -149,7 +149,7 @@ func nonDamagingAilments(actor *ModDB, s *activeSkill, p *hitPass) {
 	crit := out["CritChance"]
 	out["KnockbackChance"] = math.Min(
 		100,
-		out["KnockbackChanceOnHit"]*(1-crit/100)+out["KnockbackChanceOnCrit"]*crit/100+
+		float64(out["KnockbackChanceOnHit"]*(1-crit/100))+out["KnockbackChanceOnCrit"]*crit/100+
 			enemy.Sum("BASE", "SelfKnockbackChance"),
 	)
 	if out["KnockbackChance"] > 0 {
