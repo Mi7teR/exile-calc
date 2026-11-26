@@ -159,17 +159,17 @@ func newGramIndex(entries []entry) *gramIndex {
 	return x
 }
 
-// candidates returns, ascending, the indexes of the entries that may match
-// line; scan checks each as before, so the result is the same as checking
-// every entry in order.
-func (x *gramIndex) candidates(line string) []int32 {
+// candidates appends to dst, ascending and without duplicates, the indexes
+// of the entries that may match line; scan checks each as before, so the
+// result is the same as checking every entry in order.
+func (x *gramIndex) candidates(dst []int32, line string) []int32 {
 	if x == nil {
-		return nil // not a scanned table: no entries
+		return dst // not a scanned table: no entries
 	}
-	out := slices.Clone(x.always)
+	dst = append(dst, x.always...)
 	for j := 0; j+gramLen <= len(line); j++ {
-		out = append(out, x.byGram[line[j:j+gramLen]]...)
+		dst = append(dst, x.byGram[line[j:j+gramLen]]...)
 	}
-	slices.Sort(out)
-	return slices.Compact(out)
+	slices.Sort(dst)
+	return slices.Compact(dst)
 }

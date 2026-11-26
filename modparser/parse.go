@@ -44,6 +44,8 @@ type Parser struct {
 	cache    sync.Map // string -> Result
 	cached   atomic.Int64
 	cacheCap int64 // no new entries once cached reaches it
+	// cands pools scan's candidate buffers (*[]int32).
+	cands sync.Pool
 }
 
 // parseCacheCap bounds the process-wide cache. All 89 corpus builds
@@ -217,11 +219,27 @@ func asciiLower(s string) string {
 // the matched text and the captures.
 func (p *Parser) scan(line, table string) (any, string, []string, bool) {
 	lower := asciiLower(line)
+	// The candidate list lives in a pooled buffer: scan runs on every
+	// parse-cache miss, and nothing it returns refers to the buffer.
+	buf, _ := p.cands.Get().(*[]int32)
+	if buf == nil {
+		buf = new([]int32)
+	}
+	*buf = p.t.idx[table].candidates((*buf)[:0], lower)
+	value, rest, caps, ok := scanEntries(line, lower, p.t.t[table], *buf, true)
+	p.cands.Put(buf)
+	return value, rest, caps, ok
+}
+
+// scanEntries is scan over entries[order...] (order ascending); with
+// prefilter, patterns whose required literal is not in lower are skipped.
+//
+//nolint:gocognit // scan's existing loop, moved out so the tests can run it in full
+func scanEntries(line, lower string, entries []entry, order []int32, prefilter bool) (any, string, []string, bool) {
 	bestStart, bestEnd := -1, -1
 	var best *entry
 	var bestCaps []string
-	entries := p.t.t[table]
-	for _, i := range p.t.idx[table].candidates(lower) {
+	for _, i := range order {
 		e := &entries[i]
 		var start, end int
 		var caps []string
@@ -232,7 +250,7 @@ func (p *Parser) scan(line, table string) (any, string, []string, bool) {
 			}
 			end = start + len(e.pattern)
 		} else {
-			if e.re.lit != "" && !strings.Contains(lower, e.re.lit) {
+			if prefilter && e.re.lit != "" && !strings.Contains(lower, e.re.lit) {
 				continue // the pattern cannot match (requiredLiteral)
 			}
 			m := e.re.get().FindStringSubmatchIndex(lower)
