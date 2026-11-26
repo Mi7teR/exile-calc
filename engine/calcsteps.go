@@ -32,6 +32,9 @@ type calcState struct {
 	// addTreeNode is buildModListForNode; with add false it only runs the
 	// radius functions (PoB's extraRadiusNodeList, whose lists are dropped).
 	addTreeNode func(id int, add bool)
+	// treeSpan is where stepPassiveTree's mods sit in each name's list
+	// ([start, end)), for stepMergeTree.
+	treeSpan map[string][2]int
 
 	// Items.
 	flasks    []flaskSlot
@@ -75,6 +78,7 @@ var calcSteps = []calcStep{
 	{"passiveTree", stepPassiveTree},
 	{"items", stepItems},
 	{"jewelSockets", stepJewelSockets},
+	{"mergeTree", stepMergeTree},
 	{"grantedPassives", stepGrantedPassives},
 	{"itemConditions", stepItemConditions},
 	{"skills", stepSkills},
@@ -242,9 +246,10 @@ func stepPantheon(c *Calculator, st *calcState) error {
 // stepPassiveTree: CalcSetup.lua buildModListForNodeList over the
 // allocated nodes: node stats, mastery effects, cluster, conquered and
 // radius-jewel nodes.
-// Port ordering, differs from PoB: CalcSetup.lua builds the node list at
-// 786 but merges it into env.modDB at 1463, after the item mods (1426);
-// here the tree mods are added before the items.
+// CalcSetup.lua builds the node list at 786 (env.initialNodeModDB, which
+// the item loop reads) but merges it into env.modDB at 1463, after the
+// item mods (1426): the mods are added here, so the item step sees them,
+// and stepMergeTree moves them behind the item mods.
 //
 //nolint:gocognit // moved verbatim from Calc (addTreeNode closure); splitting it is out of scope for a pure refactor
 func stepPassiveTree(c *Calculator, st *calcState) error {
@@ -297,8 +302,18 @@ func stepPassiveTree(c *Calculator, st *calcState) error {
 			db.Add(m)
 		}
 	}
+	before := make(map[string]int, len(db.mods))
+	for name, l := range db.mods {
+		before[name] = len(l)
+	}
 	for _, id := range spec.Nodes {
 		addTreeNode(id, true)
+	}
+	st.treeSpan = map[string][2]int{}
+	for name, l := range db.mods {
+		if len(l) > before[name] {
+			st.treeSpan[name] = [2]int{before[name], len(l)}
+		}
 	}
 	st.allocated, st.clusterLinks, st.radiusFuncs, st.addTreeNode = allocated, clusterLinks, radiusFuncs, addTreeNode
 	return nil
@@ -520,6 +535,27 @@ func stepGrantedPassives(c *Calculator, st *calcState) error {
 		for _, m := range final() {
 			db.Add(m)
 		}
+	}
+	return nil
+}
+
+// stepMergeTree: CalcSetup.lua:1426 merges the item mods (gear, abyss and
+// tree-socket jewels) into env.modDB before the allocated nodes' mods
+// (1460-1464): each name's tree mods move behind the mods added since.
+// Order matters where a list is read in order (List, Override, the first
+// matching mod).
+func stepMergeTree(_ *Calculator, st *calcState) error {
+	db := st.db
+	for name, span := range st.treeSpan {
+		l := db.mods[name]
+		if len(l) < span[1] || len(l) == span[1] {
+			continue // nothing added after the tree mods (or the list changed)
+		}
+		moved := make([]Mod, 0, len(l))
+		moved = append(moved, l[:span[0]]...)
+		moved = append(moved, l[span[1]:]...)
+		moved = append(moved, l[span[0]:span[1]]...)
+		db.mods[name] = moved
 	}
 	return nil
 }
