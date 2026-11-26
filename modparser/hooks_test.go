@@ -228,6 +228,47 @@ func TestHooks(t *testing.T) {
 		"15% chance to gain 200 Life on Hit with Attacks": `[{"@list":[{"type":"Condition","var":"AverageResourceGain"}],"flags":5,"keywordFlags":0,
 			"name":"LifeOnHit","type":"BASE","value":30},{"@list":[{"type":"Condition","var":"MaxResourceGain"}],"flags":5,"keywordFlags":0,
 			"name":"LifeOnHit","type":"BASE","value":200}]`,
+
+		// hooks_minions.go
+		// "(%d+)%% increased minion attack speed per (%d+) dexterity" and the movement speed and damage forms
+		"2% increased Minion Attack Speed per 50 Dexterity": `[{"@list":[{"div":50,"stat":"Dex","type":"PerStat"}],"flags":0,"keywordFlags":0,
+			"name":"MinionModifier","type":"LIST","value":{"mod":{"flags":1,"keywordFlags":0,"name":"Speed","type":"INC","value":2}}}]`,
+		// "minions deal no non%-(%a+) damage": dealNoNonDamageType(dmgType, true)
+		"Minions deal no Non-Cold Damage": `[
+			{"flags":0,"keywordFlags":0,"name":"MinionModifier","type":"LIST","value":{"mod":{"flags":0,"keywordFlags":0,"name":"DealNoPhysical","type":"FLAG","value":true}}},
+			{"flags":0,"keywordFlags":0,"name":"MinionModifier","type":"LIST","value":{"mod":{"flags":0,"keywordFlags":0,"name":"DealNoLightning","type":"FLAG","value":true}}},
+			{"flags":0,"keywordFlags":0,"name":"MinionModifier","type":"LIST","value":{"mod":{"flags":0,"keywordFlags":0,"name":"DealNoFire","type":"FLAG","value":true}}},
+			{"flags":0,"keywordFlags":0,"name":"MinionModifier","type":"LIST","value":{"mod":{"flags":0,"keywordFlags":0,"name":"DealNoChaos","type":"FLAG","value":true}}}]`,
+		// "raised spectres fire (%d+) additional projectiles"
+		"Raised Spectres fire 2 additional Projectiles": `[{"@list":[{"includeTransfigured":true,"skillName":"Raise Spectre","type":"SkillName"}],
+			"flags":0,"keywordFlags":0,"name":"MinionModifier","type":"LIST","value":{"mod":{"flags":0,"keywordFlags":0,"name":"ProjectileCount","type":"BASE","value":2}}}]`,
+		// "summoned arbalists convert (%d+)%% of (.+) damage to (.+) damage"
+		"Summoned Arbalists Convert 100% of Physical Damage to Cold Damage": `[{"@list":[{"skillName":"Summon Arbalists","type":"SkillName"}],
+			"flags":0,"keywordFlags":0,"name":"MinionModifier","type":"LIST","value":{"mod":{"flags":0,"keywordFlags":0,"name":"PhysicalDamageConvertToCold","type":"BASE","value":100}}}]`,
+		// "your linked minions take (%d+)%% less damage"
+		"Your Linked Minions take 70% less Damage": `[{"flags":0,"keywordFlags":0,"name":"MinionModifier","type":"LIST","value":{"mod":{"@list":[{"type":"Condition",
+			"var":"AffectedByLink"}],"flags":0,"keywordFlags":0,"name":"DamageTaken","type":"MORE","value":-70}}}]`,
+		// "nearby allies have (%d+)%% increased cast speed per (%d+) intelligence you have" and the other ally auras
+		"Allies within 6 metres have 3% increased Cast Speed per 100 Intelligence you have": `[{"@list":[{"div":100,"stat":"Int","type":"PerStat"}],
+			"flags":0,"keywordFlags":0,"name":"ExtraAura","type":"LIST","value":{"mod":{"flags":16,"keywordFlags":0,"name":"Speed","type":"INC","value":3},"onlyAllies":true}}]`,
+		// "totems gain %+(%d+)%% to (%w+) resistance"
+		"Totems gain +25% to Chaos Resistance": `[{"flags":0,"keywordFlags":0,"name":"TotemChaosResist","type":"BASE","value":25}]`,
+
+		// hooks_curses.go
+		// "your curses have (%d+)%% increased effect if (%d+)%% of curse duration expired"
+		"Your Curses have 20% increased Effect if 50% of Curse Duration expired": `[{"@list":[{"actor":"enemy","threshold":50,"type":"MultiplierThreshold",
+			"var":"CurseExpired"},{"skillType":97,"type":"SkillType"}],"flags":0,"keywordFlags":0,"name":"CurseEffect","type":"INC","value":20}]`,
+		// "non%-aura hexes expire upon reaching (%d+)%% of base effect ..."
+		"Non-Aura Hexes expire upon reaching 200% of base Effect Non-Aura Hexes gain 20% increased Effect per second": `[{"@list":[{"actor":"enemy","limit":200,
+			"limitTotal":true,"type":"Multiplier","var":"CurseDurationExpired"},{"neg":true,"skillType":39,"type":"SkillType"},{"skillType":97,"type":"SkillType"}],
+			"flags":0,"keywordFlags":0,"name":"CurseEffect","type":"INC","value":20}]`,
+		// "enemies cursed by you are hindered if (%d+)%% of curse duration expired" and the malediction form
+		"Enemies Cursed by you are Hindered if 25% of Curse Duration expired": `[{"flags":0,"keywordFlags":0,"name":"EnemyModifier","type":"LIST",
+			"value":{"mod":{"@list":[{"threshold":25,"type":"MultiplierThreshold","var":"CurseExpired"},{"type":"ActorCondition","var":"Cursed"}],
+			"flags":0,"keywordFlags":0,"name":"Condition:Hindered","type":"FLAG","value":true}}}]`,
+		// "offering skills have (%d+)%% reduced duration"
+		"Offering Skills have 50% reduced Duration": `[{"@list":[{"skillNameList":["Bone Offering","Flesh Offering","Spirit Offering","Blood Offering"],
+			"type":"SkillName"}],"flags":0,"keywordFlags":0,"name":"Duration","type":"INC","value":-50}]`,
 	}
 	p, err := PoE1()
 	if err != nil {
