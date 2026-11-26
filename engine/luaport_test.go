@@ -105,6 +105,27 @@ func luaPortCases() []luaPortCase {
 		wintertide(1),
 		wintertide(2),
 		{
+			skill: "Righteous Fire", hook: "preDamageFunc",
+			data:   map[string]any{"RFLifeMultiplier": 0.7, "RFESMultiplier": 0.7},
+			output: map[string]float64{"Life": 9272, "EnergyShield": 332, "LifeUnreserved": 9272},
+		},
+		{
+			// 1 life unreserved: no burn.
+			skill: "Righteous Fire", hook: "preDamageFunc",
+			data:   map[string]any{"RFLifeMultiplier": 0.7, "RFESMultiplier": 0.7},
+			output: map[string]float64{"Life": 9272, "EnergyShield": 332, "LifeUnreserved": 1},
+		},
+		{
+			skill: "Righteous Fire of Arcane Devotion", hook: "preDamageFunc",
+			data:   map[string]any{"RFManaMultiplier": 0.7},
+			output: map[string]float64{"Mana": 8667, "LifeUnreserved": 20},
+		},
+		{
+			skill: "Vaal Righteous Fire", hook: "preDamageFunc",
+			data:   map[string]any{"percentSacrificed": 0.6, "RFMultiplier": 1.58},
+			output: map[string]float64{"Life": 6525, "EnergyShield": 120},
+		},
+		{
 			skill: "Blood Sacrament", hook: "initialFunc",
 			data:   map[string]any{"LifeReservedPercent": 4.5, "LifeReservedBase": 312.0},
 			output: map[string]float64{"LifeReservedPercent": 40},

@@ -11,6 +11,9 @@ func init() {
 		skillHooks{preDamage: tornadoOfElementalTurbulencePreDamage},
 	)
 	registerSkill([]string{"Bodyswap", "Bodyswap of Sacrifice"}, skillHooks{preDamage: bodyswapPreDamage})
+	registerSkill([]string{"Righteous Fire"}, skillHooks{preDamage: righteousFirePreDamage})
+	registerSkill([]string{"Righteous Fire of Arcane Devotion"}, skillHooks{preDamage: righteousFireOfArcaneDevotionPreDamage})
+	registerSkill([]string{"Vaal Righteous Fire"}, skillHooks{preDamage: vaalRighteousFirePreDamage})
 	registerSkill([]string{"Rallying Cry"}, skillHooks{warcryShare: rallyingCryWarcryShare})
 	registerSkill([]string{"Seismic Cry"}, skillHooks{warcryShare: seismicCryWarcryShare})
 }
@@ -52,6 +55,39 @@ func bodyswapPreDamage(actor *ModDB, s *activeSkill, out map[string]float64) {
 		}
 		s.data.set("FireBonusMin", life*m)
 		s.data.set("FireBonusMax", life*m)
+	}
+}
+
+// Data/Skills/act_int.lua Righteous Fire preDamageFunc: the burn is a
+// share of the totem's life and energy shield, or the player's while more
+// than 1 life is unreserved.
+func righteousFirePreDamage(actor *ModDB, s *activeSkill, out map[string]float64) {
+	lifeMult, esMult := numOr(s.data.val("RFLifeMultiplier"), 0), numOr(s.data.val("RFESMultiplier"), 0)
+	switch {
+	case s.flags["totem"] && out["TotemLife"] > 1:
+		es := s.mods.SumCfg(s.cfg, "BASE", "TotemEnergyShield") // CalcOffence.lua output.TotemEnergyShield
+		s.data.set("FireDot", out["TotemLife"]*lifeMult+es*esMult)
+	case actor.output["LifeUnreserved"] > 1:
+		s.data.set("FireDot", actor.output["Life"]*lifeMult+actor.output["EnergyShield"]*esMult)
+	}
+}
+
+// Data/Skills/act_int.lua Righteous Fire of Arcane Devotion preDamageFunc:
+// the burn is a share of the player's mana.
+func righteousFireOfArcaneDevotionPreDamage(actor *ModDB, s *activeSkill, _ map[string]float64) {
+	if actor.output["LifeUnreserved"] > 1 {
+		s.data.set("FireDot", actor.output["Mana"]*numOr(s.data.val("RFManaMultiplier"), 0))
+	}
+}
+
+// Data/Skills/act_int.lua Vaal Righteous Fire preDamageFunc: the burn is a
+// share of the life and energy shield sacrificed on use.
+func vaalRighteousFirePreDamage(actor *ModDB, s *activeSkill, out map[string]float64) {
+	m := numOr(s.data.val("percentSacrificed"), 0) * numOr(s.data.val("RFMultiplier"), 0)
+	if s.flags["totem"] {
+		s.data.set("FireDot", out["TotemLife"]*m)
+	} else {
+		s.data.set("FireDot", (actor.output["Life"]+actor.output["EnergyShield"])*m)
 	}
 }
 

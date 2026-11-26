@@ -145,6 +145,7 @@ function luaPortRunHook(skillName, hook, part, stats, skillData, enemyMods, outp
 	table.sort(ids)
 	local activeSkill = {
 		skillPart = part,
+		skillFlags = { },
 		skillCfg = { },
 		skillData = skillData,
 		skillModList = newModList(stats),

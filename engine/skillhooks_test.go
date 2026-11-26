@@ -33,6 +33,7 @@ var switchCases = map[string][]string{
 		"Wintertide Brand",
 		"Flameblast", "Flameblast of Celerity", "Flameblast of Contraction",
 		"Static Strike",
+		"Righteous Fire", "Righteous Fire of Arcane Devotion", "Vaal Righteous Fire",
 	},
 	"preSkillType": {"Rage Vortex"},
 	"postCrit":     {"Kinetic Fusillade", "Lightning Tendrils of Eccentricity"},
