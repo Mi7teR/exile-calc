@@ -220,8 +220,9 @@ func (p *Parser) scan(line, table string) (any, string, []string, bool) {
 	bestStart, bestEnd := -1, -1
 	var best *entry
 	var bestCaps []string
-	for i := range p.t.t[table] {
-		e := &p.t.t[table][i]
+	entries := p.t.t[table]
+	for _, i := range p.t.idx[table].candidates(lower) {
+		e := &entries[i]
 		var start, end int
 		var caps []string
 		if e.re == nil {

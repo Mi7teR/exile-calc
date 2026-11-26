@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"regexp"
 	"regexp/syntax"
+	"slices"
 	"sort"
 	"sync"
 )
@@ -58,6 +59,7 @@ func (l *lazyRegexp) get() *regexp.Regexp {
 type tables struct {
 	pob string
 	t   map[string][]entry
+	idx map[string]*gramIndex // by table name, over t's entries
 	// lookup tables keyed by exact text (resourceTypes, dmgTypes, ...)
 	exact map[string]map[string]any
 	// patterns that could not be translated (counted, not used)
@@ -88,7 +90,7 @@ func loadTables(gz []byte) (*tables, error) {
 	if err := json.NewDecoder(zr).Decode(&raw); err != nil {
 		return nil, fmt.Errorf("modparser: data: %w", err)
 	}
-	t := &tables{pob: raw.PoB, t: map[string][]entry{}, exact: raw.Tables}
+	t := &tables{pob: raw.PoB, t: map[string][]entry{}, idx: map[string]*gramIndex{}, exact: raw.Tables}
 	for name, tbl := range raw.Tables {
 		if exactTables[name] {
 			continue
@@ -110,6 +112,64 @@ func loadTables(gz []byte) (*tables, error) {
 			}
 			t.t[name] = append(t.t[name], e)
 		}
+		t.idx[name] = newGramIndex(t.t[name])
 	}
 	return t, nil
+}
+
+// gramLen is the length of the substrings gramIndex files entries under.
+const gramLen = 3
+
+// gramIndex finds the entries of a table that can match a line: each entry
+// with a required text (the plain pattern, or the regexp's literal) of at
+// least gramLen bytes is filed under one gramLen-byte piece of that text,
+// which any line it matches contains.
+type gramIndex struct {
+	byGram map[string][]int32 // entry indexes, ascending
+	always []int32            // entries with a shorter or no required text
+}
+
+func newGramIndex(entries []entry) *gramIndex {
+	lits := make([]string, len(entries))
+	freq := map[string]int{}
+	for i := range entries {
+		lits[i] = entries[i].pattern
+		if entries[i].re != nil {
+			lits[i] = entries[i].re.lit
+		}
+		for j := 0; j+gramLen <= len(lits[i]); j++ {
+			freq[lits[i][j:j+gramLen]]++
+		}
+	}
+	x := &gramIndex{byGram: map[string][]int32{}}
+	for i, lit := range lits {
+		if len(lit) < gramLen {
+			x.always = append(x.always, int32(i))
+			continue
+		}
+		// The rarest piece across the table keeps the candidate lists short.
+		best := lit[:gramLen]
+		for j := 1; j+gramLen <= len(lit); j++ {
+			if g := lit[j : j+gramLen]; freq[g] < freq[best] {
+				best = g
+			}
+		}
+		x.byGram[best] = append(x.byGram[best], int32(i))
+	}
+	return x
+}
+
+// candidates returns, ascending, the indexes of the entries that may match
+// line; scan checks each as before, so the result is the same as checking
+// every entry in order.
+func (x *gramIndex) candidates(line string) []int32 {
+	if x == nil {
+		return nil // not a scanned table: no entries
+	}
+	out := slices.Clone(x.always)
+	for j := 0; j+gramLen <= len(line); j++ {
+		out = append(out, x.byGram[line[j:j+gramLen]]...)
+	}
+	slices.Sort(out)
+	return slices.Compact(out)
 }
