@@ -59,23 +59,24 @@ type calcStep struct {
 }
 
 // calcSteps is Calc's pipeline. The order is PoB's CalcSetup.lua initEnv
-// order followed by CalcPerform.lua calcs.perform order, except where the
-// port orders differently: that is noted on the step ("Port ordering",
-// e.g. stepCustomMods, stepConfig; not an exhaustive audit). MORE mods round
-// per layer, so moving a step changes numbers. TestCalcStepOrder pins the
-// names.
+// order followed by CalcPerform.lua calcs.perform order: bandit (663),
+// pantheon (674), enemy Accuracy (689) and the config tab mods (692) come
+// before the tree nodes (786) and items (811). Where the port orders
+// differently, that is noted on the step ("Port ordering"; not an
+// exhaustive audit). MORE mods round per layer, so moving a step changes
+// numbers. TestCalcStepOrder pins the names.
 var calcSteps = []calcStep{
 	{"initEnv", stepInitEnv},
 	{"baseMods", stepBaseMods},
 	{"bandit", stepBandit},
 	{"pantheon", stepPantheon},
+	{"config", stepConfig},
+	{"customMods", stepCustomMods},
 	{"passiveTree", stepPassiveTree},
 	{"items", stepItems},
 	{"jewelSockets", stepJewelSockets},
-	{"customMods", stepCustomMods},
 	{"grantedPassives", stepGrantedPassives},
 	{"itemConditions", stepItemConditions},
-	{"config", stepConfig},
 	{"skills", stepSkills},
 	{"flasks", stepFlasks},
 	{"skillModLayer", stepSkillModLayer},
@@ -225,6 +226,9 @@ func stepPantheon(c *Calculator, st *calcState) error {
 // stepPassiveTree: CalcSetup.lua buildModListForNodeList over the
 // allocated nodes: node stats, mastery effects, cluster, conquered and
 // radius-jewel nodes.
+// Port ordering, differs from PoB: CalcSetup.lua builds the node list at
+// 786 but merges it into env.modDB at 1463, after the item mods (1426);
+// here the tree mods are added before the items.
 //
 //nolint:gocognit // moved verbatim from Calc (addTreeNode closure); splitting it is out of scope for a pure refactor
 func stepPassiveTree(c *Calculator, st *calcState) error {
@@ -456,12 +460,11 @@ func stepJewelSockets(c *Calculator, st *calcState) error {
 	return nil
 }
 
-// stepCustomMods: CalcSetup.lua "Add mods from the config tab". The config
-// tab's mod list (custom modifiers) joins env.modDB before the granted
-// passives are added, so "Allocates X" custom lines grant their node.
-// Port ordering, differs from PoB: CalcSetup.lua adds the config tab mods
-// (692) before the tree nodes (786) and items (811); here they come after
-// items and tree jewels.
+// stepCustomMods: CalcSetup.lua "Add mods from the config tab" (692), the
+// custom modifiers, which ConfigTabClass:BuildModList appends to
+// configTab.modList after the options' mods (stepConfig). They join
+// env.modDB before the tree nodes and items, and so before the granted
+// passives are added: "Allocates X" custom lines grant their node.
 func stepCustomMods(c *Calculator, st *calcState) error {
 	c.customMods(st.db, st.res, st.config)
 	return nil
@@ -524,18 +527,17 @@ func stepItemConditions(c *Calculator, st *calcState) error {
 	return nil
 }
 
-// stepConfig: the config tab's conditions (ConfigOptions.lua apply), buff
-// mode and the enemy environment (CalcSetup.lua enemy level, accuracy).
-// Port ordering, differs from PoB: CalcSetup.lua adds the enemy Accuracy
-// (689) and config tab mods (692) before the tree nodes (786) and items
-// (811); here they come after items, jewels and granted passives.
+// stepConfig: buff mode, the enemy environment (CalcSetup.lua enemy level,
+// enemy Accuracy at 689), the config tab's option mods (ConfigOptions.lua
+// apply; CalcSetup.lua "Add mods from the config tab", 692) and the party
+// tab's enemy mods (697), all before the tree nodes (786) and items (811).
 func stepConfig(c *Calculator, st *calcState) error {
 	db, b, res := st.db, st.b, st.res
 	buffMode(db)
 	buffMode(db.enemy)
-	c.applyConfig(db, res, st.config)
 	db.enemyEnv = newEnemyEnv(st.config, c.data.Config, b.Level, c.data.Monster, res)
 	db.enemy.NewMod("Accuracy", "BASE", enemyAccuracy(c.data.Monster, db.enemyEnv.level), "Base")
+	c.applyConfig(db, res, st.config)
 	// CalcSetup.lua: env.enemyDB:AddList(build.partyTab.enemyModList).
 	db.party = newPartyActor(b.Party)
 	// env.partyMembers always exists in PoB: an empty actor without a Party tab.
