@@ -37,6 +37,11 @@ type Build struct {
 	// Party is the Party tab, nil when the build has no imported party
 	// buffs and does not export its own.
 	Party *Party
+
+	// CalcsInputs are the Calcs tab's inputs (Classes/CalcsTab.lua
+	// Load/Save): skill_number (its socket group), misc_buffMode and the
+	// like, which PoB's CALCS mode calculation reads.
+	CalcsInputs []Input
 }
 
 // Party is the Party tab (Classes/PartyTab.lua Save/Load). PoB keeps no
@@ -169,6 +174,16 @@ type Gem struct {
 	// SkillMinionSkill is the minion's main skill, a 1-based index into
 	// its skill list (0 = not set: the first).
 	SkillMinionSkill int
+
+	// The Calcs tab's selections (skillPartCalcs ... skillMinionSkillCalcs,
+	// Classes/SkillsTab.lua:503-514), read in PoB's CALCS mode; 0 or ""
+	// is not set.
+	SkillPartCalcs          int
+	SkillStageCountCalcs    int
+	SkillMineCountCalcs     int
+	SkillMinionCalcs        string
+	SkillMinionItemSetCalcs int
+	SkillMinionSkillCalcs   int
 }
 
 type ConfigSet struct {
