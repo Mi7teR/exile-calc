@@ -43,6 +43,10 @@ type calcState struct {
 	// treeSpan is where stepPassiveTree's mods sit in each name's list
 	// ([start, end)), for stepMergeTree.
 	treeSpan map[string][2]int
+	// explodeNodes are the allocated nodes whose final mod list has
+	// CanExplode (buildModListForNode's second result, CalcSetup.lua:265-266),
+	// in the order addTreeNode added them.
+	explodeNodes []int
 
 	// Items.
 	flasks    []flaskSlot
@@ -293,7 +297,7 @@ func stepPassiveTree(c *Calculator, st *calcState) error {
 			if !add {
 				return
 			}
-			c.addNode(db, res, g.stats, g.incEffect, fmt.Sprintf("Tree:%d", id), nil, nil)
+			st.noteExplodeNode(id, c.addNode(db, res, g.stats, g.incEffect, fmt.Sprintf("Tree:%d", id), nil, nil))
 			return
 		}
 		node := tree.Nodes[id]
@@ -322,6 +326,7 @@ func stepPassiveTree(c *Calculator, st *calcState) error {
 		for _, m := range mods {
 			db.Add(m)
 		}
+		st.noteExplodeNode(id, mods)
 	}
 	before := make(map[string]int, len(db.mods))
 	for name, l := range db.mods {
@@ -338,6 +343,15 @@ func stepPassiveTree(c *Calculator, st *calcState) error {
 	}
 	st.allocated, st.clusterLinks, st.radiusFuncs, st.addTreeNode = allocated, clusterLinks, radiusFuncs, addTreeNode
 	return nil
+}
+
+// noteExplodeNode records allocated node id as an explode source when its
+// final mod list can explode (buildModListForNodeList, CalcSetup.lua:
+// 288-290: t_insert(explodeSources, explode)).
+func (st *calcState) noteExplodeNode(id int, mods []Mod) {
+	if nodeCanExplode(mods) {
+		st.explodeNodes = append(st.explodeNodes, id)
+	}
 }
 
 // stepItems: CalcSetup.lua "Build and merge item modifiers" for the active

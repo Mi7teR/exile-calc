@@ -2,6 +2,7 @@ package engine
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/Mi7teR/poe-lib/gamedata"
@@ -111,12 +112,37 @@ func (c *Calculator) nodeLines(stats []string, res *Result) []modparser.Mod {
 }
 
 // addNode adds one passive's mods, scaled by its PassiveSkillEffect
-// (CalcSetup.lua buildModListForNode: calcLib.mod(modList, nil, "PassiveSkillEffect")).
+// (CalcSetup.lua buildModListForNode: calcLib.mod(modList, nil, "PassiveSkillEffect")),
+// and returns them: the node's final mod list.
 // incEffect is the cluster jewel's "increased Effect" of small passives.
-func (c *Calculator) addNode(db *ModDB, res *Result, stats []string, incEffect float64, source string, tn *gamedata.Node, funcs []radiusFunc) {
-	for _, m := range finishNode(c.nodeMods(res, stats, incEffect, source, tn, funcs), true, tn, nil) {
+func (c *Calculator) addNode(db *ModDB, res *Result, stats []string, incEffect float64, source string, tn *gamedata.Node, funcs []radiusFunc) []Mod {
+	mods := finishNode(c.nodeMods(res, stats, incEffect, source, tn, funcs), true, tn, nil)
+	for _, m := range mods {
 		db.Add(m)
 	}
+	return mods
+}
+
+// nodeCanExplode is buildModListForNode's second result (CalcSetup.lua:
+// 266-267): a node is an explode source when its final mod list has a
+// CanExplode mod and modList:Flag(nil, "CanExplode") holds. hasExplode
+// follows that list: set by the prefilter (170-189), cleared by the "grant
+// nothing" wipe (191-197) and rescanned after the second-pass radius
+// jewels (207-232); the first-pass jewels (159-168) run before the
+// prefilter. The Flag reads the node's own list, so tags are evaluated
+// against that list alone.
+// The PassiveSkillHasOtherEffect/NodeModifier replacement (234-249) is not
+// ported in finishNode; no unique of the game data carries those lines.
+func nodeCanExplode(mods []Mod) bool {
+	// hasExplode (CalcSetup.lua:184-185, 227-228).
+	if !slices.ContainsFunc(mods, func(m Mod) bool { return m.Name == "CanExplode" }) {
+		return false
+	}
+	node := NewModDB()
+	for _, m := range mods {
+		node.Add(m)
+	}
+	return node.Flag("CanExplode")
 }
 
 // finishNode is the rest of buildModListForNode: a node that "grants

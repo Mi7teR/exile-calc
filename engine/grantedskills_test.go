@@ -1,9 +1,12 @@
 package engine
 
 import (
+	"maps"
 	"math"
 	"os"
+	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -213,6 +216,150 @@ func TestExplodeGroupCorpus(t *testing.T) {
 	}
 	if !slices.Equal(got, srcs) {
 		t.Errorf("gem sources %v, want %v", got, srcs)
+	}
+}
+
+// CalcSetup.lua:159-168 and 266-267: a radius jewel's mods are part of the
+// node's own list, so a node that has CanExplode only through a jewel in
+// radius is an explode source (Tree:<node>), and the jewel's socket is
+// not. No real jewel adds CanExplode in radius (ModParser.lua's
+// jewelOtherFuncs, 6279-6505, have no explode line), so the line here is
+// synthetic, registered as a jewelOtherFuncs "also grant" entry.
+func TestExplodeGroupRadiusGrant(t *testing.T) {
+	if testing.Short() {
+		t.Skip("corpus builds")
+	}
+	const line = "Passive Skills in Radius also grant: Enemies you Kill have a 10% chance to Explode, dealing a quarter of their maximum Life as Chaos Damage"
+	saved := radiusPatterns
+	t.Cleanup(func() { radiusPatterns = saved })
+	radiusPatterns = append(slices.Clone(saved), radiusPattern{
+		regexp.MustCompile(`^passive skills in radius also grant: enemies you kill have a 10% chance to explode`),
+		grant("", func([]string) []Mod {
+			return []Mod{
+				{Name: "ExplodeMod", Type: "LIST", Value: map[string]any{
+					"type": "Chaos", "chance": 0.1, "amount": 25.0, "keyOfScaledMod": "chance",
+				}},
+				{Name: "CanExplode", Type: "FLAG", Value: true},
+			}
+		}),
+	})
+
+	c := newCalc(t)
+	before, err := c.Calc(corpusBuild(t, "Dd_SPzNY9-I5"))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// The first allocated main-tree socket with allocated passives in its
+	// Large radius takes the jewel.
+	b := corpusBuild(t, "Dd_SPzNY9-I5")
+	spec := b.ActiveSpec()
+	alloc := map[int]bool{}
+	for _, id := range spec.Nodes {
+		alloc[id] = true
+	}
+	tree := c.data.Tree
+	pos := nodePositions(tree)
+	r, _ := radiusByLabel("Large")
+	socket := 0
+	var gained []int
+	for _, id := range slices.Sorted(maps.Keys(alloc)) {
+		if n := tree.Nodes[id]; n == nil || !n.IsJewelSocket || n.ExpansionJewel != nil {
+			continue
+		}
+		for _, x := range nodesInRadius(tree, pos, id, r) {
+			// grant skips keystones, sockets and class starts, the first
+			// pass skips masteries (CalcSetup.lua:162).
+			switch nodeType(tree.Nodes[x]) {
+			case "Keystone", "Socket", "ClassStart", "Mastery":
+				continue
+			}
+			if alloc[x] {
+				gained = append(gained, x)
+			}
+		}
+		if len(gained) > 0 {
+			socket = id
+			break
+		}
+	}
+	if socket == 0 {
+		t.Fatal("no allocated socket with allocated passives in radius")
+	}
+	itemID := 1
+	for _, it := range b.Items {
+		itemID = max(itemID, it.ID+1)
+	}
+	raw := "Rarity: RARE\nTest Eye\nCobalt Jewel\nRadius: Large\nImplicits: 0\n" + line
+	b.Items = append(b.Items, pobcode.Item{ID: itemID, Raw: raw})
+	spec.Sockets = slices.DeleteFunc(spec.Sockets, func(s pobcode.Socket) bool { return s.NodeID == socket })
+	spec.Sockets = append(spec.Sockets, pobcode.Socket{NodeID: socket, ItemID: itemID})
+	res, err := c.Calc(b)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// The nodes in radius come before the items, in node id order; the
+	// socket itself is no source.
+	var nodes []int
+	var items []string
+	for _, s := range before.DB.explodeSources {
+		if id, ok := strings.CutPrefix(s, "Tree:"); ok {
+			n, _ := strconv.Atoi(id)
+			nodes = append(nodes, n)
+		} else {
+			items = append(items, s)
+		}
+	}
+	nodes = slices.Compact(slices.Sorted(slices.Values(append(nodes, gained...))))
+	var want []string
+	for _, n := range nodes {
+		want = append(want, "Tree:"+strconv.Itoa(n))
+	}
+	want = append(want, items...)
+	if got := res.DB.explodeSources; !slices.Equal(got, want) {
+		t.Errorf("explode sources %v, want %v (jewel in socket %d)", got, want, socket)
+	}
+	if slices.Contains(res.DB.explodeSources, "Tree:"+strconv.Itoa(socket)) {
+		t.Errorf("socket %d is an explode source", socket)
+	}
+	groups := res.Build().ActiveSkills().Groups
+	i := slices.IndexFunc(groups, func(g pobcode.SocketGroup) bool { return g.Source == "Explode" })
+	if i < 0 || len(groups[i].Gems) != len(want) {
+		t.Errorf("explode group %d, want %d gems", i, len(want))
+	}
+}
+
+// CalcSetup.lua:191-197: "Notable Passive Skills in Radius grant nothing"
+// (Might of the Meek, Data/Uniques/jewel.lua) wipes a notable's list, and
+// with it CanExplode, so the node is no explode source. The jewel and the
+// node are real, but no notable with CanExplode on the main tree is in
+// any socket's radius (they are cluster, ascendancy or mastery nodes), so
+// the radius function is applied to the node directly, as
+// stepPassiveTree's addTreeNode does for a node in radius.
+func TestExplodeGroupGrantNothing(t *testing.T) {
+	c := newCalc(t)
+	const id = 37127 // Profane Bloom
+	tn := c.data.Tree.Nodes[id]
+	if tn == nil || nodeType(tn) != "Notable" {
+		t.Fatalf("node %d: %+v", id, tn)
+	}
+	var funcs []radiusFunc
+	for _, p := range radiusPatterns {
+		if m := p.re.FindStringSubmatch(asciiLowerTrim("Notable Passive Skills in Radius grant nothing")); m != nil {
+			funcs = append(funcs, p.make(m, "Tree:1"))
+		}
+	}
+	if len(funcs) != 1 {
+		t.Fatalf("%d radius functions for the line", len(funcs))
+	}
+	res := &Result{}
+	src := "Tree:" + strconv.Itoa(id)
+	if mods := finishNode(c.nodeMods(res, tn.Stats, 0, src, tn, nil), true, tn, nil); !nodeCanExplode(mods) {
+		t.Fatalf("node %d without the jewel: no CanExplode in %+v", id, mods)
+	}
+	if mods := finishNode(c.nodeMods(res, tn.Stats, 0, src, tn, funcs), true, tn, nil); nodeCanExplode(mods) {
+		t.Errorf("node %d in radius of Might of the Meek still explodes: %+v", id, mods)
 	}
 }
 

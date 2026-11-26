@@ -220,24 +220,20 @@ func (c *Calculator) itemGrantedSkills(st *calcState) []grantedSkill {
 
 // explodeSources is env.explodeSources as mod sources (the key the
 // EnemyExplode gems match ExplodeMod by, Data/Skills/other.lua
-// explodeSource.modSource or "Tree:"..id): the allocated nodes with
-// CanExplode (buildModListForNodeList, CalcSetup.lua:283-290 and 1462-1464;
-// env.allocNodes is walked with pairs, node id order here), then the items
-// of itemSlotsUsed whose baseModList has CanExplode (851-853).
+// explodeSource.modSource or "Tree:"..id): the allocated nodes for which
+// buildModListForNode returned the node as its explode result
+// (st.explodeNodes, nodeCanExplode; buildModListForNodeList,
+// CalcSetup.lua:288-290, merged at 1462-1464), then the items of
+// itemSlotsUsed whose baseModList has CanExplode (851-853; tableConcat puts
+// the nodes first). A node counts by its own final mod list, so a radius
+// jewel's mods count for the node in radius, not for the socket, and the
+// unallocated nodes of extraRadiusNodeList (296-303) never count.
+// env.allocNodes is walked with pairs, which has no order; node id order
+// here keeps the result deterministic.
 func (c *Calculator) explodeSources(st *calcState) []string {
-	var nodes []int
-	seen := map[int]bool{}
-	for _, m := range st.db.mods["CanExplode"] {
-		idStr, ok := strings.CutPrefix(m.Source, "Tree:")
-		if !ok || m.Value != true || len(m.Tags) > 0 {
-			continue
-		}
-		if id, err := strconv.Atoi(idStr); err == nil && !seen[id] {
-			seen[id] = true
-			nodes = append(nodes, id)
-		}
-	}
-	sort.Ints(nodes)
+	nodes := slices.Clone(st.explodeNodes)
+	slices.Sort(nodes)
+	nodes = slices.Compact(nodes)
 	var out []string
 	for _, id := range nodes {
 		out = append(out, "Tree:"+strconv.Itoa(id))
