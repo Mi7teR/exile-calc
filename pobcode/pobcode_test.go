@@ -395,3 +395,49 @@ Assassin's Mark
 		t.Errorf("empty party read back as %+v (%v)", empty, err)
 	}
 }
+
+// PassiveSpec.lua Load/Save: a spec without clusterHashFormatVersion is
+// format 1 and stays without it; "2" survives a round trip; a new spec
+// (0) is written as 2.
+func TestClusterHashFormatVersionRoundTrip(t *testing.T) {
+	x := string(readFile(t, "testdata/modern.xml"))
+	x2 := strings.Replace(x, `nodes="100,200,300"`, `nodes="100,200,300" clusterHashFormatVersion="2"`, 1)
+	for _, c := range []struct {
+		in   string
+		want [2]int
+	}{{x, [2]int{1, 1}}, {x2, [2]int{1, 2}}} {
+		b, err := Parse([]byte(c.in))
+		if err != nil {
+			t.Fatal(err)
+		}
+		for round := 0; round < 2; round++ {
+			for i, s := range b.Specs {
+				if s.ClusterHashFormatVersion != c.want[i] {
+					t.Errorf("round %d spec %d: version %d, want %d", round, i, s.ClusterHashFormatVersion, c.want[i])
+				}
+			}
+			out, err := b.XML()
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got := strings.Count(string(out), `clusterHashFormatVersion="2"`); got != c.want[1]-1 {
+				t.Errorf("round %d: %d specs written with version 2", round, got)
+			}
+			if b, err = Parse(out); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	b, err := Parse([]byte(x))
+	if err != nil {
+		t.Fatal(err)
+	}
+	b.Specs[0].ClusterHashFormatVersion = 0
+	out, err := b.XML()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(out), `clusterHashFormatVersion="2"`) {
+		t.Error("a new spec (version 0) must be written as version 2")
+	}
+}

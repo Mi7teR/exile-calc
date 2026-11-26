@@ -68,6 +68,7 @@ type xSpec struct {
 	SecondaryAscendClassID string    `xml:"secondaryAscendClassId,attr,omitempty"`
 	Nodes                  string    `xml:"nodes,attr"`
 	MasteryEffects         string    `xml:"masteryEffects,attr"`
+	ClusterHashFormat      string    `xml:"clusterHashFormatVersion,attr,omitempty"`
 	Sockets                []xSocket `xml:"Sockets>Socket"`
 }
 
@@ -291,6 +292,9 @@ func Parse(data []byte) (*Build, error) {
 			AscendClassID:          p.int("Spec.ascendClassId", s.AscendClassID, 0),
 			SecondaryAscendClassID: p.int("Spec.secondaryAscendClassId", s.SecondaryAscendClassID, 0),
 			Nodes:                  p.intList("Spec.nodes", s.Nodes),
+			// PassiveSpec.lua Load: tonumber(attr) or (nodes and 1 or 2);
+			// Save always writes nodes, so an absent attribute is 1.
+			ClusterHashFormatVersion: p.int("Spec.clusterHashFormatVersion", s.ClusterHashFormat, 1),
 		}
 		for _, m := range masteryRe.FindAllStringSubmatch(s.MasteryEffects, -1) {
 			spec.MasteryEffects = append(spec.MasteryEffects, MasteryEffect{
@@ -521,6 +525,7 @@ func (b *Build) XML() ([]byte, error) {
 			SecondaryAscendClassID: itoaOpt(s.SecondaryAscendClassID),
 			Nodes:                  strings.Join(nodes, ","),
 			MasteryEffects:         strings.Join(mastery, ","),
+			ClusterHashFormat:      clusterHashFormatAttr(s.ClusterHashFormatVersion),
 		}
 		for _, so := range s.Sockets {
 			xs.Sockets = append(xs.Sockets, xSocket{NodeID: itoa(so.NodeID), ItemID: itoa(so.ItemID)})
@@ -645,4 +650,16 @@ func toXInput(in Input) xInput {
 		out.String = &v
 	}
 	return out
+}
+
+// clusterHashFormatAttr writes Spec.ClusterHashFormatVersion: format 1 is
+// the absent attribute (how such specs are saved), 0 (a new spec) is 2.
+func clusterHashFormatAttr(v int) string {
+	switch v {
+	case 0:
+		return "2"
+	case 1:
+		return ""
+	}
+	return itoa(v)
 }

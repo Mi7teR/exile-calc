@@ -1,6 +1,8 @@
 package engine
 
 import (
+	"maps"
+	"slices"
 	"sort"
 
 	"github.com/Mi7teR/poe-lib/gamedata"
@@ -87,6 +89,14 @@ func readJewelData(mods []modparser.Mod, cj *gamedata.ClusterJewel) (jewelData, 
 // the generated nodes by id and the subgraphs' links (both directions).
 // Positions are not needed: the build lists the allocated ids itself.
 func (c *Calculator) clusterGraph(spec *pobcode.Spec, b *pobcode.Build, res *Result) (map[int]clusterNode, map[int][]int, map[int]bool) {
+	return c.clusterGraphLegacy(spec, b, res, nil)
+}
+
+// clusterGraphLegacy is clusterGraph that also fills legacy, when not nil,
+// with PassiveSpec's legacyClusterNodeMap: the ids a format-1 spec saved
+// for the subgraphs' sockets and nodes -> the current ids
+// (BuildLegacyProxyGroup and BuildLegacyClusterOrbitMappings).
+func (c *Calculator) clusterGraphLegacy(spec *pobcode.Spec, b *pobcode.Build, res *Result, legacy map[int]int) (map[int]clusterNode, map[int][]int, map[int]bool) {
 	// subSockets: the tree sockets the subgraphs create (PassiveSpec keeps
 	// nested cluster sockets out of self.nodes until a subgraph adds them).
 	subSockets := map[int]bool{}
@@ -109,6 +119,23 @@ func (c *Calculator) clusterGraph(spec *pobcode.Spec, b *pobcode.Build, res *Res
 		if s.ItemID != 0 {
 			socketed[s.NodeID] = b.Item(s.ItemID)
 		}
+	}
+	reverse := map[int]int{} // legacyClusterNodeMapReverse
+	register := func(legacyID, currentID int) {
+		if legacy != nil {
+			legacy[legacyID] = currentID
+			reverse[currentID] = legacyID
+		}
+	}
+	// GetSocketedJewel: a socket with no jewel takes its legacy id's.
+	jewelAt := func(id int) *pobcode.Item {
+		if it := socketed[id]; it != nil {
+			return it
+		}
+		if l, ok := reverse[id]; ok {
+			return socketed[l]
+		}
+		return nil
 	}
 	// PassiveTree.lua: notables and keystones without a group are the
 	// cluster notables, by name.
@@ -178,21 +205,28 @@ func (c *Calculator) clusterGraph(spec *pobcode.Spec, b *pobcode.Build, res *Res
 		if proxy != nil && proxy.Group >= 1 && proxy.Group <= len(tree.Groups) {
 			proxyGroup = tree.Groups[proxy.Group-1].Nodes
 		}
-		findSocket := func(index int) *gamedata.Node {
-			for _, nid := range proxyGroup {
-				if n := tree.Nodes[nid]; n != nil && n.ExpansionJewel != nil && n.ExpansionJewel.Index == index {
-					return n
-				}
-			}
-			return nil
+		findSocket := func(group []int, index int) *gamedata.Node {
+			return findClusterSocket(tree, group, index)
+		}
+		// BuildLegacyProxyGroup: the legacy parser downsized the proxy group
+		// while descending into nested clusters; its sockets are the ids a
+		// format-1 spec saved.
+		var legacyGroup []int
+		if legacy != nil {
+			legacyGroup = legacyProxyGroup(tree, proxyGroup, exp.Size, cj.SizeIndex)
 		}
 		var sockets []*gamedata.Node
 		makeJewel := func(nodeIndex, jewelIndex int) {
-			if s := findSocket(jewelIndex); s != nil {
+			if s := findSocket(proxyGroup, jewelIndex); s != nil {
 				used[nodeIndex] = true
 				byIndex[nodeIndex] = s.ID
 				sockets = append(sockets, s)
 				subSockets[s.ID] = true
+				if legacyGroup != nil {
+					if ls := findSocket(legacyGroup, jewelIndex); ls != nil {
+						register(ls.ID, s.ID)
+					}
+				}
 			}
 		}
 		if cj.Size == "Large" && socketCount == 1 {
@@ -263,11 +297,16 @@ func (c *Calculator) clusterGraph(spec *pobcode.Spec, b *pobcode.Build, res *Res
 		if entrance, ok := byIndex[0]; ok {
 			linkNodes(entrance, parent)
 		}
+		if legacy != nil && proxy != nil {
+			for l, cur := range legacyOrbitMappings(tree, data, proxy, cj, byIndex) {
+				register(l, cur)
+			}
+		}
 
 		// Recurse into allocated sockets holding a valid cluster jewel.
 		for _, s := range sockets {
-			if allocated[s.ID] && socketed[s.ID] != nil && s.ExpansionJewel != nil {
-				build(socketed[s.ID], s.ExpansionJewel, id, s.ID)
+			if jewel := jewelAt(s.ID); allocated[s.ID] && jewel != nil && s.ExpansionJewel != nil {
+				build(jewel, s.ExpansionJewel, id, s.ID)
 			}
 		}
 	}
@@ -282,6 +321,86 @@ func (c *Calculator) clusterGraph(spec *pobcode.Spec, b *pobcode.Build, res *Res
 		}
 	}
 	return out, links, subSockets
+}
+
+// findClusterSocket is PassiveSpecClass:FindClusterSocket: the socket of
+// the group with that expansion jewel index.
+func findClusterSocket(tree *gamedata.Tree, group []int, index int) *gamedata.Node {
+	for _, nid := range group {
+		if n := tree.Nodes[nid]; n != nil && n.ExpansionJewel != nil && n.ExpansionJewel.Index == index {
+			return n
+		}
+	}
+	return nil
+}
+
+// legacyProxyGroup is PassiveSpecClass:BuildLegacyProxyGroup.
+func legacyProxyGroup(tree *gamedata.Tree, proxyGroup []int, expansionSize, sizeIndex int) []int {
+	group, size := proxyGroup, expansionSize
+	for guard := 0; sizeIndex < size && guard < 4; guard++ {
+		socket := findClusterSocket(tree, group, 1)
+		if socket == nil {
+			socket = findClusterSocket(tree, group, 0)
+		}
+		if socket == nil {
+			break
+		}
+		p := tree.Nodes[socket.ExpansionJewel.Proxy]
+		if p == nil || p.Group < 1 || p.Group > len(tree.Groups) {
+			break
+		}
+		group, size = tree.Groups[p.Group-1].Nodes, socket.ExpansionJewel.Size
+	}
+	return group
+}
+
+// translateClusterOrbitIndex is PassiveSpecClass:TranslateClusterOrbitIndex.
+func translateClusterOrbitIndex(src, srcPerOrbit, destPerOrbit int) int {
+	switch {
+	case srcPerOrbit == destPerOrbit:
+		return src
+	case srcPerOrbit == 12 && destPerOrbit == 16:
+		return []int{0, 1, 3, 4, 5, 7, 8, 9, 11, 12, 13, 15}[src]
+	case srcPerOrbit == 16 && destPerOrbit == 12:
+		return []int{0, 1, 1, 2, 3, 4, 4, 5, 6, 7, 7, 8, 9, 10, 10, 11}[src]
+	case srcPerOrbit == 6 && destPerOrbit == 16:
+		return []int{0, 3, 5, 8, 11, 13}[src]
+	case srcPerOrbit == 16 && destPerOrbit == 6:
+		return []int{0, 0, 0, 1, 1, 2, 2, 2, 3, 3, 3, 4, 4, 5, 5, 5}[src]
+	}
+	return src * destPerOrbit / srcPerOrbit
+}
+
+// legacyOrbitMappings ports ApplyClusterOrbitIndexAdjustment and
+// BuildLegacyClusterOrbitMappings (PassiveSpec.lua): it matches the
+// subgraph's nodes (byIndex: cluster template index -> node id) in the
+// legacy orbit space, where the proxy node's own orbit placed them, with
+// the current one, offset by orbitOffsets, and returns legacy id -> current
+// id for the nodes whose ids differ.
+func legacyOrbitMappings(tree *gamedata.Tree, data *gamedata.ClusterJewels, proxy *gamedata.Node, cj *gamedata.ClusterJewel, byIndex map[int]int) map[int]int {
+	spo := tree.Constants.SkillsPerOrbit
+	total := cj.TotalIndicies
+	if total == 0 || cj.SizeIndex+1 >= len(spo) || proxy.Orbit >= len(spo) {
+		return nil
+	}
+	skillsPerOrbit, legacyPerOrbit := spo[cj.SizeIndex+1], spo[proxy.Orbit]
+	startOidx := data.OrbitOffsets[proxy.ID][cj.SizeIndex]
+	legacyProxyRel := translateClusterOrbitIndex(proxy.OrbitIndex, legacyPerOrbit, total)
+	legacyByOidx, currentByOidx := map[int]int{}, map[int]int{}
+	for _, idx := range slices.Sorted(maps.Keys(byIndex)) {
+		id := byIndex[idx]
+		legacyByOidx[translateClusterOrbitIndex((idx+legacyProxyRel)%total, total, legacyPerOrbit)] = id
+		oidx := translateClusterOrbitIndex((idx+startOidx)%total, total, skillsPerOrbit)
+		rel := translateClusterOrbitIndex(oidx, skillsPerOrbit, total)
+		currentByOidx[translateClusterOrbitIndex(rel, total, legacyPerOrbit)] = id
+	}
+	out := map[int]int{}
+	for oidx, l := range legacyByOidx {
+		if cur, ok := currentByOidx[oidx]; ok && cur != l {
+			out[l] = cur
+		}
+	}
+	return out
 }
 
 // notableIndices ports itemLib.getClusterJewelNotableIndices (ItemTools.lua).
@@ -320,4 +439,68 @@ func notableIndices(cj *gamedata.ClusterJewel, socketCount, nodeCount, notableCo
 	}
 	sort.Ints(out)
 	return out
+}
+
+// legacyClusterSpec ports the format-1 conversion of
+// PassiveSpecClass:BuildClusterJewelGraphs (BeginLegacyClusterHashConversion
+// and ApplyLegacyClusterNodeRemap): a spec saved without
+// clusterHashFormatVersion lists its cluster sockets and subgraph nodes by
+// the ids of the old parser, which PoB maps to the current ones before it
+// allocates them. Jewels move with their sockets. Other specs are returned
+// as they are.
+func (c *Calculator) legacyClusterSpec(spec *pobcode.Spec, b *pobcode.Build) *pobcode.Spec {
+	if spec.ClusterHashFormatVersion != 1 {
+		return spec
+	}
+	legacy := map[int]int{}
+	cluster, _, subSockets := c.clusterGraphLegacy(spec, b, &Result{}, legacy)
+	// GetMappedClusterNodeId: only to a node the subgraphs created.
+	mapped := func(id int) (int, bool) {
+		cur, ok := legacy[id]
+		if !ok || cur == id {
+			return id, false
+		}
+		if _, gen := cluster[cur]; gen || subSockets[cur] {
+			return cur, true
+		}
+		return id, false
+	}
+	changed := false
+	seen := map[int]bool{}
+	var nodes []int
+	for _, id := range spec.Nodes {
+		if cur, ok := mapped(id); ok {
+			id, changed = cur, true
+		}
+		if !seen[id] {
+			seen[id] = true
+			nodes = append(nodes, id)
+		}
+	}
+	// self.jewels is keyed by node: a jewel moved onto a socket that
+	// already holds one does not add a second entry. (PoB's pairs order
+	// decides between them, and the socket item slots have already written
+	// a 0 for every empty socket, so PoB can also lose the moved jewel;
+	// the jewel is kept here, see testdata/golden/quirks.json.)
+	held := map[int]bool{}
+	for _, s := range spec.Sockets {
+		held[s.NodeID] = true
+	}
+	var sockets []pobcode.Socket
+	for _, s := range spec.Sockets {
+		if cur, ok := mapped(s.NodeID); ok {
+			changed = true
+			if held[cur] {
+				continue
+			}
+			s.NodeID, held[cur] = cur, true
+		}
+		sockets = append(sockets, s)
+	}
+	if !changed {
+		return spec
+	}
+	out := *spec
+	out.Nodes, out.Sockets = nodes, sockets
+	return &out
 }

@@ -124,7 +124,7 @@ func stepInitEnv(c *Calculator, st *calcState) error {
 		return fmt.Errorf("engine: build has no passive tree")
 	}
 	tree := c.data.Tree
-	spec = c.pruneSpec(spec, b)
+	spec = c.pruneSpec(c.legacyClusterSpec(spec, b), b)
 	if spec.ClassID < 0 || spec.ClassID >= len(tree.Classes) {
 		return fmt.Errorf("engine: unknown class id %d", spec.ClassID)
 	}

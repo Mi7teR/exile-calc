@@ -73,6 +73,12 @@ type Spec struct {
 	Nodes                  []int
 	MasteryEffects         []MasteryEffect
 	Sockets                []Socket // jewel sockets: tree node -> item
+	// ClusterHashFormatVersion is the clusterHashFormatVersion attribute
+	// (PassiveSpec.lua Load/Save). A spec saved without it is format 1:
+	// its cluster subgraph node ids predate the hash fix and PoB remaps
+	// them on load. 0 means not set, a new spec: format 2 (PassiveSpec
+	// Init).
+	ClusterHashFormatVersion int
 }
 
 type MasteryEffect struct {

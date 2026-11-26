@@ -245,6 +245,9 @@ type PantheonMod struct {
 type ClusterJewels struct {
 	Jewels           map[string]*ClusterJewel `json:"jewels" lua:"jewels"`
 	NotableSortOrder map[string]float64       `json:"notableSortOrder" lua:"notableSortOrder"`
+	// OrbitOffsets: proxy node id -> cluster size index -> the orbit index
+	// the subgraph starts at (PassiveSpec.lua BuildSubgraph).
+	OrbitOffsets map[int]map[int]int `json:"orbitOffsets" lua:"orbitOffsets"`
 }
 
 type ClusterJewel struct {
