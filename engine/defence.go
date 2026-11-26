@@ -106,16 +106,21 @@ func (c *Calculator) defence(db *ModDB, gearMods map[string][]modparser.Mod, key
 		out["SpellBlockChance"], out["SpellProjectileBlockChance"] = 0, 0
 	}
 	for _, t := range []string{"BlockChance", "ProjectileBlockChance", "SpellBlockChance", "SpellProjectileBlockChance"} {
-		out["Effective"+t] = math.Max(out[t]-db.enemy.Sum("BASE", "reduceEnemyBlock"), 0)
+		// CalcDefence.lua:760-772: the enemy's reduceEnemyBlock and
+		// lucky or unlucky block only with env.mode_effective.
+		out["Effective"+t] = out[t]
 		rolls := 0.0
-		if db.Flag(t + "IsLucky") {
-			rolls++
-		}
-		if db.Flag(t + "IsUnlucky") {
-			rolls--
-		}
-		if db.Flag("ExtremeLuck") {
-			rolls *= 2
+		if modeEffective(db) {
+			out["Effective"+t] = math.Max(out[t]-db.enemy.Sum("BASE", "reduceEnemyBlock"), 0)
+			if db.Flag(t + "IsLucky") {
+				rolls++
+			}
+			if db.Flag(t + "IsUnlucky") {
+				rolls--
+			}
+			if db.Flag("ExtremeLuck") {
+				rolls *= 2
+			}
 		}
 		out["Effective"+t] = luckyRolls(db, out["Effective"+t], rolls)
 	}

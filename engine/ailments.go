@@ -93,8 +93,9 @@ func ailmentChances(actor *ModDB, s *activeSkill, p *hitPass) {
 	withCrit(true)
 	out["BleedChanceOnCrit"] = chance(attack && !list.FlagCfg(cfg, "CannotBleed"), "BleedChance", "SelfBleedChance")
 	out["PoisonChanceOnCrit"] = chance(hit && !list.FlagCfg(cfg, "CannotPoison"), "PoisonChance", "SelfPoisonChance")
+	// CalcOffence.lua:4250-4254: impale only with env.mode_effective.
 	out["ImpaleChanceOnCrit"] = 0
-	if hit {
+	if hit && modeEffective(actor) {
 		out["ImpaleChanceOnCrit"] = math.Min(100, list.SumCfg(cfg, "BASE", "ImpaleChance"))
 	}
 	withCrit(false)
@@ -128,8 +129,14 @@ func ailmentChances(actor *ModDB, s *activeSkill, p *hitPass) {
 		}
 	}
 	out["ImpaleChance"] = math.Min(100, list.SumCfg(cfg, "BASE", "ImpaleChance"))
-	// mode_effective: enemy avoidance.
-	for _, a := range ailmentTypeList {
+	// CalcOffence.lua:4312: impale, and 4322-4331: the enemy's ailment
+	// avoidance, only with env.mode_effective.
+	avoided := ailmentTypeList
+	if !modeEffective(actor) {
+		out["ImpaleChance"] = 0
+		avoided = nil
+	}
+	for _, a := range avoided {
 		mult := 1 - enemy.Sum("BASE", "Avoid"+a)/100
 		if enemy.Flag(a + "Immune") {
 			mult = 0

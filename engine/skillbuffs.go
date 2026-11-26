@@ -447,7 +447,13 @@ func warcryBonus(db *ModDB, s *activeSkill, b *skillBuff) ([]float64, float64) {
 			bonus[i] = math.Floor(p / div)
 		}
 	}
-	duration := skillDuration(list, cfg, s.data, db.enemy)
+	// calcSkillDuration reads the enemy only with env.mode_effective
+	// (CalcOffence.lua:327-330).
+	var enemy *ModDB
+	if modeEffective(db) {
+		enemy = db.enemy
+	}
+	duration := skillDuration(list, cfg, s.data, enemy)
 	cooldown, ok := list.OverrideCfg(cfg, "CooldownRecovery")
 	if !ok {
 		cd, _ := s.data.cooldown.get()
@@ -492,6 +498,16 @@ func (c *Calculator) warcry(db *ModDB, s *activeSkill, b *skillBuff, mainCfg *Cf
 }
 
 const buffExpirationSlowCap = 0.25 // Data.lua data.misc
+
+// debuffDurationMult is calcs.offence's debuffDurationMult
+// (CalcOffence.lua:1493-1496): 1 / the enemy's BuffExpireFaster, at least
+// BuffExpirationSlowCap, with env.mode_effective; 1 without.
+func debuffDurationMult(actor *ModDB, cfg *Cfg) float64 {
+	if !modeEffective(actor) {
+		return 1
+	}
+	return 1 / math.Max(buffExpirationSlowCap, calcMod(actor.enemy, cfg, "BuffExpireFaster"))
+}
 
 // skillDuration is calcSkillDuration (CalcOffence.lua).
 func skillDuration(list *ModDB, cfg *Cfg, data *skillData, enemy *ModDB) float64 {

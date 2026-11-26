@@ -378,6 +378,7 @@ func (c *Calculator) offence(actor *ModDB, s *activeSkill, w1 hitSource, w2 *hit
 			}
 		}
 	}
+	dropsBurningGround(actor, s, out)
 	skillDot(actor, s, out, dpsMult, quantity)
 	combinedDPS(s, out, passes, dpsMult, quantity)
 	return out

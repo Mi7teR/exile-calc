@@ -33,21 +33,26 @@ func skillDot(actor *ModDB, s *activeSkill, out map[string]float64, dpsMult, qua
 			continue
 		}
 		s.flags["dot"] = true
-		names := []string{"DamageTaken", "DamageTakenOverTime", t + "DamageTaken", t + "DamageTakenOverTime"}
-		inc := enemy.SumCfg(&taken, "INC", names...)
-		more := enemy.MoreCfg(&taken, names...)
-		if isElemental[t] {
-			inc += enemy.SumCfg(&taken, "INC", "ElementalDamageTaken")
-			more *= enemy.MoreCfg(&taken, "ElementalDamageTaken")
+		// CalcOffence.lua:5867-5883: the enemy's damage taken and
+		// resistance only with env.mode_effective.
+		effMult := 1.0
+		if modeEffective(actor) {
+			names := []string{"DamageTaken", "DamageTakenOverTime", t + "DamageTaken", t + "DamageTakenOverTime"}
+			inc := enemy.SumCfg(&taken, "INC", names...)
+			more := enemy.MoreCfg(&taken, names...)
+			if isElemental[t] {
+				inc += enemy.SumCfg(&taken, "INC", "ElementalDamageTaken")
+				more *= enemy.MoreCfg(&taken, "ElementalDamageTaken")
+			}
+			var resist float64
+			if t == "Physical" {
+				resist = math.Max(0, math.Min(enemy.Sum("BASE", "PhysicalDamageReduction"), enemyPhysicalDamageReductionCap))
+			} else {
+				resist = enemyResist(actor, &tc, t)
+			}
+			effMult = (1 - resist/100) * (1 + inc/100) * more
+			out[t+"DotEffMult"] = effMult
 		}
-		var resist float64
-		if t == "Physical" {
-			resist = math.Max(0, math.Min(enemy.Sum("BASE", "PhysicalDamageReduction"), enemyPhysicalDamageReductionCap))
-		} else {
-			resist = enemyResist(actor, &tc, t)
-		}
-		effMult := (1 - resist/100) * (1 + inc/100) * more
-		out[t+"DotEffMult"] = effMult
 		dmgNames := []string{"Damage", t + "Damage"}
 		if isElemental[t] {
 			dmgNames = append(dmgNames, "ElementalDamage")
@@ -134,9 +139,13 @@ func decay(actor *ModDB, s *activeSkill, out map[string]float64) {
 	dotCfg := *s.cfg
 	dotCfg.Flags = mfDot
 	dotCfg.KeywordFlags = s.cfg.KeywordFlags&^kfHit | kfDot["Chaos"]
-	names := []string{"DamageTaken", "DamageTakenOverTime", "ChaosDamageTaken", "ChaosDamageTakenOverTime"}
-	effMult := (1 - enemyResist(actor, &dotCfg, "Chaos")/100) * (1 + enemy.Sum("INC", names...)/100) * enemy.More(names...)
-	out["DecayEffMult"] = effMult
+	// CalcOffence.lua:5756-5762: only with env.mode_effective.
+	effMult := 1.0
+	if modeEffective(actor) {
+		names := []string{"DamageTaken", "DamageTakenOverTime", "ChaosDamageTaken", "ChaosDamageTakenOverTime"}
+		effMult = (1 - enemyResist(actor, &dotCfg, "Chaos")/100) * (1 + enemy.Sum("INC", names...)/100) * enemy.More(names...)
+		out["DecayEffMult"] = effMult
+	}
 	inc := list.SumCfg(&dotCfg, "INC", "Damage", "ChaosDamage")
 	more := list.MoreCfg(&dotCfg, "Damage", "ChaosDamage")
 	mult, ok := list.OverrideCfg(&dotCfg, "DotMultiplier")
@@ -144,7 +153,11 @@ func decay(actor *ModDB, s *activeSkill, out map[string]float64) {
 		mult = list.SumCfg(&dotCfg, "BASE", "DotMultiplier") + list.SumCfg(&dotCfg, "BASE", "ChaosDotMultiplier")
 	}
 	out["DecayDPS"] = base * (1 + inc/100) * more * (1 + mult/100) * effMult
-	out["DecayDuration"] = 8 / math.Max(buffExpirationSlowCap, calcMod(enemy, s.cfg, "BuffExpireFaster"))
+	// CalcOffence.lua:5772: 8 * debuffDurationMult.
+	out["DecayDuration"] = 8
+	if modeEffective(actor) {
+		out["DecayDuration"] = 8 / math.Max(buffExpirationSlowCap, calcMod(enemy, s.cfg, "BuffExpireFaster"))
+	}
 }
 
 // cullAndReservation is the culling and reservation DPS part of the damage
@@ -260,4 +273,34 @@ func combinedDPS(s *activeSkill, out map[string]float64, passes []*hitPass, dpsM
 	out["CullingDPS"] = out["CombinedDPS"] * (cull - 1)
 	out["ReservationDPS"] = out["CombinedDPS"] * (resMult - 1)
 	out["CombinedDPS"] *= cull * resMult
+}
+
+// dropsBurningGround is CalcOffence.lua:5788-5813: burning ground the
+// player drops (DropsBurningGround, on the actor's mod DB like its damage
+// mods), kept as BurningGroundDPS when it beats the ignite's.
+func dropsBurningGround(actor *ModDB, s *activeSkill, out map[string]float64) {
+	base := actor.Sum("BASE", "DropsBurningGround")
+	if base <= 0 || !canDeal(s, "Fire") {
+		return
+	}
+	dotCfg := &Cfg{Flags: mfDot}
+	typeCfg := &Cfg{Flags: mfDot, KeywordFlags: kfDot["Fire"]}
+	effMult := 1.0
+	if modeEffective(actor) {
+		enemy := actor.enemy
+		names := []string{"DamageTaken", "DamageTakenOverTime", "FireDamageTaken", "FireDamageTakenOverTime", "ElementalDamageTaken"}
+		resist := enemyResist(actor, typeCfg, "Fire")
+		effMult = (1 - resist/100) * (1 + enemy.SumCfg(dotCfg, "INC", names...)/100) * enemy.MoreCfg(dotCfg, names...)
+	}
+	inc := actor.SumCfg(typeCfg, "INC", "Damage", "FireDamage", "ElementalDamage")
+	more := actor.MoreCfg(typeCfg, "Damage", "FireDamage", "ElementalDamage")
+	mult, ok := actor.OverrideCfg(typeCfg, "DotMultiplier")
+	if !ok {
+		mult = actor.SumCfg(typeCfg, "BASE", "DotMultiplier") + actor.SumCfg(typeCfg, "BASE", "FireDotMultiplier")
+	}
+	total := base * (1 + inc/100) * more * (1 + mult/100) * effMult
+	if cur, has := out["BurningGroundDPS"]; !has || cur < total {
+		out["BurningGroundDPS"] = total
+		out["BurningGroundFromIgnite"] = 0
+	}
 }

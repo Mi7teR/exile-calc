@@ -171,6 +171,12 @@ func buffMode(db *ModDB) {
 	db.conditions["Effective"] = true
 }
 
+// modeEffective is env.mode_effective (CalcSetup.lua:583-599), which every
+// actor's Effective condition mirrors (CalcSetup.lua:134): true in MAIN and
+// CALCULATOR mode (buffMode "EFFECTIVE"); only the Calcs tab's other buff
+// modes clear it.
+func modeEffective(actor *ModDB) bool { return actor.conditions["Effective"] }
+
 // minionEquipmentConditions ports the equipment conditions of
 // doActorAttribsConditions (CalcPerform.lua:148-245) for env.minion
 // (CalcPerform.lua:1998): from its itemList and the types of its

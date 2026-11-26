@@ -97,7 +97,13 @@ func warcries(actor *ModDB, s *activeSkill, cfg *Cfg, out map[string]float64) {
 			}
 			areaOfEffect(s, out)
 		case "Intimidating":
-			dd := math.Min(list.SumCfg(cfg, "BASE", "DoubleDamageChance")+actor.enemy.SumCfg(cfg, "BASE", "SelfDoubleDamageChance")+exertDD, 100)
+			// CalcOffence.lua:2729: the enemy's SelfDoubleDamageChance only
+			// with env.mode_effective.
+			self := 0.0
+			if modeEffective(actor) {
+				self = actor.enemy.SumCfg(cfg, "BASE", "SelfDoubleDamageChance")
+			}
+			dd := math.Min(list.SumCfg(cfg, "BASE", "DoubleDamageChance")+self+exertDD, 100)
 			out["IntimidatingAvgDmg"] = 2 * (1 - dd/100)
 		case "Rallying":
 			avg := math.Min(player.SumCfg(cfg, "BASE", "Multiplier:NearbyAlly"), 5) * player.Sum("BASE", "RallyingExertMoreDamagePerAlly") / 100
