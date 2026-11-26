@@ -4,6 +4,9 @@ package modparser
 // registers its specialModList ports from an init function, keyed by the
 // Lua pattern as written in ModParser.lua.
 
+// cap5 is the fifth capture's position in a hook's arguments (see cap1).
+const cap5 = 5
+
 // ModFlag, KeywordFlag and SkillType values (Modules/Common.lua,
 // Data/Global.lua) used by the themed hooks.
 const (

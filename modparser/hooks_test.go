@@ -154,6 +154,34 @@ func TestHooks(t *testing.T) {
 		// "grants level (%d+) (.+) curse aura during f?l?a?s?k? ?effect"
 		"Grants Level 21 Despair Curse Aura during Effect": `[{"@list":[{"type":"Condition","var":"UsingFlask"}],"flags":0,"keywordFlags":0,
 			"name":"ExtraCurse","type":"LIST","value":{"level":21,"skillId":"Despair"}}]`,
+
+		// hooks_setitems.go
+		// "... skill gems if a?t? ?l?e?a?s?t? ?(%d+) (%a+) (%a+) items are equipped": two-word influence
+		"+2 to Level of all Cold Skill Gems if at least 4 Foulborn Unique Items are Equipped": `[{"@list":[{"threshold":4,"type":"MultiplierThreshold",
+			"var":"FoulbornUniqueItem"}],"flags":0,"keywordFlags":0,"name":"GemProperty","type":"LIST",
+			"value":{"key":"level","keyOfScaledMod":"value","keywordList":["cold","grants_active_skill"],"value":2}}]`,
+		// "... support gems if (%d+) (%a+) items are equipped"
+		"+1 to Level of all non-Exceptional Support Gems if 6 Shaper Items are Equipped": `[{"@list":[{"threshold":6,"type":"MultiplierThreshold",
+			"var":"ShaperItem"}],"flags":0,"keywordFlags":0,"name":"GemProperty","type":"LIST",
+			"value":{"key":"level","keyOfScaledMod":"value","keyword":"non-exceptional","value":1}}]`,
+		// "cannot be frozen if (%d+) (%a+) items are equipped" and the other flag forms
+		"Cannot be Frozen if 6 Redeemer Items are Equipped": `[{"@list":[{"threshold":6,"type":"MultiplierThreshold","var":"RedeemerItem"}],
+			"flags":0,"keywordFlags":0,"name":"FreezeImmune","type":"FLAG","value":true}]`,
+		// "projectiles pierce (%d+) additional targets if ...": the value stays a string, as in PoB
+		"Projectiles Pierce 2 additional Targets if 2 Hunter Items are Equipped": `[{"@list":[{"threshold":2,"type":"MultiplierThreshold","var":"HunterItem"}],
+			"flags":0,"keywordFlags":0,"name":"PierceCount","type":"BASE","value":"2"}]`,
+		// "unaffected by (.+) if (%d+) (%a+) items are equipped"
+		"Unaffected by Chill if 2 Redeemer Items are Equipped": `[{"@list":[{"threshold":2,"type":"MultiplierThreshold","var":"RedeemerItem"}],
+			"flags":0,"keywordFlags":0,"name":"SelfChillEffect","type":"MORE","value":-100}]`,
+		// "every (%d+) seconds, regenerate (%d+)%% of life over one second if ..."
+		"Every 4 seconds, Regenerate 35% of Life over one second if 2 Hunter Items are Equipped": `[
+			{"@list":[{"type":"Condition","var":"LifeRegenBurstFull"},{"threshold":2,"type":"MultiplierThreshold","var":"HunterItem"}],
+			"flags":0,"keywordFlags":0,"name":"LifeRegenPercent","type":"BASE","value":35},
+			{"@list":[{"type":"Condition","var":"LifeRegenBurstAvg"},{"threshold":2,"type":"MultiplierThreshold","var":"HunterItem"}],
+			"flags":0,"keywordFlags":0,"name":"LifeRegenPercent","type":"BASE","value":8.75}]`,
+		// "your hits ignore enemy monster (%a+) resistances? if all equipped rings are (%a+) rings"
+		"Your Hits ignore Enemy Monster Cold Resistances if all Equipped Rings are Cryonic Rings": `[{"@list":[{"threshold":2,
+			"type":"MultiplierThreshold","var":"CryonicRingEquipped"}],"flags":0,"keywordFlags":0,"name":"IgnoreColdResistance","type":"FLAG","value":true}]`,
 	}
 	p, err := PoE1()
 	if err != nil {
