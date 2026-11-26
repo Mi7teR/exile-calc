@@ -64,6 +64,16 @@ var hooks = map[string]Hook{
 		return []any{newMod("EnemyModifier", "LIST", map[string]any{"mod": withTags(newMod("DamageTaken", "INC", n, 0, 0),
 			map[string]any{"type": "Multiplier", "var": "ActiveMineCount", "limit": limit / n})}, 0, 0)}
 	},
+	// ["enemies permanently take (%d+)%% increased damage for each second they've ever been frozen by you, up to a maximum of (%d+)%%"] = function(num, _, limit) return {
+	//   mod("EnemyModifier", "LIST", { mod = mod("DamageTaken", "INC", num, { type = "Condition", var = "FrozenByYou" }, { type = "Multiplier", var = "FrozenByYouSeconds", limit = limit / num }) }) } end,
+	"specialModList[^enemies permanently take (%d+)%% increased damage for each second they've ever been frozen by you, up to a maximum of (%d+)%%$]": func(p *Parser, a []any) any {
+		return everBeenAilmentedTaken(a, "FrozenByYou")
+	},
+	// ["enemies permanently take (%d+)%% increased damage for each second they've ever been chilled by you, up to a maximum of (%d+)%%"] = function(num, _, limit) return {
+	//   mod("EnemyModifier", "LIST", { mod = mod("DamageTaken", "INC", num, { type = "Condition", var = "ChilledByYou" }, { type = "Multiplier", var = "ChilledByYouSeconds", limit = limit / num }) }) } end,
+	"specialModList[^enemies permanently take (%d+)%% increased damage for each second they've ever been chilled by you, up to a maximum of (%d+)%%$]": func(p *Parser, a []any) any {
+		return everBeenAilmentedTaken(a, "ChilledByYou")
+	},
 	// ["each mine applies (%d+)%% reduced damage dealt to enemies near it, up to (%d+)%%"] = function(num, _, limit) return {
 	//   mod("EnemyModifier", "LIST", { mod = mod("Damage", "INC", -num, { type = "Multiplier", var = "ActiveMineCount", limit = limit / num }) }) } end,
 	"specialModList[^each mine applies (%d+)%% reduced damage dealt to enemies near it, up to (%d+)%%$]": func(p *Parser, a []any) any {
@@ -385,6 +395,17 @@ var hooks = map[string]Hook{
 			withTags(newMod(firstToUpper(argS(a, 1))+"ExposureChance", "BASE", 100.0, 0, 0), effective),
 			withTags(newMod("EnemyModifier", "LIST", map[string]any{"mod": newMod(firstToUpper(argS(a, 3))+"Exposure", "BASE", -n, 0, 0)}, 0, 0), effective),
 		}
+	},
+	// ["while a unique enemy is in your presence, inflict (%w+) exposure on hit, applying %-(%d+)%% to (%w+) resistance"] = function(_, element1,  num, element2) return {
+	//   mod( firstToUpper(element1).."ExposureChance", "BASE", 100, { type = "ActorCondition", actor = "enemy", var = "RareOrUnique" }, { type = "Condition", var = "Effective" }),
+	//   mod("EnemyModifier", "LIST", { mod = mod(firstToUpper(element2).."Exposure", "BASE", -num, { type = "Condition", var = "RareOrUnique" }) }, { type = "Condition", var = "Effective" }),
+	// } end
+	"specialModList[^while a unique enemy is in your presence, inflict (%w+) exposure on hit, applying %-(%d+)%% to (%w+) resistance$]": func(p *Parser, a []any) any {
+		return presenceExposure(a, "RareOrUnique")
+	},
+	// ["while a pinnacle atlas boss is in your presence, inflict (%w+) exposure on hit, applying %-(%d+)%% to (%w+) resistance"]: the same with PinnacleBoss.
+	"specialModList[^while a pinnacle atlas boss is in your presence, inflict (%w+) exposure on hit, applying %-(%d+)%% to (%w+) resistance$]": func(p *Parser, a []any) any {
+		return presenceExposure(a, "PinnacleBoss")
 	},
 	// ["with at least one nearby corpse, nearby enemies deal (%d+)%% reduced damage"] = function(num) return {
 	//   mod("EnemyModifier", "LIST", { mod = mod("Damage", "INC", -num) }, { type = "MultiplierThreshold", var = "NearbyCorpse", threshold = 1 }) } end
@@ -1625,3 +1646,30 @@ func reflectedTaken(name string, a []any, minions bool) []any {
 
 // condTag is { type = "Condition", var = v }.
 func condTag(v string) map[string]any { return map[string]any{"type": "Condition", "var": v} }
+
+// everBeenAilmentedTaken is the Lua body of the "enemies permanently take
+// (%d+)%% increased damage for each second they've ever been frozen/chilled
+// by you" lines (ModParser.lua specialModList): cond is FrozenByYou or
+// ChilledByYou, the multiplier is cond.."Seconds", limited to limit / num.
+func everBeenAilmentedTaken(a []any, cond string) any {
+	n, _ := toNumber(arg(a, 0)).(float64)
+	limit, _ := toNumber(argS(a, 2)).(float64)
+	return []any{newMod("EnemyModifier", "LIST", map[string]any{"mod": withTags(newMod("DamageTaken", "INC", n, 0, 0),
+		map[string]any{"type": "Condition", "var": cond},
+		map[string]any{"type": "Multiplier", "var": cond + "Seconds", "limit": limit / n})}, 0, 0)}
+}
+
+// presenceExposure is the Lua body of the "while a unique enemy / pinnacle
+// atlas boss is in your presence, inflict X exposure on hit" lines
+// (ModParser.lua specialModList): the chance needs the enemy condition, the
+// exposure the same condition on the enemy.
+func presenceExposure(a []any, cond string) any {
+	n, _ := toNumber(argS(a, 2)).(float64)
+	effective := map[string]any{"type": "Condition", "var": "Effective"}
+	return []any{
+		withTags(newMod(firstToUpper(argS(a, 1))+"ExposureChance", "BASE", 100.0, 0, 0),
+			map[string]any{"type": "ActorCondition", "actor": "enemy", "var": cond}, effective),
+		withTags(newMod("EnemyModifier", "LIST", map[string]any{"mod": withTags(newMod(firstToUpper(argS(a, 3))+"Exposure", "BASE", -n, 0, 0),
+			map[string]any{"type": "Condition", "var": cond})}, 0, 0), effective),
+	}
+}
