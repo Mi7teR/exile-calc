@@ -208,6 +208,11 @@ type skillEffect struct {
 	fromItem         bool // set on supports granted by items (ExtraSupport)
 	appliesToGranted bool
 	actorLevel       float64 // activeEffect.actorLevel: the minion's level for minion skills
+	// srcTriggered and srcTriggerChance are srcInstance.triggered and
+	// triggerChance: the ExtraSkill mod's fields for a skill granted by an
+	// item or a node (CalcSetup.lua:1556-1557).
+	srcTriggered     bool
+	srcTriggerChance float64
 }
 
 // skillBuff is an entry of activeSkill.buffList.

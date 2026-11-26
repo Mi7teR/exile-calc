@@ -405,6 +405,9 @@ func (c *Calculator) setupSkills(db *ModDB, b *pobcode.Build, useSwap bool, res 
 					continue
 				}
 				eff := newEffect(gc, gi, gm, gem, eid, ge)
+				if g.Source != "" && gi == 0 {
+					eff.srcTriggered, eff.srcTriggerChance = grantedTrigger(db, g, eid)
+				}
 				applied := append([]*skillEffect(nil), supports[i]...)
 				if g.Source != "" && gc.cfg.SlotName != "" {
 					// Skills granted by an item take the supports of every group in its slot.
@@ -587,6 +590,24 @@ func (c *Calculator) createActiveSkill(active *skillEffect, supports []*skillEff
 		}
 	}
 	return s
+}
+
+// grantedTrigger is the triggered and triggerChance fields of the
+// ExtraSkill mod granting skill id to the group (grantedSkill.source ==
+// socketGroup.source, CalcSetup.lua:1527).
+func grantedTrigger(db *ModDB, g *pobcode.SocketGroup, id string) (bool, float64) {
+	for _, e := range db.List(nil, "ExtraSkill") {
+		if e.Mod.Source != g.Source {
+			continue
+		}
+		v, _ := e.Value.(map[string]any)
+		if sid, _ := v["skillId"].(string); sid == id {
+			t, _ := v["triggered"].(bool)
+			ch, _ := num(v["triggerChance"])
+			return t, ch
+		}
+	}
+	return false, 0
 }
 
 // treeGrants reports whether a tree-sourced group's skill is granted by an

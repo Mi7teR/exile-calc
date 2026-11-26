@@ -35,11 +35,15 @@ type triggerConfig struct {
 	source    *activeSkill
 	sourceOut map[string]float64
 	trigRate  float64
+	// triggerName is config.triggerName: the infoTrigger label when the
+	// config sets its own.
+	triggerName string
 }
 
+// isTriggered is isTriggered (CalcTriggers.lua:41-43).
 func isTriggered(s *activeSkill) bool {
 	return truthy(s.data.val("triggeredByUnique")) || truthy(s.data.val("triggered")) ||
-		s.types[stInbuiltTrigger] || s.types[stTriggered]
+		s.types[stInbuiltTrigger] || s.types[stTriggered] || s.active.srcTriggered
 }
 
 // triggeredBy is activeSkill.triggeredBy: the trigger support (isTrigger
@@ -118,6 +122,34 @@ var triggerConfigs = map[string]func(db *ModDB, main *activeSkill) *triggerConfi
 					!truthy(s.data.val("triggeredBySpellSlinger"))
 			}}
 	},
+	// CalcTriggers.lua:976-987: Rain of Arrows triggered by (Replica)
+	// Lioneye's Paws gets a 1 second cooldown and bow attacks as sources.
+	"lioneye's paws":         lioneyesPaws,
+	"replica lioneye's paws": lioneyesPaws,
+	// CalcTriggers.lua:1196-1210: a global trigger without a source search;
+	// nil (the next name is tried) when the skill has no damage threshold.
+	"cast when damage taken": func(db *ModDB, main *activeSkill) *triggerConfig {
+		th, ok := main.data.val("triggeredByDamageTaken").(float64)
+		if !ok || th == 0 {
+			return nil
+		}
+		db.output["CWDTThreshold"] = th * calcMod(main.mods, nil, "CWDTThreshold")
+		return &triggerConfig{selfSource: true}
+	},
+	// CalcTriggers.lua:1311-1314.
+	"tempest shield": func(*ModDB, *activeSkill) *triggerConfig {
+		return &triggerConfig{selfSource: true}
+	},
+	// CalcTriggers.lua:1382-1387.
+	"shockwave":      meleeSlotTrigger,
+	"void shockwave": meleeSlotTrigger,
+	// CalcTriggers.lua:1399-1403; the mana spent rate is in defaultTrigger.
+	"manaforged arrows": func(*ModDB, *activeSkill) *triggerConfig {
+		return &triggerConfig{triggerOnUse: true, triggerName: "Manaforged Arrows",
+			triggerSkillCond: func(_, s *activeSkill) bool {
+				return s.types[stAttack] && s.cfg.Flags&modFlagByName["Bow"] > 0
+			}}
+	},
 	"cast on critical strike": func(*ModDB, *activeSkill) *triggerConfig {
 		return &triggerConfig{
 			triggerSkillCond: func(main, s *activeSkill) bool { return s.types[stAttack] && slotMatch(main, s) },
@@ -125,6 +157,20 @@ var triggerConfigs = map[string]func(db *ModDB, main *activeSkill) *triggerConfi
 				return truthy(s.data.val("triggeredByCoc")) && slotMatch(main, s)
 			}}
 	},
+}
+
+func lioneyesPaws(_ *ModDB, main *activeSkill) *triggerConfig {
+	main.data.cooldown = optF{1, true}
+	return &triggerConfig{triggerOnUse: true,
+		triggerSkillCond: func(_, s *activeSkill) bool {
+			return s.types[stAttack] && s.cfg.Flags&modFlagByName["Bow"] > 0
+		}}
+}
+
+func meleeSlotTrigger(*ModDB, *activeSkill) *triggerConfig {
+	return &triggerConfig{
+		triggerSkillCond: func(main, s *activeSkill) bool { return s.types[stMelee] && slotMatch(main, s) },
+	}
 }
 
 var sourceItemRe = regexp.MustCompile(`^.*:.*:(.*),.*$`)
@@ -220,7 +266,6 @@ func (c *Calculator) triggers(db *ModDB, main *activeSkill, w1 hitSource, w2 *hi
 	if main.disabled {
 		return
 	}
-	var cfgFn func(*ModDB, *activeSkill) *triggerConfig
 	by := triggeredBy(main)
 	names := []string{strings.ToLower(main.active.ge.Name)}
 	if by != nil {
@@ -233,12 +278,6 @@ func (c *Calculator) triggers(db *ModDB, main *activeSkill, w1 hitSource, w2 *hi
 		}
 	}
 	for _, n := range names {
-		if f := triggerConfigs[n]; f != nil {
-			cfgFn = f
-			break
-		}
-	}
-	for _, n := range names {
 		if n == "cast while channelling" {
 			c.cwcTrigger(db, main)
 			return
@@ -248,11 +287,25 @@ func (c *Calculator) triggers(db *ModDB, main *activeSkill, w1 hitSource, w2 *hi
 			return
 		}
 	}
-	if cfgFn == nil {
+	// config = config or configTable[name](env): a config function that
+	// returns nil falls through to the next name (CalcTriggers.lua:1627-1631).
+	var cfg *triggerConfig
+	for _, n := range names {
+		if f := triggerConfigs[n]; f != nil {
+			if cfg = f(db, main); cfg != nil {
+				break
+			}
+		}
+	}
+	if cfg == nil {
 		main.data.del("triggered")
 		return
 	}
-	c.defaultTrigger(db, main, by, cfgFn(db, main), w1, w2)
+	// config.triggerChance = config.triggerChance or srcInstance.triggerChance.
+	if cfg.triggerChance == 0 {
+		cfg.triggerChance = main.active.srcTriggerChance
+	}
+	c.defaultTrigger(db, main, by, cfg, w1, w2)
 }
 
 func (c *Calculator) defaultTrigger(db *ModDB, main *activeSkill, by *skillEffect, cfg *triggerConfig, w1 hitSource, w2 *hitSource) {
@@ -301,17 +354,20 @@ func (c *Calculator) defaultTrigger(db *ModDB, main *activeSkill, by *skillEffec
 	}
 	main.data.set("triggered", true)
 	// defaultTriggerHandler: infoTrigger = config.triggerName, which
-	// calcs.triggers defaults to triggeredBy's name, else the skill's (no
-	// ported config sets its own).
+	// calcs.triggers defaults to triggeredBy's name, else the skill's.
 	main.infoTrigger = main.active.ge.Name
 	if by != nil {
 		main.infoTrigger = by.ge.Name
+	}
+	if cfg.triggerName != "" {
+		main.infoTrigger = cfg.triggerName
 	}
 	if w2 != nil && main.weapons[0] != "" && main.weapons[1] != "" &&
 		!truthy(source.data.val("doubleHitsWhenDualWielding")) &&
 		(source.types[stMelee] || source.types[stAttack]) && by != nil && by.ge.FromItem {
 		trigRate /= 2
 	}
+	trigRate = c.manaforgedRate(db, main, sourceOut, trigRate, w1, w2)
 	ignoresTick := truthy(main.data.val("ignoresTickRate")) || main.data.storedUses.or(0) > 1
 	icdr := calcMod(main.mods, main.cfg, "CooldownRecovery")
 	if icdr == 0 {
@@ -406,6 +462,36 @@ func (c *Calculator) defaultTrigger(db *ModDB, main *activeSkill, by *skillEffec
 			main.mods.Add(Mod{Name: "Damage", Type: typ, Value: m.Value, Flags: m.Flags, KeywordFlags: m.KeywordFlags, Source: m.Source, Tags: m.Tags})
 		}
 	}
+}
+
+// manaforgedRate is the Manaforged Arrows part of defaultTriggerHandler
+// (CalcTriggers.lua:228-263): the source rate divided by the source uses
+// needed to spend the threshold, a multiple of the triggered skill's own
+// mana cost (from a calculation with the skill as the main skill and no
+// trigger); 0 when the source costs no mana.
+func (c *Calculator) manaforgedRate(
+	db *ModDB,
+	main *activeSkill,
+	sourceOut map[string]float64,
+	trigRate float64,
+	w1 hitSource,
+	w2 *hitSource,
+) float64 {
+	if !truthy(main.data.val("triggeredByManaforged")) || trigRate <= 0 {
+		return trigRate
+	}
+	cp := cloneSkill(main)
+	cp.data.del("triggered")
+	triggeredCost := c.offenceOnCopy(db, cp, w1, w2)["ManaCostRaw"]
+	if triggeredCost <= 0 {
+		return trigRate
+	}
+	threshold := triggeredCost * numOr(main.data.val("ManaForgedArrowsPercentThreshold"), 0)
+	sourceCost := sourceOut["ManaCostRaw"]
+	if sourceCost <= 0 {
+		return 0
+	}
+	return trigRate / math.Ceil(threshold/sourceCost)
 }
 
 // doomBlastSourceRate is the Doom Blast part of the default trigger
