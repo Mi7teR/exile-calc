@@ -518,8 +518,10 @@ func redirectAddedDamage(list *ModDB, cfg *Cfg) {
 // sustainableStages is the rest of CalcPerform.lua's "maximum sustainable
 // stages" block, from the skill's cached Speed, HitSpeed and Duration
 // (getCachedOutputValue; the cached run has no stage mods of its own, and
-// these do not depend on them): Blight's channelled stages, Penance Brand
-// of Dissipation's ticks and Scorching Ray's maximum, on skill part 2.
+// these do not depend on them): Blight's channelled stages and Penance
+// Brand of Dissipation's ticks, on skill part 2. PoB sets them on every
+// active skill; here only the skill being calculated gets them (Scorching
+// Ray's: scorchingRayStages).
 func sustainableStages(s *activeSkill, out map[string]float64) {
 	if s.part != 2 {
 		return
@@ -537,8 +539,20 @@ func sustainableStages(s *activeSkill, out map[string]float64) {
 	case "Penance Brand of Dissipation":
 		// HitSpeed is the brand's activation frequency.
 		set(math.Max(math.Min(math.Floor(out["HitSpeed"]*out["Duration"])-1, 19), 0))
-	case "Scorching Ray", "Scorching Ray of Immolation":
-		set(7)
+	}
+}
+
+// scorchingRayStages is Scorching Ray's part of CalcPerform.lua's "maximum
+// sustainable stages" block: on skill part 2 every active skill, not only
+// the main one, gets the 7 stages before the buff loop, so its Fire
+// Exposure debuff (effectCond ScorchingRayMaxStages) applies.
+func scorchingRayStages(skills []*activeSkill) {
+	for _, s := range skills {
+		if name := s.active.ge.Name; !s.disabled && s.part == 2 && (name == "Scorching Ray" || name == "Scorching Ray of Immolation") {
+			stage := "Multiplier:" + strings.Join(strings.Fields(name), "")
+			s.mods.NewMod(stage+"MaxStages", "BASE", 7, "Base")
+			s.mods.NewMod(stage+"StageAfterFirst", "BASE", 7, "Base")
+		}
 	}
 }
 

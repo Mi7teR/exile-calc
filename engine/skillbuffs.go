@@ -112,6 +112,7 @@ func mergeBuff(src []Mod, dest map[string][]Mod, key string) {
 // applyBuffs ports the player's Buff and Aura branches of calcs.perform
 // and adds the merged buffs to the ModDB.
 func (c *Calculator) applyBuffs(db *ModDB, skills []*activeSkill, res *Result) ([]*enemyCurse, map[string][]Mod) {
+	scorchingRayStages(skills)
 	var curses []*enemyCurse
 	buffs := map[string][]Mod{}
 	warcries := map[string]bool{}
