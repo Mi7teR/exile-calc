@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/Mi7teR/poe-lib/gamedata"
+	"github.com/Mi7teR/poe-lib/pobcode"
 )
 
 // tickRate is 1 / the cooldown v rounded up to server ticks.
@@ -163,6 +164,35 @@ func TestCastOnDeathTrigger(t *testing.T) {
 	if !truthy(s.data.val("triggered")) || !s.flags["globalTrigger"] || s.data.val("triggerRate") != nil {
 		t.Errorf("triggered %v globalTrigger %v rate %v", s.data.val("triggered"), s.flags["globalTrigger"],
 			s.data.val("triggerRate"))
+	}
+
+	// The skill's time is the minute trigger time (CalcPerform.lua:1484)
+	// over its cooldown recovery: a Cast on Death Fireball as the main skill.
+	c := newCalc(t)
+	b := corpusBuild(t, "HBcW_8Hvft-z")
+	var gems []pobcode.Gem
+	for _, name := range []string{"Fireball", "Cast on Death"} {
+		for id, g := range c.data.Gems {
+			if g.Name == name {
+				gems = append(gems, pobcode.Gem{NameSpec: name, GemID: id, SkillID: g.GrantedEffectID, Level: 20,
+					Enabled: true, EnableGlobal1: true, EnableGlobal2: true, Count: 1})
+			}
+		}
+	}
+	set := b.ActiveSkills()
+	set.Groups = append(set.Groups, pobcode.SocketGroup{Enabled: true, Gems: gems})
+	b.MainSocketGroup = len(set.Groups)
+	res, err := c.Calc(b)
+	if err != nil {
+		t.Fatal(err)
+	}
+	m := res.main
+	if m == nil || m.active.ge.Name != "Fireball" || !truthy(m.data.val("triggered")) {
+		t.Fatalf("main %v", m)
+	}
+	want := 60000 / (1 + m.mods.SumCfg(m.cfg, "INC", "CooldownRecovery")/100)
+	if got := res.Stats["Time"]; math.Abs(got-want) > 1e-9 || math.Abs(res.Stats["Speed"]-1/want) > 1e-15 {
+		t.Errorf("Time %v Speed %v, want %v %v", got, res.Stats["Speed"], want, 1/want)
 	}
 }
 

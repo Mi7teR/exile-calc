@@ -644,6 +644,10 @@ func (mc *minionCalc) misc(db *ModDB) {
 // after the player's offence.
 func (c *Calculator) minionDefence(db *ModDB, mc *minionCalc) {
 	mdb := mc.mdb
+	// CalcPerform.lua:3837-3839: before calcs.defence(env, env.minion).
+	if db.Flag("MinionsGainYourSpellSuppressionChance") {
+		mdb.NewMod("SpellSuppressionChance", "BASE", db.output["SpellSuppressionChance"], "Player")
+	}
 	// CalcDefence.lua: the player's ResistanceAddedToMinions (Bonemeld)
 	// gives the minion that share of the player's final resistances.
 	if db.Sum("BASE", "ResistanceAddedToMinions") > 0 {

@@ -1008,8 +1008,9 @@ func (c *Calculator) focusTrigger(db *ModDB, main *activeSkill, by *skillEffect)
 
 // triggeredOnDeath is the Cast on Death part of calcs.perform's skill loop
 // (CalcPerform.lua:1475-1483): a player skill triggered on death is
-// triggered, and its TriggeredDamage, with env.player.mainSkill's cfg,
-// applies as Damage.
+// triggered, its TriggeredDamage, with env.player.mainSkill's cfg,
+// applies as Damage, and its trigger time is a minute (1484, in ms as PoB
+// writes it: "any large value would do").
 func triggeredOnDeath(skills []*activeSkill) {
 	pm := mainSkill(skills)
 	if pm == nil {
@@ -1021,6 +1022,7 @@ func triggeredOnDeath(skills []*activeSkill) {
 		}
 		s.data.set("triggered", true)
 		addTriggerIncMoreMods(s, pm)
+		s.data.set("triggerTime", 60.0*1000) //nolint:mnd // CalcPerform.lua:1484
 	}
 }
 
