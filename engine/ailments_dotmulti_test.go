@@ -2,6 +2,7 @@ package engine
 
 import (
 	"math"
+	"strings"
 	"testing"
 
 	"github.com/Mi7teR/poe-lib/pobcode"
@@ -58,5 +59,69 @@ func TestBleedStacksMaxZero(t *testing.T) {
 	}
 	if got := res.Stats["BleedDPS"]; got != 0 {
 		t.Errorf("BleedDPS %v, want 0", got)
+	}
+}
+
+// TestDualWieldAilmentCritChance pins which crit chance the ailment section
+// reads for a dual-wield attack whose hands crit differently. Inside the
+// per-pass ailment loop (CalcOffence.lua:4208) PoB reads the pass's
+// output.CritChance for the ailment chance, ailmentCritChance and
+// calcAilmentDamage (4488, 4614, 4761, 4887-4889), but the combined
+// globalOutput.CritChance for the non-crit share of the DotMulti weighting
+// (4648 bleed, 4945-4946 poison, 5341 ignite). Synthetic variant of
+// Ne3GCl-EkKEi (Viper Strike, two Wasp Nests): the off hand's Wasp Nest has 250%
+// instead of 20% increased Critical Strike Chance, plus custom bleed mods.
+// The want values are the oracle's output.MainHand/OffHand (PoB v2.68.1).
+func TestDualWieldAilmentCritChance(t *testing.T) {
+	c := newCalc(t)
+	b := corpusBuild(t, "Ne3GCl-EkKEi")
+	it := b.Item(b.ActiveItems().SlotItem("Weapon 2"))
+	raw := strings.Replace(it.Raw, "20% increased Critical Strike Chance", "250% increased Critical Strike Chance", 1)
+	if raw == it.Raw {
+		t.Fatal("off hand crit line not found")
+	}
+	it.Raw = raw
+	cfg := b.ActiveConfig()
+	for _, m := range []string{
+		"+40% to Damage over Time Multiplier for Bleeding from Critical Strikes",
+		"25% chance to cause Bleeding on Hit",
+	} {
+		cfg.CustomMods = append(cfg.CustomMods, pobcode.CustomModBlock{Enabled: true, Text: m})
+	}
+	var passes []*hitPass
+	debugPasses = func(ps []*hitPass) {
+		if len(ps) == 2 {
+			passes = ps
+		}
+	}
+	defer func() { debugPasses = nil }()
+	res, err := c.calc(b, calcOpts{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.main == nil || res.main.active.ge.Name != "Viper Strike" || len(passes) != 2 {
+		t.Fatalf("main skill is not a dual-wield Viper Strike")
+	}
+	if got := res.Stats["CritChance"]; math.Abs(got-25.775) > 1e-9 {
+		t.Errorf("CritChance %v, want 25.775", got)
+	}
+	for i, want := range []map[string]float64{{
+		"CritChance":     13.49,
+		"BleedDotMulti":  1.4663125226682, // 1.5 x (1 - 0.25775) share vs 1.9 x per-pass ailmentCritChance
+		"BleedDPS":       6614.5407783632,
+		"PoisonDotMulti": 1.738875, // both hands: globalOutput.CritChance only
+		"PoisonDPS":      113311.86145924,
+	}, {
+		"CritChance":     38.06,
+		"BleedDotMulti":  1.5154590145978,
+		"BleedDPS":       7172.9984992811,
+		"PoisonDotMulti": 1.738875,
+		"PoisonDPS":      120853.9397896,
+	}} {
+		for stat, w := range want {
+			if got := passes[i].out[stat]; math.Abs(got-w) > 1e-6*math.Max(1, math.Abs(w)) {
+				t.Errorf("%s %s: %v, want %v", passes[i].label, stat, got, w)
+			}
+		}
 	}
 }
