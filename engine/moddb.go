@@ -200,6 +200,11 @@ func (db *ModDB) MoreCfg(cfg *Cfg, names ...string) float64 {
 func (db *ModDB) moreInternal(ctx *ModDB, cfg *Cfg, names []string) float64 {
 	result := 1.0
 	var limits map[string]float64
+	// ModDB.lua MoreInternal: modPrecision is the highest
+	// data.highPrecisionMods precision of the mods seen so far in this
+	// call; once set, the product is floored to it instead of each name's
+	// factor being rounded to 2 places.
+	precision := -1
 	for _, name := range names {
 		mod := 1.0
 		for i := range db.mods[name] {
@@ -208,15 +213,24 @@ func (db *ModDB) moreInternal(ctx *ModDB, cfg *Cfg, names []string) float64 {
 				continue
 			}
 			v, ok := ctx.eval(m, cfg)
-			if f, isNum := num(v); ok && isNum {
-				if !db.isList {
-					f = globalLimit(m, f, &limits)
-				}
-				mod *= 1 + f/100
+			f, isNum := num(v)
+			if !ok || !isNum {
+				f = 0 // EvalMod(...) or 0
+			}
+			if !db.isList {
+				f = globalLimit(m, f, &limits)
+			}
+			mod *= 1 + f/100
+			if hp, has := highPrecisionMods[[2]string{m.Name, "MORE"}]; has {
+				precision = max(precision, hp)
 			}
 		}
-		// data.highPrecisionMods is not ported: every name rounds to 2 places.
-		result *= round(mod, 2)
+		if precision >= 0 {
+			p := math.Pow(10, float64(precision))
+			result = math.Floor(result*mod*p) / p
+		} else {
+			result *= round(mod, 2)
+		}
 	}
 	if db.parent != nil {
 		result *= db.parent.moreInternal(ctx, cfg, names)
