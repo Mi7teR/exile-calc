@@ -231,7 +231,10 @@ func (p *Parser) scan(line, table string) (any, string, []string, bool) {
 			}
 			end = start + len(e.pattern)
 		} else {
-			m := e.re.FindStringSubmatchIndex(lower)
+			if e.re.lit != "" && !strings.Contains(lower, e.re.lit) {
+				continue // the pattern cannot match (requiredLiteral)
+			}
+			m := e.re.get().FindStringSubmatchIndex(lower)
 			if m == nil {
 				continue
 			}

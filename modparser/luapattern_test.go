@@ -2,6 +2,9 @@ package modparser
 
 import (
 	"reflect"
+	"regexp/syntax"
+	"sort"
+	"strings"
 	"testing"
 )
 
@@ -46,5 +49,62 @@ func TestTranslateLuaPattern(t *testing.T) {
 	}
 	if _, err := translateLuaPattern(`%b()`); err == nil {
 		t.Error("percent-b must be rejected")
+	}
+}
+
+func TestRequiredLiteral(t *testing.T) {
+	cases := []struct{ pat, want string }{
+		{`^(%d+)%% increased`, "% increased"},
+		{`^([%+%-][%d%.]+)%%? to`, " to"},
+		{`adds (%d+) to (%d+) (%a+) damage`, " damage"},
+		{`(.-) and (.+)`, " and "},
+		{`^removes? ([%d%.]+) ?o?f? ?y?o?u?r?`, "remove"},
+		{`^axe attacks [hd][ae][va][el] `, "axe attacks "},
+		{`ab+c`, "a"}, // "b+" is not one "b": no "abc" run
+		{`(fire) damage`, " damage"},
+		{`^%a+$`, ""},
+		{`[^%d]+`, ""},
+		{`a.b`, "a"},
+	}
+	for _, c := range cases {
+		expr, err := luaPatternExpr(c.pat)
+		if err != nil {
+			t.Fatal(err)
+		}
+		re, err := syntax.Parse(expr, syntax.Perl)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := requiredLiteral(re); got != c.want {
+			t.Errorf("%q: got %q, want %q", c.pat, got, c.want)
+		}
+	}
+}
+
+// TestRequiredLiteralHolds checks the prefilter against the real tables:
+// whenever a pattern matches a corpus line, its literal is in the line.
+func TestRequiredLiteralHolds(t *testing.T) {
+	if testing.Short() {
+		t.Skip("runs every pattern over a corpus sample")
+	}
+	p := freshParser(t)
+	cache := loadModCache(t)
+	lines := make([]string, 0, len(cache))
+	for l := range cache {
+		lines = append(lines, asciiLower(l)+" ")
+	}
+	sort.Strings(lines)
+	for i := 0; i < len(lines); i += 20 {
+		for name, tbl := range p.t.t {
+			for j := range tbl {
+				e := &tbl[j]
+				if e.re == nil || e.re.lit == "" {
+					continue
+				}
+				if e.re.get().MatchString(lines[i]) && !strings.Contains(lines[i], e.re.lit) {
+					t.Errorf("%s %q matches %q without its literal %q", name, e.pattern, lines[i], e.re.lit)
+				}
+			}
+		}
 	}
 }

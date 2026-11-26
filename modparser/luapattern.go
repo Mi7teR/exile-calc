@@ -3,7 +3,10 @@ package modparser
 import (
 	"fmt"
 	"regexp"
+	"regexp/syntax"
+	"slices"
 	"strings"
+	"unicode/utf8"
 )
 
 // Lua pattern classes (Lua 5.1 manual, 5.4.1) as RE2 character class bodies.
@@ -16,27 +19,38 @@ var luaClasses = map[byte]string{
 // ModParser.lua uses classes (%d, %a, ...), sets, the lazy "-" quantifier,
 // captures and anchors; %b, %f and back-references are rejected.
 func translateLuaPattern(p string) (*regexp.Regexp, error) {
+	expr, err := luaPatternExpr(p)
+	if err != nil {
+		return nil, err
+	}
+	return regexp.Compile(expr)
+}
+
+// luaPatternExpr is translateLuaPattern's regexp source, not compiled.
+//
+//nolint:gocognit // the translator moved verbatim out of translateLuaPattern
+func luaPatternExpr(p string) (string, error) {
 	var b strings.Builder
 	for i := 0; i < len(p); i++ {
 		c := p[i]
 		switch {
 		case c == '%':
 			if i+1 >= len(p) {
-				return nil, fmt.Errorf("lua pattern %q: ends with %%", p)
+				return "", fmt.Errorf("lua pattern %q: ends with %%", p)
 			}
 			i++
 			n := p[i]
 			if cls, ok := luaClass(n); ok {
 				b.WriteString(cls)
 			} else if n == 'b' || n == 'f' || (n >= '0' && n <= '9') {
-				return nil, fmt.Errorf("lua pattern %q: %%%c is not supported", p, n)
+				return "", fmt.Errorf("lua pattern %q: %%%c is not supported", p, n)
 			} else {
 				b.WriteString(regexp.QuoteMeta(string(n)))
 			}
 		case c == '[':
 			j, set, err := luaSet(p, i)
 			if err != nil {
-				return nil, err
+				return "", err
 			}
 			b.WriteString(set)
 			i = j
@@ -73,7 +87,67 @@ func translateLuaPattern(p string) (*regexp.Regexp, error) {
 			b.WriteString(regexp.QuoteMeta(string(c)))
 		}
 	}
-	return regexp.Compile(b.String())
+	return b.String(), nil
+}
+
+// requiredLiteral returns the longest text every match of re must contain,
+// "" when there is none. scan skips a pattern whose literal is not in the
+// line: the regexp could not match it, so the result is the same.
+func requiredLiteral(re *syntax.Regexp) string {
+	best := ""
+	keep := func(s string) {
+		if len(s) > len(best) {
+			best = s
+		}
+	}
+	var walk func(re *syntax.Regexp)
+	walk = func(re *syntax.Regexp) {
+		switch re.Op {
+		case syntax.OpLiteral:
+			keep(literalText(re))
+		case syntax.OpCapture, syntax.OpPlus:
+			walk(re.Sub[0])
+		case syntax.OpRepeat:
+			if re.Min >= 1 {
+				walk(re.Sub[0])
+			}
+		case syntax.OpConcat:
+			// Adjacent literals are adjacent in every match.
+			run := ""
+			for _, sub := range re.Sub {
+				if sub.Op == syntax.OpLiteral {
+					if t := literalText(sub); t != "" || len(sub.Rune) == 0 {
+						run += t
+						continue
+					}
+				}
+				keep(run)
+				run = ""
+				walk(sub)
+			}
+			keep(run)
+		case syntax.OpNoMatch, syntax.OpEmptyMatch, syntax.OpCharClass, syntax.OpAnyCharNotNL, syntax.OpAnyChar,
+			syntax.OpBeginLine, syntax.OpEndLine, syntax.OpBeginText, syntax.OpEndText, syntax.OpWordBoundary,
+			syntax.OpNoWordBoundary, syntax.OpStar, syntax.OpQuest, syntax.OpAlternate:
+			// Classes, anchors, alternations and parts that may repeat zero
+			// times require no text.
+		}
+	}
+	walk(re)
+	return best
+}
+
+// literalText is the text of an OpLiteral node, "" when it is not plain
+// text: a case-folded literal, or one with U+FFFD, which also matches an
+// invalid byte that a substring search would not find.
+func literalText(re *syntax.Regexp) string {
+	if re.Flags&syntax.FoldCase != 0 {
+		return ""
+	}
+	if slices.Contains(re.Rune, utf8.RuneError) {
+		return ""
+	}
+	return string(re.Rune)
 }
 
 func luaClass(n byte) (string, bool) {
