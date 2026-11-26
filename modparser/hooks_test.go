@@ -269,6 +269,42 @@ func TestHooks(t *testing.T) {
 		// "offering skills have (%d+)%% reduced duration"
 		"Offering Skills have 50% reduced Duration": `[{"@list":[{"skillNameList":["Bone Offering","Flesh Offering","Spirit Offering","Blood Offering"],
 			"type":"SkillName"}],"flags":0,"keywordFlags":0,"name":"Duration","type":"INC","value":-50}]`,
+
+		// hooks_defence.go
+		// "(%d+)%% chance to defend with (%d+)%% of armour for each time you've been hit by an enemy recently, up to (%d+)%%"
+		"5% chance to Defend with 200% of Armour for each time you've been Hit by an Enemy Recently, up to 30%": `[
+			{"@list":[{"type":"Condition","var":"ArmourMax"}],"flags":0,"keywordFlags":0,"name":"ArmourDefense","source":"Armour Mastery: Max Calc","type":"MAX","value":100},
+			{"@list":[{"type":"Condition","var":"ArmourAvg"},{"limit":6,"type":"Multiplier","var":"BeenHitRecently"}],"flags":0,"keywordFlags":0,
+			"name":"ArmourDefense","source":"Armour Mastery: Average Calc","type":"MAX","value":5},
+			{"@list":[{"neg":true,"type":"Condition","var":"ArmourMax"},{"neg":true,"type":"Condition","var":"ArmourAvg"},{"limit":6,"type":"Multiplier","var":"BeenHitRecently"}],
+			"flags":0,"keywordFlags":0,"name":"ArmourDefense","source":"Armour Mastery: Min Calc","type":"MAX","value":0}]`,
+		// "(%d+)%% increased armour per second you've been stationary, up to a maximum of (%d+)%%": limit = limit / num
+		"20% increased Armour per second you've been stationary, up to a maximum of 100%": `[{"@list":[{"limit":5,"type":"Multiplier","var":"StationarySeconds"},
+			{"type":"Condition","var":"Stationary"}],"flags":0,"keywordFlags":0,"name":"Armour","type":"INC","value":20}]`,
+		// "warcries grant arcane surge to you and allies, with ..."
+		"Warcries grant Arcane Surge to you and Allies, with 10% increased effect per 5 power, up to 50%": `[
+			{"@list":[{"type":"Condition","var":"UsedWarcryRecently"}],"flags":0,"keywordFlags":0,"name":"ExtraAura","type":"LIST",
+			"value":{"mod":{"flags":0,"keywordFlags":0,"name":"Condition:ArcaneSurge","type":"FLAG","value":true}}},
+			{"@list":[{"div":5,"globalLimit":50,"globalLimitKey":"Brinerot Flag","stat":"WarcryPower","type":"PerStat"},{"type":"Condition","var":"UsedWarcryRecently"}],
+			"flags":0,"keywordFlags":0,"name":"ArcaneSurgeEffect","type":"INC","value":10}]`,
+		// "(%d+)%% increased global maximum energy shield and reduced lightning resistance" and the life and mana forms
+		"35% increased Global maximum Energy Shield and reduced Lightning Resistance": `[{"@list":[{"type":"Global"}],"flags":0,"keywordFlags":0,
+			"name":"EnergyShield","type":"INC","value":35},{"flags":0,"keywordFlags":0,"name":"LightningResist","type":"INC","value":-35}]`,
+		// "non%-damaging ailments have (%d+)%% reduced effect on you while you have arcane surge": data.nonDamagingAilmentTypeList
+		"Non-Damaging Ailments have 25% reduced Effect on you while you have Arcane Surge": `[
+			{"@list":[{"type":"Condition","var":"AffectedByArcaneSurge"}],"flags":0,"keywordFlags":0,"name":"SelfChillEffect","type":"INC","value":-25},
+			{"@list":[{"type":"Condition","var":"AffectedByArcaneSurge"}],"flags":0,"keywordFlags":0,"name":"SelfFreezeEffect","type":"INC","value":-25},
+			{"@list":[{"type":"Condition","var":"AffectedByArcaneSurge"}],"flags":0,"keywordFlags":0,"name":"SelfShockEffect","type":"INC","value":-25},
+			{"@list":[{"type":"Condition","var":"AffectedByArcaneSurge"}],"flags":0,"keywordFlags":0,"name":"SelfScorchEffect","type":"INC","value":-25},
+			{"@list":[{"type":"Condition","var":"AffectedByArcaneSurge"}],"flags":0,"keywordFlags":0,"name":"SelfBrittleEffect","type":"INC","value":-25},
+			{"@list":[{"type":"Condition","var":"AffectedByArcaneSurge"}],"flags":0,"keywordFlags":0,"name":"SelfSapEffect","type":"INC","value":-25}]`,
+		// "gain no (.+) from equipped (.+)": the slot keeps its space, as in PoB
+		"Gain no Armour from Equipped Body Armour": `[{"flags":0,"keywordFlags":0,"name":"GainNoArmourFromBody Armour","type":"FLAG","value":true}]`,
+		// "nearby enemy monsters' action speed is at most (%d+)%% of base value"
+		"Nearby Enemy Monsters' Action Speed is at most 90% of base value": `[{"flags":0,"keywordFlags":0,"name":"EnemyModifier","type":"LIST",
+			"value":{"mod":{"flags":0,"keywordFlags":0,"name":"MaximumActionSpeedReduction","type":"MAX","value":10}}}]`,
+		// "debuffs on you expire (%d+)%% slower" and the other negated single mods
+		"Poisons on you expire 50% slower": `[{"flags":0,"keywordFlags":0,"name":"SelfPoisonDebuffExpirationRate","type":"BASE","value":-50}]`,
 	}
 	p, err := PoE1()
 	if err != nil {
