@@ -1,10 +1,11 @@
 package modparser
 
 import (
+	"fmt"
 	"reflect"
 	"regexp/syntax"
 	"sort"
-	"strings"
+	"sync"
 	"testing"
 )
 
@@ -81,30 +82,55 @@ func TestRequiredLiteral(t *testing.T) {
 	}
 }
 
-// TestRequiredLiteralHolds checks the prefilter against the real tables:
-// whenever a pattern matches a corpus line, its literal is in the line.
-func TestRequiredLiteralHolds(t *testing.T) {
+// TestIndexedScanSame checks the scan shortcuts (gram index, required
+// literal) against the full in-order scan of every entry, on every
+// ModCache line (as given and with parseMod's trailing space): the same
+// value, rest and captures for every table.
+func TestIndexedScanSame(t *testing.T) {
 	if testing.Short() {
-		t.Skip("runs every pattern over a corpus sample")
+		t.Skip("runs every pattern over the whole ModCache")
 	}
 	p := freshParser(t)
 	cache := loadModCache(t)
-	lines := make([]string, 0, len(cache))
+	lines := make([]string, 0, 2*len(cache))
 	for l := range cache {
-		lines = append(lines, asciiLower(l)+" ")
+		lines = append(lines, l, l+" ")
 	}
 	sort.Strings(lines)
-	for i := 0; i < len(lines); i += 20 {
-		for name, tbl := range p.t.t {
-			for j := range tbl {
-				e := &tbl[j]
-				if e.re == nil || e.re.lit == "" {
-					continue
-				}
-				if e.re.get().MatchString(lines[i]) && !strings.Contains(lines[i], e.re.lit) {
-					t.Errorf("%s %q matches %q without its literal %q", name, e.pattern, lines[i], e.re.lit)
+	names := make([]string, 0, len(p.t.t))
+	all := map[string][]int32{}
+	for name, tbl := range p.t.t {
+		names = append(names, name)
+		for i := range tbl {
+			all[name] = append(all[name], int32(i))
+		}
+	}
+	sort.Strings(names)
+	// The lines split over a few goroutines; scan is safe for concurrent use.
+	const workers = 8
+	errs := make([]string, workers)
+	var wg sync.WaitGroup
+	for w := range workers {
+		wg.Go(func() {
+			for li := w; li < len(lines) && errs[w] == ""; li += workers {
+				line := lines[li]
+				lower := asciiLower(line)
+				for _, name := range names {
+					v, rest, caps, ok := p.scan(line, name)
+					wv, wrest, wcaps, wok := scanEntries(line, lower, p.t.t[name], all[name], false)
+					if ok != wok || rest != wrest || !reflect.DeepEqual(caps, wcaps) || !reflect.DeepEqual(v, wv) {
+						errs[w] = fmt.Sprintf("%s on %q: indexed (%v, %q, %q), full (%v, %q, %q)",
+							name, line, ok, rest, caps, wok, wrest, wcaps)
+						break
+					}
 				}
 			}
+		})
+	}
+	wg.Wait()
+	for _, e := range errs {
+		if e != "" {
+			t.Error(e)
 		}
 	}
 }
