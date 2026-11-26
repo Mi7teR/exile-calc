@@ -93,3 +93,30 @@ func TestParallelDecodeSame(t *testing.T) {
 		}
 	}
 }
+
+// TestNoLegacyBloodlineNodes: PoB's 3.30 tree.lua has three Charm Socket
+// nodes (18060, 29914, 43670), all of the Primalist bloodline. PoB deletes
+// the nodes of the legacy alternate ascendancies Warden, Warlock and
+// Primalist when it loads the tree (Classes/PassiveTree.lua:157-197), so
+// no PoB 3.30 tree has a Charm Socket and the generator drops them too
+// (cmd/gamedatagen isLegacyAlternateAscendancy).
+func TestNoLegacyBloodlineNodes(t *testing.T) {
+	d, err := PoE1()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, id := range []int{18060, 29914, 43670} {
+		if n := d.Tree.Nodes[id]; n != nil {
+			t.Errorf("node %d (%s, %s) is in the tree", id, n.Name, n.AscendancyName)
+		}
+	}
+	for id, n := range d.Tree.Nodes {
+		switch n.AscendancyName {
+		case "Warden", "Warlock", "Primalist":
+			t.Errorf("node %d belongs to %s", id, n.AscendancyName)
+		}
+		if n.Name == "Charm Socket" {
+			t.Errorf("node %d is a Charm Socket", id)
+		}
+	}
+}
