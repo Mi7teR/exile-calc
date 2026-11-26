@@ -391,3 +391,17 @@ func TestCombatTextIsEnglish(t *testing.T) {
 		}
 	})
 }
+
+// TestDotBurstInfiniteDuration: a debuff with an infinite duration (an
+// infinite hex duration is PoB's math.huge) adds nothing to the burst
+// instead of making it +Inf.
+func TestDotBurstInfiniteDuration(t *testing.T) {
+	if got := dotBurst(100, 4, 2, 1.5); got != 1200 {
+		t.Errorf("dotBurst(100, 4, 2, 1.5) = %v, want 1200", got)
+	}
+	for _, dur := range []float64{math.Inf(1), math.NaN(), 0, -1} {
+		if got := dotBurst(100, dur, 2, 1.5); got != 0 {
+			t.Errorf("dotBurst with duration %v = %v, want 0", dur, got)
+		}
+	}
+}

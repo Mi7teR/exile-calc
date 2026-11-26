@@ -439,13 +439,11 @@ func combatDPS(res *Result, m targetModel, isBoss bool, seed uint64, spread cont
 			truthy(s.data.val("debuffTertiary")) {
 			dur = 0
 		}
-		if dot := math.Min(out["TotalDot"], dotDpsCap); dot > 0 && dur > 0 {
-			n := dotTargets
-			if dotStacks {
-				n *= src.burstHits
-			}
-			d.Burst += dot * dur * n * mult
+		n := dotTargets
+		if dotStacks {
+			n *= src.burstHits
 		}
+		d.Burst += dotBurst(math.Min(out["TotalDot"], dotDpsCap), dur, n, mult)
 	}
 
 	if !isBoss {
@@ -606,4 +604,15 @@ func humanNum(n float64) string {
 		return fmt.Sprintf("%.1fk", n/1e3)
 	}
 	return fmt.Sprintf("%.0f", n)
+}
+
+// dotBurst is the skill DoT's share of one use's burst: the DoT over its
+// duration on n targets. A debuff without a finite duration (an infinite
+// hex duration is PoB's math.huge) has no "damage over its duration", so it
+// adds nothing rather than +Inf.
+func dotBurst(dot, dur, n, mult float64) float64 {
+	if dot <= 0 || dur <= 0 || math.IsInf(dur, 0) || math.IsNaN(dur) {
+		return 0
+	}
+	return dot * dur * n * mult
 }
