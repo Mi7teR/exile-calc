@@ -46,6 +46,7 @@ func TestCalcStepOrder(t *testing.T) {
 		"defence",
 		"minion",
 		"offence",
+		"minionOffence",
 		"unsupportedTags",
 	}
 	got := make([]string, len(calcSteps))

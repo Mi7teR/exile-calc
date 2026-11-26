@@ -417,6 +417,14 @@ var baseVariantRe = regexp.MustCompile(` \(.+\)`)
 func (c *Calculator) addItem(
 	db *ModDB, res *Result, item *pobcode.Item, scale float64, slot string, mode itemScaling,
 ) (*itemtext.Item, []modparser.Mod) {
+	return c.addItemTo(db, db.Add, res, item, scale, slot, mode)
+}
+
+// addItemTo is addItem with the item's mod list (ItemClass modList, in
+// order) given to add; db takes the item's class restriction.
+func (c *Calculator) addItemTo(
+	db *ModDB, add func(Mod), res *Result, item *pobcode.Item, scale float64, slot string, mode itemScaling,
+) (*itemtext.Item, []modparser.Mod) {
 	if item == nil {
 		return nil, nil
 	}
@@ -452,25 +460,25 @@ func (c *Calculator) addItem(
 	}
 	for _, m := range list {
 		if mode == scaleAddPart {
-			db.Add(addScaledPart(m, scale-1))
+			add(addScaledPart(m, scale-1))
 		} else {
-			db.Add(scaleMod(m, scale))
+			add(scaleMod(m, scale))
 		}
 	}
 	// Item.lua: each Grand Spectrum counts for itself and for minions.
 	if it.Base != nil && it.Base.Type == "Jewel" && strings.Contains(it.Name, "Grand Spectrum") {
 		spectrum := Mod{Name: "Multiplier:GrandSpectrum", Type: "BASE", Value: 1.0, Source: it.Name}
-		db.Add(scaleMod(spectrum, scale))
-		db.Add(Mod{Name: "MinionModifier", Type: "LIST", Value: map[string]any{"mod": modToMap(spectrum)}, Source: it.Name})
+		add(scaleMod(spectrum, scale))
+		add(Mod{Name: "MinionModifier", Type: "LIST", Value: map[string]any{"mod": modToMap(spectrum)}, Source: it.Name})
 	}
 	if isArmour && it.Base.Armour.MovementPenalty != 0 {
-		db.Add(Mod{Name: "MovementSpeed", Type: "INC", Value: -it.Base.Armour.MovementPenalty, Source: source,
+		add(Mod{Name: "MovementSpeed", Type: "INC", Value: -it.Base.Armour.MovementPenalty, Source: source,
 			Tags: []map[string]any{{"type": "Condition", "var": "IgnoreMovementPenalties", "neg": true}}})
 	}
 	if slot != "" {
 		name := strings.Replace(slot, " Swap", "", 1)
-		socketMultipliers(db, it, name)
-		db.NewMod("Multiplier:QualityOn"+name, "BASE", float64(it.Quality), "Quality")
+		socketMultipliers(add, it, name)
+		add(Mod{Name: "Multiplier:QualityOn" + name, Type: "BASE", Value: float64(it.Quality), Source: "Quality"})
 	}
 	return it, mods
 }
@@ -499,7 +507,7 @@ func weaponHandLocal(sm Mod, m modparser.Mod, slotNum int) Mod {
 
 // socketMultipliers ports the socket part of ItemClass:BuildModListForSlotNum:
 // a multiplier per socket colour and the number of unlinked sockets.
-func socketMultipliers(db *ModDB, it *itemtext.Item, slot string) {
+func socketMultipliers(add func(Mod), it *itemtext.Item, slot string) {
 	if len(it.Sockets) == 0 {
 		return
 	}
@@ -508,7 +516,7 @@ func socketMultipliers(db *ModDB, it *itemtext.Item, slot string) {
 	for _, s := range it.Sockets {
 		groups[s.Group]++
 		if n, ok := names[s.Color]; ok {
-			db.NewMod("Multiplier:"+n+"SocketIn"+slot, "BASE", 1, "Item Sockets")
+			add(Mod{Name: "Multiplier:" + n + "SocketIn" + slot, Type: "BASE", Value: 1.0, Source: "Item Sockets"})
 		}
 	}
 	unlinked := 0
@@ -517,7 +525,7 @@ func socketMultipliers(db *ModDB, it *itemtext.Item, slot string) {
 			unlinked++
 		}
 	}
-	db.NewMod("Multiplier:UnlinkedSocketIn"+slot, "BASE", float64(unlinked), "Unlinked Item Sockets")
+	add(Mod{Name: "Multiplier:UnlinkedSocketIn" + slot, Type: "BASE", Value: float64(unlinked), Source: "Unlinked Item Sockets"})
 }
 
 // slotTags is the tag substitution of ItemClass:BuildModListForSlotNum:
@@ -630,4 +638,47 @@ func addScaledPart(m Mod, part float64) Mod {
 		m.Value = v + add
 	}
 	return m
+}
+
+// aegisShield is env.aegisModList and env.aegisItem: the shield worn with
+// Necromantic Aegis, whose mods go to the minions instead of the player.
+type aegisShield struct {
+	item *itemtext.Item
+	mods []Mod           // env.aegisModList, scaled
+	gear []modparser.Mod // all the shield's parsed mods, for its armour data
+}
+
+// necromanticAegis is env.allocNodes[45175] being the Necromantic Aegis
+// keystone (CalcSetup.lua:1133).
+func (c *Calculator) necromanticAegis(allocated map[int]bool) bool {
+	if !allocated[45175] || c.data.Tree == nil {
+		return false
+	}
+	n := c.data.Tree.Nodes[45175]
+	return n != nil && n.Name == "Necromantic Aegis"
+}
+
+// addAegisItem is CalcSetup.lua:1133-1150: a shield worn with Necromantic
+// Aegis. Its mods that apply to socketed gems or add supports (SocketedIn
+// tags) stay with the player; the rest form env.aegisModList, which every
+// minion gets (CalcPerform.lua:1203-1206).
+func (c *Calculator) addAegisItem(
+	db *ModDB, res *Result, item *pobcode.Item, scale float64, slot string, mode itemScaling,
+) (*itemtext.Item, []modparser.Mod) {
+	a := &aegisShield{}
+	it, mods := c.addItemTo(db, func(m Mod) {
+		for _, t := range m.Tags {
+			if tagStr(t, "type") == "SocketedIn" {
+				db.Add(m)
+				return
+			}
+		}
+		a.mods = append(a.mods, m)
+	}, res, item, scale, slot, mode)
+	if it == nil {
+		return nil, nil
+	}
+	a.item, a.gear = it, mods
+	db.aegis = a
+	return it, mods
 }

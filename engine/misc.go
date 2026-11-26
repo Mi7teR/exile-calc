@@ -29,9 +29,13 @@ func maxSource(db *ModDB, source string, name string) (float64, bool) {
 	return best, found
 }
 
-// actorMisc ports the player buffs and debuffs of doActorMisc
-// (CalcPerform.lua) before its rage part, which rage() ports.
-func actorMisc(db *ModDB, main *activeSkill, silverFlask bool, silverFlaskInc float64) {
+// actorMisc ports the buffs and debuffs of doActorMisc (CalcPerform.lua
+// 646-975) for an actor with main skill main (actor.mainSkill), before its
+// rage part, which rage() ports. pm is env.player.mainSkill, whose base
+// mods doActorMisc reads for Cruelty whichever actor it runs for.
+//
+//nolint:gocognit,gocyclo,cyclop,funlen // one branch per buff or debuff, in doActorMisc's order
+func actorMisc(db *ModDB, main, pm *activeSkill, silverFlask bool, silverFlaskInc float64) {
 	out := db.output
 	cond := db.conditions
 	mainMods, mainCfg := db, (*Cfg)(nil)
@@ -46,7 +50,8 @@ func actorMisc(db *ModDB, main *activeSkill, silverFlask bool, silverFlaskInc fl
 		db.Add(Mod{Name: "Speed", Type: typ, Value: v, Flags: mfCast, Source: source})
 	}
 
-	if main != nil && main.mods != nil && main.mods.FlagCfg(main.cfg, "Cruelty") {
+	// CalcPerform.lua:648: env.player.mainSkill.baseSkillModList.
+	if pm != nil && pm.mods != nil && pm.mods.FlagCfg(pm.cfg, "Cruelty") {
 		if o, ok := db.Override("Cruelty"); ok {
 			db.multipliers["Cruelty"] = o
 		} else {
@@ -56,7 +61,8 @@ func actorMisc(db *ModDB, main *activeSkill, silverFlask bool, silverFlaskInc fl
 	if m := db.Sum("BASE", "MinimumRage"); m > db.multipliers["Rage"] {
 		db.multipliers["Rage"] = m
 	}
-	if db.Sum("BASE", "MinimumFortification") > 0 {
+	allied := alliedFortify(db)
+	if db.Sum("BASE", "MinimumFortification") > 0 || allied > 0 {
 		cond["Fortified"] = true
 	}
 	if db.Flag("Fortified") || db.Sum("BASE", "Multiplier:Fortification") > 0 {
@@ -64,6 +70,7 @@ func actorMisc(db *ModDB, main *activeSkill, silverFlask bool, silverFlaskInc fl
 		if !ok {
 			maxStacks = db.SumCfg(mainCfg, "BASE", "MaximumFortification")
 		}
+		maxStacks = math.Max(maxStacks, allied)
 		minStacks := db.Sum("BASE", "MinimumFortification")
 		if db.Flag("Condition:HaveMaxFortification") {
 			minStacks = maxStacks
@@ -139,6 +146,14 @@ func actorMisc(db *ModDB, main *activeSkill, silverFlask bool, silverFlaskInc fl
 		mult := map[string]any{"type": "Multiplier", "var": "SpiritInfusion"}
 		global := map[string]any{"type": "GlobalEffect", "effectType": "Buff", "effectName": "Spirit Infusion", "unscalable": true}
 		db.NewMod("EnergyShieldRechargeFaster", "INC", 15, "Spirit Infusion", mult, global)
+		channel := map[string]any{"type": "SkillType", "skillType": float64(stChannel)} //nolint:goconst // PoB tag
+		for _, x := range []struct {
+			name string
+			v    float64
+		}{{"Damage", 5}, {"Cost", 10}} {
+			db.Add(Mod{Name: x.name, Type: "MORE", Value: x.v, KeywordFlags: kfSpell, Source: "Spirit Infusion",
+				Tags: []map[string]any{channel, mult, global}})
+		}
 	}
 	if db.Flag("UnholyMight") {
 		effect := buffEffect()
@@ -147,6 +162,14 @@ func actorMisc(db *ModDB, main *activeSkill, silverFlask bool, silverFlaskInc fl
 		if v := db.Sum("BASE", "UnholyMightAlsoChaosPenetration"); v != 0 {
 			db.NewMod("ChaosPenetration", "BASE", v*effect, "Unholy Might")
 		}
+	}
+	if db.Flag("ShepherdOfSouls") {
+		vaal := map[string]any{"type": "SkillType", "skillType": float64(stVaal)}
+		//nolint:goconst // PoB tag
+		notAura := map[string]any{"type": "SkillType", "skillType": float64(stAura), "neg": true}
+		db.NewMod("SoulCost", "MORE", -80, "Shepherd of Souls", vaal, notAura)
+		db.NewMod("SoulCost", "INC", 100, "Shepherd of Souls", vaal, notAura, //nolint:mnd // PoB literal
+			map[string]any{"type": "Multiplier", "var": "VaalSkillsUsedInPast8Seconds"})
 	}
 	if db.Flag("ChaoticMight") {
 		db.NewMod("PhysicalDamageGainAsChaos", "BASE", math.Floor(30*buffEffect()), "Chaotic Might")
@@ -258,6 +281,22 @@ func actorMisc(db *ModDB, main *activeSkill, silverFlask bool, silverFlaskInc fl
 	if db.Flag("HasShapersPresence") {
 		db.NewMod("BuffExpireFaster", "MORE", -20, "Shapers Presence")
 	}
+	// CalcPerform.lua:937-950: the configured Mana Burn stacks, on every
+	// actor.
+	if n := configNum(db, "multiplierManaBurnStacks"); n > 0 {
+		maxBurn := db.Sum("BASE", "MaxManaBurnStacks")
+		if maxBurn == 0 {
+			maxBurn = 9999
+		}
+		stacks := math.Min(n, maxBurn)
+		db.NewMod("Multiplier:ManaBurnStacks", "BASE", stacks, "Config")
+		stacks += db.SumCfg(&Cfg{Actor: "player"}, "BASE", "EffectiveManaBurnStacks")
+		if db.Flag("Condition:WeepingWoundsInsteadOfManaBurn") {
+			db.NewMod("Multiplier:WeepingWoundsStacks", "BASE", stacks, "Config")
+		} else {
+			db.NewMod("Multiplier:EffectiveManaBurnStacks", "BASE", stacks, "Config")
+		}
+	}
 	// CalcPerform.lua doActorMisc: Soul Eater, 5% attack and cast speed per
 	// stack up to SoulEaterMax.
 	if db.Flag("Condition:CanHaveSoulEater") {
@@ -273,6 +312,50 @@ func actorMisc(db *ModDB, main *activeSkill, silverFlask bool, silverFlaskInc fl
 			})
 		}
 	}
+}
+
+// silverFlask is an active Silver Flask of env.flasks: its own effect
+// (flaskData.effectInc) and whether it is magic.
+type silverFlask struct {
+	localInc float64
+	magic    bool
+}
+
+// silverOnslaught is doActorMisc's Silver Flask check for the Onslaught
+// effect (CalcPerform.lua:686-703) on an actor other than the player: the
+// player's active Silver Flasks with the actor's own flask effect mods.
+func silverOnslaught(db *ModDB, flasks []silverFlask) (bool, float64) {
+	inc := -1.0 // -100%, so that reduced effect still applies
+	player := &Cfg{Actor: "player"}
+	for _, f := range flasks {
+		cur := f.localInc + db.SumCfg(player, "INC", "FlaskEffect")
+		if f.magic {
+			cur += db.SumCfg(player, "INC", "MagicUtilityFlaskEffect")
+		}
+		inc = math.Max(inc, cur/100) //nolint:mnd // percent
+	}
+	return len(flasks) > 0, inc
+}
+
+// alliedFortify is doActorMisc's alliedFortify (CalcPerform.lua:655): the
+// parent's fortification for a minion with YourFortifyEqualToParent, else
+// the party member's with PartyMemberFortifyEqualToYours, else 0.
+func alliedFortify(db *ModDB) float64 {
+	if db.Flag("YourFortifyEqualToParent") && db.owner != nil {
+		if v, ok := db.owner.output["FortificationStacks"]; ok {
+			return v
+		}
+	}
+	p := db.root()
+	if db.owner != nil {
+		p = db.owner.root() // env.partyMembers belongs to the env
+	}
+	if pm := p.partyMembers; pm != nil && pm.Flag("PartyMemberFortifyEqualToYours") {
+		if v, ok := pm.output["FortificationStacks"]; ok {
+			return v
+		}
+	}
+	return 0
 }
 
 // selfAilment is the effect of Chill, Shock or Scorch on the actor;

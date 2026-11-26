@@ -10,6 +10,16 @@ import (
 // actor's EnemyModifier lists give its enemy, each added once.
 type enemyModifiers map[uintptr]bool
 
+// mark records db's EnemyModifier mods as applied without applying them.
+func (applied enemyModifiers) mark(db *ModDB) {
+	for _, e := range db.List(nil, "EnemyModifier") {
+		v, _ := e.Value.(map[string]any)
+		if mm, ok := v["mod"].(map[string]any); ok {
+			applied[reflect.ValueOf(mm).Pointer()] = true
+		}
+	}
+}
+
 func (applied enemyModifiers) apply(db *ModDB) {
 	for _, e := range db.List(nil, "EnemyModifier") {
 		v, _ := e.Value.(map[string]any)

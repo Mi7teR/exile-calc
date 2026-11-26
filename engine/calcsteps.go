@@ -65,6 +65,7 @@ type calcState struct {
 	guaranteedBonechill bool
 	curses              []*enemyCurse
 	buffs               map[string][]Mod
+	minion              *minionCalc // env.minion until its offence
 }
 
 // calcStep is one named stage of Calc.
@@ -117,6 +118,7 @@ var calcSteps = []calcStep{
 	{"defence", stepDefence},
 	{"minion", stepMinion},
 	{"offence", stepOffence},
+	{"minionOffence", stepMinionOffence},
 	{"unsupportedTags", stepUnsupportedTags},
 }
 
@@ -444,7 +446,12 @@ func stepItems(c *Calculator, st *calcState) error {
 				ringItems[slot.Name] = b.Item(slot.ItemID)
 			}
 			scale, mode := bonusScale(b.Item(slot.ItemID))
-			it, mods := c.addItem(db, res, b.Item(slot.ItemID), scale, slot.Name, mode)
+			add := c.addItem
+			if pit := c.peekItem(b.Item(slot.ItemID)); pit != nil && pit.Base != nil && pit.Base.Type == "Shield" &&
+				c.necromanticAegis(st.allocated) {
+				add = c.addAegisItem
+			}
+			it, mods := add(db, res, b.Item(slot.ItemID), scale, slot.Name, mode)
 			if it != nil {
 				gearMods[slot.Name] = mods
 				gear = append(gear, equipped{slot.Name, it})
@@ -700,6 +707,12 @@ func stepSkills(c *Calculator, st *calcState) error {
 // catch any that were added by flasks".
 func stepFlasks(c *Calculator, st *calcState) error {
 	db, res := st.db, st.res
+	// CalcPerform.lua:1324-1326: with Necromantic Aegis the shield leaves
+	// the player's item list once calcs.perform starts (env.aegisItem
+	// keeps it for the minion).
+	if db.aegis != nil {
+		delete(db.items, "Weapon 2")
+	}
 	st.keystones = map[string]bool{}
 	if db.Flag("AlchemistsGenius") {
 		effect := 1 + db.Sum("INC", "BuffEffectOnSelf")/100
@@ -757,7 +770,8 @@ func stepArmourESToLife(_ *Calculator, st *calcState) error {
 func stepAttributesLifeMana(c *Calculator, st *calcState) error {
 	db := st.db
 	damageToAuraEffect(db)
-	combatConditions(db, mainSkill(st.skills))
+	main := mainSkill(st.skills)
+	combatConditions(db, main, main)
 	c.attributes(db)
 	shrineBuffs(db)
 	c.lifeMana(db)
@@ -821,6 +835,7 @@ func stepBuffs(c *Calculator, st *calcState) error {
 // slots.
 func stepCurses(c *Calculator, st *calcState) error {
 	st.curses = c.extraCurses(st.db, st.curses, st.res)
+	st.curses = append(st.curses, c.minionExtraCurses(st.db, st.skills, st.res)...)
 	c.applyCurses(st.db, st.skills, st.curses, st.res)
 	return nil
 }
@@ -903,11 +918,12 @@ func stepCharges(_ *Calculator, st *calcState) error {
 // exposures and consecrated ground.
 func stepActorMisc(_ *Calculator, st *calcState) error {
 	db, skills := st.db, st.skills
-	actorMisc(db, mainSkill(skills), st.flaskSt.silver, st.flaskSt.silverInc)
+	main := mainSkill(skills)
+	actorMisc(db, main, main, st.flaskSt.silver, st.flaskSt.silverInc)
 	rage(db, mainCfg(skills))
 	st.playerEnemyMods.apply(db)
 	enemyAilments(db, skills, st.guaranteedBonechill)
-	actorMisc(db.enemy, nil, false, -100)
+	actorMisc(db.enemy, nil, main, false, -100)
 	exposures(db)
 	consecratedGround(db)
 	return nil
@@ -943,7 +959,14 @@ func stepDefence(c *Calculator, st *calcState) error {
 
 // stepMinion: the main skill's minion (CalcPerform.lua env.minion).
 func stepMinion(c *Calculator, st *calcState) error {
-	st.res.Minion = c.mainMinion(st.db, st.skills, st.buffs, st.b.Level, st.res)
+	st.res.Minion, st.minion = c.mainMinion(st.db, st.skills, st.buffs, st.b.Level, st.res)
+	return nil
+}
+
+// stepMinionOffence: CalcPerform.lua:3844-3845, calcs.triggers and
+// calcs.offence for env.minion, after the player's offence.
+func stepMinionOffence(c *Calculator, st *calcState) error {
+	c.minionOffence(st.db, st.minion, st.res)
 	return nil
 }
 

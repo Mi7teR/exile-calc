@@ -183,7 +183,7 @@ func TestMinionTriggers(t *testing.T) {
 	c := &Calculator{}
 	ms := triggerTestSkill("Minion Melee")
 	ms.data.set("triggered", true)
-	c.minionTriggers(NewModDB(), NewModDB(), ms, &Result{})
+	c.minionTriggers(NewModDB(), NewModDB(), triggerTestSkill("Raise Zombie"), ms, &Result{})
 	if _, ok := ms.data.get("triggered"); ok {
 		t.Error("a minion skill without a trigger config stays triggered")
 	}
@@ -201,4 +201,48 @@ func TestMinionTriggers(t *testing.T) {
 		}
 	}
 	t.Fatal("no Holy Relic")
+}
+
+// TestMinionSnipeTrigger: configTable["snipe"] for calcs.triggers(env,
+// env.minion) reads and changes env.player.mainSkill (CalcTriggers.lua
+// 529-604). A summoning skill that Snipe does not trigger loses
+// skillData.triggered, and so does the minion's Snipe; one that Snipe
+// triggers gets the stage mods, and with no Snipe to channel the minion's
+// skill is self-cast.
+func TestMinionSnipeTrigger(t *testing.T) {
+	c := &Calculator{}
+	g := &pobcode.SocketGroup{Slot: "Weapon 1"}
+	pm := triggerTestSkill("Raise Spectre")
+	pm.group = g
+	pm.data.set("triggered", true)
+	ms := triggerTestSkill("Snipe")
+	ms.summon = pm
+	ms.data.set("triggered", true)
+	db, mdb := NewModDB(), NewModDB()
+	db.activeSkills = []*activeSkill{pm}
+	c.minionTriggers(db, mdb, pm, ms, &Result{})
+	if _, ok := pm.data.get("triggered"); ok {
+		t.Error("the summoning skill keeps skillData.triggered")
+	}
+	if _, ok := ms.data.get("triggered"); ok {
+		t.Error("the minion's Snipe stays triggered")
+	}
+
+	pm.data.set("triggeredBySnipe", true)
+	db.NewMod("Multiplier:SnipeStage", "BASE", 2, "Config")
+	db.NewMod("Multiplier:SnipeStagesMax", "BASE", 6, "Base")
+	ms.data.set("triggered", true)
+	c.minionTriggers(db, mdb, pm, ms, &Result{})
+	if got := pm.mods.Sum("BASE", "Multiplier:SnipeStages"); got != 2 {
+		t.Errorf("Snipe stages on the summoning skill %v, want 2", got)
+	}
+	if ms.mods.Sum("BASE", "Multiplier:SnipeStages") != 0 {
+		t.Error("the stage mods went to the minion's skill")
+	}
+	if _, ok := ms.data.get("triggered"); ok {
+		t.Error("the minion's Snipe is triggered without a Snipe source")
+	}
+	if _, ok := mdb.output["SkillTriggerRate"]; ok {
+		t.Errorf("minion trigger rate without a source: %v", mdb.output)
+	}
 }

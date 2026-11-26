@@ -122,6 +122,15 @@ func (c *Calculator) offence(actor *ModDB, s *activeSkill, w1 hitSource, w2 *hit
 	out["ActiveMineLimit"] = list.SumCfg(cfg, "BASE", "ActiveMineLimit")
 	c.offenceStatConversions(actor, s, w1, w2, out)
 	preSkillTypeFunc(actor, s)
+	// CalcOffence.lua:1057-1065: the minions summoned per cast. The minion
+	// limit (ActiveMinionLimit) is not ported here.
+	hasMinion := minionType(s) != "" && c.data.Minions[minionType(s)] != nil
+	if hasMinion {
+		out["SummonedMinionsPerCast"] = math.Floor(valCfg(list, cfg, "MinionPerCastCount"))
+		if out["SummonedMinionsPerCast"] == 0 {
+			out["SummonedMinionsPerCast"] = 1
+		}
+	}
 	chainStats(actor, s, out)
 	projectileStats(s, out)
 	pierceForkStats(actor, s, out)
@@ -377,6 +386,15 @@ func (c *Calculator) offence(actor *ModDB, s *activeSkill, w1 hitSource, w2 *hit
 				out[k] = v
 			}
 		}
+	}
+	// CalcOffence.lua:4140-4142: the summoning rate, which the minion's
+	// Falling Slam and Minion Instability read as their hit rate.
+	if hasMinion {
+		rate, ok := out["HitSpeed"]
+		if !ok {
+			rate = out["Speed"]
+		}
+		data.set("summonSpeed", out["SummonedMinionsPerCast"]*rate*dpsMult)
 	}
 	skillDot(actor, s, out, dpsMult, quantity)
 	combinedDPS(s, out, passes, dpsMult, quantity)

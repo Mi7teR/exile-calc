@@ -103,8 +103,22 @@ func (c *Calculator) initMinionDB(db *ModDB, s *activeSkill, m *skillMinion, res
 	for _, em := range s.extraSkillMods {
 		mdb.Add(em)
 	}
+	// CalcPerform.lua:1203-1206: Necromantic Aegis gives every minion the
+	// player's shield, as its "Weapon 3".
+	if a := db.aegis; a != nil {
+		mdb.items["Weapon 3"] = a.item
+		for _, x := range a.mods {
+			mdb.Add(x)
+		}
+	}
 	c.minionPlayerGear(db, mdb, s, m.typ, res)
 	gear := c.minionItems(db, mdb, s, res)
+	if a := db.aegis; a != nil {
+		if gear == nil {
+			gear = map[string][]modparser.Mod{}
+		}
+		gear["Weapon 3"] = a.gear
+	}
 	if db.Sum("BASE", "StrengthAddedToMinions") > 0 {
 		mdb.NewMod("Str", "BASE", round(val(db, "Str")*db.Sum("BASE", "StrengthAddedToMinions")/100, 0), "Player")
 	}
@@ -476,19 +490,28 @@ func (c *Calculator) earlyMinionEnemyMods(db *ModDB, skills []*activeSkill, char
 	}
 }
 
-func (c *Calculator) mainMinion(db *ModDB, skills []*activeSkill, buffs map[string][]Mod, charLevel int, res *Result) *MinionResult {
+//
+//nolint:gocognit,gocyclo,cyclop,funlen // calcs.perform's env.minion steps in their order
+func (c *Calculator) mainMinion(
+	db *ModDB, skills []*activeSkill, buffs map[string][]Mod, charLevel int, res *Result,
+) (*MinionResult, *minionCalc) {
 	s := mainSkill(skills)
 	if s == nil || s.disabled {
-		return nil
+		return nil, nil
 	}
 	m := c.minionOf(s, charLevel, db.enemyEnv.level)
 	if m == nil || m.data.Hostile {
-		return nil
+		return nil, nil
 	}
 	mdb, gear := c.initMinionDB(db, s, m, res)
 	if mdb == nil {
-		return nil
+		return nil, nil
 	}
+	// applyEnemyModifiers(env.minion, true) (CalcPerform.lua:1354) took the
+	// EnemyModifier mods initMinionModDB gave (earlyMinionEnemyMods): the
+	// second pass in doActorMisc adds only the others.
+	minionEnemyMods := enemyModifiers{}
+	minionEnemyMods.mark(mdb)
 	weapon, weaponType, weapon2, weapon2Type := c.minionWeapon(s, m, mdb, gear)
 	// minionUseBowAndQuiver (with a bow) and minionUseMainHandWeapon: the
 	// minion's weaponData1 is the player's.
@@ -509,6 +532,10 @@ func (c *Calculator) mainMinion(db *ModDB, skills []*activeSkill, buffs map[stri
 	addMinionModifiers(mdb, s.minionModifiers, m.typ)
 	c.mergeKeystones(mdb, map[string]bool{}, res)
 	minionEquipmentConditions(mdb.conditions, mdb.items, weaponType, weapon2Type)
+	// CalcPerform.lua:246-296, 400-410 for env.minion: its main skill's
+	// conditions, with env.player.mainSkill (the summoning skill s) for
+	// the ailment and exposure checks.
+	combatConditions(mdb, ms, s)
 	c.attributes(mdb)
 	shrineBuffs(mdb)
 	c.lifeMana(mdb)
@@ -520,6 +547,12 @@ func (c *Calculator) mainMinion(db *ModDB, skills []*activeSkill, buffs map[stri
 		mergeBuff(l, mb, k)
 	}
 	db.party.partyBuffsOnMinion(mdb, mb)
+	for _, name := range db.minionDebuffs {
+		mdb.conditions["AffectedBy"+name] = true // CalcPerform.lua:3012-3014
+	}
+	// CalcPerform.lua:3178-3224 for env.minion: Consecrated Ground and the
+	// curses on the minion itself (its enemy part is minionExtraCurses).
+	c.actorExtraCurses(mdb, extraCursePass{self: true}, res)
 	for _, l := range buffMinionModifiers(buffs, s.cfg) {
 		addMinionModifiers(mdb, l, m.typ)
 	}
@@ -541,7 +574,13 @@ func (c *Calculator) mainMinion(db *ModDB, skills []*activeSkill, buffs map[stri
 	db.party.partyExtraAuras(mdb)
 	defenceForConditionals(mdb, gear)
 	charges(mdb)
-	actorMisc(mdb, ms, false, 0)
+	// CalcPerform.lua:3527-3528: doActorCharges and doActorMisc for
+	// env.minion, then its rage (skillCfg there is an undefined global,
+	// so nil) and its second "Process enemy modifiers" pass.
+	silver, silverInc := silverOnslaught(mdb, db.silverFlasks)
+	actorMisc(mdb, ms, s, silver, silverInc)
+	rage(mdb, nil)
+	minionEnemyMods.apply(mdb)
 	// CalcDefence.lua: the player's ResistanceAddedToMinions (Bonemeld)
 	// gives the minion that share of the player's final resistances.
 	if db.Sum("BASE", "ResistanceAddedToMinions") > 0 {
@@ -559,26 +598,49 @@ func (c *Calculator) mainMinion(db *ModDB, skills []*activeSkill, buffs map[stri
 	for _, k := range minionResultStats {
 		stats[k] = mdb.output[k]
 	}
-	clawCritToMinion(s, mdb)
-	var out map[string]float64
-	var mainName string
-	if ms != nil {
-		if debugMinionSkill != nil {
-			debugMinionSkill(ms)
-		}
-		if debugEnemy != nil && debugMinionOffence {
-			debugEnemy(mdb)
-		}
-		c.minionTriggers(db, mdb, ms, res)
-		out = c.offence(mdb, ms, weapon, weapon2)
-		for k, v := range out {
-			if contains(minionOffenceStats, k) || debugMinionOffence {
-				stats[k] = v
-			}
-		}
-		mainName = ms.active.ge.Name
+	r := &MinionResult{Skill: s.active.ge.Name, Minion: m.data.Name, Stats: stats}
+	return r, &minionCalc{summon: s, mdb: mdb, ms: ms, weapon: weapon, weapon2: weapon2, res: r}
+}
+
+// minionCalc is env.minion between its calcs.defence and its triggers and
+// offence: PoB runs those after the player's calcs.triggers and
+// calcs.offence (CalcPerform.lua:3831-3846), so the minion's skills see
+// the summoning skill's offence results (skillData.summonSpeed).
+type minionCalc struct {
+	summon, ms *activeSkill
+	mdb        *ModDB
+	weapon     hitSource
+	weapon2    *hitSource
+	res        *MinionResult
+}
+
+// minionOffence is calcs.triggers(env, env.minion) and calcs.offence(env,
+// env.minion, env.minion.mainSkill) (CalcPerform.lua:3844-3845), with the
+// Law of the Wilds conversion of the player's calcs.offence
+// (CalcOffence.lua:713-730) before them.
+func (c *Calculator) minionOffence(db *ModDB, mc *minionCalc, res *Result) {
+	if mc == nil {
+		return
 	}
-	return &MinionResult{Skill: s.active.ge.Name, Minion: m.data.Name, Stats: stats, out: out, mainSkill: mainName}
+	mdb, ms := mc.mdb, mc.ms
+	clawCritToMinion(mc.summon, mdb)
+	if ms == nil {
+		return
+	}
+	if debugMinionSkill != nil {
+		debugMinionSkill(ms)
+	}
+	if debugEnemy != nil && debugMinionOffence {
+		debugEnemy(mdb)
+	}
+	c.minionTriggers(db, mdb, mc.summon, ms, res)
+	out := c.offence(mdb, ms, mc.weapon, mc.weapon2)
+	for k, v := range out {
+		if contains(minionOffenceStats, k) || debugMinionOffence {
+			mc.res.Stats[k] = v
+		}
+	}
+	mc.res.out, mc.res.mainSkill = out, ms.active.ge.Name
 }
 
 // CalcMinions calculates the build once per enabled minion skill with that
@@ -749,7 +811,9 @@ func (c *Calculator) minionSkillBuffs(db, mdb *ModDB, skills []*activeSkill, mai
 					}
 					mdb.conditions["AffectedBy"+name] = true
 					mdb.conditions["AffectedByAura"] = true
-					mergeBuff(append(scaleMods(b.mods, mult), scaleMods(extraAuraMods(casting, cfg), mult)...), out, b.name)
+					src := append(scaleMods(b.mods, mult), scaleMods(extraAuraMods(casting, cfg), mult)...)
+					setSpectreSource(src, s, casting, b.name) // CalcPerform.lua:2919
+					mergeBuff(src, out, b.name)
 				}
 			}
 		}

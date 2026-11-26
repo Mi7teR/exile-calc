@@ -663,23 +663,39 @@ func (c *Calculator) cwcTrigger(db *ModDB, main *activeSkill) {
 	main.flags["globalTrigger"] = true
 }
 
-// snipeTrigger is the "snipe" trigger config (CalcTriggers.lua). Snipe
-// channels stages (config Multiplier:SnipeStage, at most SnipeStagesMax)
-// and on release triggers one supported bow skill per stage. As the main
-// skill Snipe hits with its stage multipliers when it supports nothing,
-// and deals no damage itself when it does. A supported skill gets the
-// stage multipliers and Snipe's hit rate (hitTimeMultiplier stages - 0.5)
-// as the trigger rate, or is self-cast when Snipe lacks the stages.
+// snipeTrigger is calcs.triggers for a player's main skill that looks up
+// the "snipe" config: the config's source, when it gives one, goes
+// through the default handler.
 func (c *Calculator) snipeTrigger(db *ModDB, main *activeSkill, by *skillEffect, w1 hitSource, w2 *hitSource) {
+	if cfg := c.snipeConfig(db, main, w1, w2); cfg != nil {
+		c.defaultTrigger(db, main, by, cfg, w1, w2)
+	}
+}
+
+// snipeConfig is configTable["snipe"] (CalcTriggers.lua:529-604) with pm
+// as env.player.mainSkill, which the config reads and changes whichever
+// actor calcs.triggers runs for. Snipe channels stages (config
+// Multiplier:SnipeStage, at most SnipeStagesMax) and on release triggers
+// one supported bow skill per stage. As the main skill Snipe hits with its
+// stage multipliers when it supports nothing, and deals no damage itself
+// when it does. A supported skill gets the stage multipliers and Snipe's
+// hit rate (hitTimeMultiplier stages - 0.5) as the trigger rate, or is
+// self-cast when Snipe lacks the stages. The result is nil when the config
+// returns nothing (Snipe itself, or too few stages: then pm is no longer
+// triggered); otherwise its source may be nil, which the default handler
+// treats as self-cast.
+//
+//nolint:gocognit // moved from snipeTrigger as it was
+func (c *Calculator) snipeConfig(db *ModDB, pm *activeSkill, w1 hitSource, w2 *hitSource) *triggerConfig {
 	// PoB compares socketGroup.slot of skills with a group; a main skill
 	// without one (granted) has no Snipe to pair with.
-	if main.group == nil {
-		main.data.del("triggered")
-		return
+	if pm.group == nil {
+		pm.data.del("triggered")
+		return nil
 	}
 	stages := math.Min(db.Sum("BASE", "Multiplier:SnipeStage"), db.Sum("BASE", "Multiplier:SnipeStagesMax"))
-	hitMulti := main.mods.SumCfg(main.cfg, "BASE", "snipeHitMulti")
-	ailmentMulti := main.mods.SumCfg(main.cfg, "BASE", "snipeAilmentMulti")
+	hitMulti := pm.mods.SumCfg(pm.cfg, "BASE", "snipeHitMulti")
+	ailmentMulti := pm.mods.SumCfg(pm.cfg, "BASE", "snipeAilmentMulti")
 	slot := func(s *activeSkill) string {
 		if s.group == nil {
 			return ""
@@ -688,93 +704,149 @@ func (c *Calculator) snipeTrigger(db *ModDB, main *activeSkill, by *skillEffect,
 	}
 	var triggered []*activeSkill
 	for _, s := range db.activeSkills {
-		if truthy(s.data.val("triggeredBySnipe")) && s.group != nil && slot(s) == slot(main) {
+		if truthy(s.data.val("triggeredBySnipe")) && s.group != nil && slot(s) == slot(pm) {
 			triggered = append(triggered, s)
 		}
 	}
 	stageMods := func() {
 		tag := map[string]any{"type": "Multiplier", "var": "SnipeStages"}
-		main.mods.NewMod("Multiplier:SnipeStages", "BASE", stages, "Snipe")
-		main.mods.Add(Mod{Name: "Damage", Type: "MORE", Value: hitMulti, Flags: mfHit, Source: "Snipe", Tags: []map[string]any{tag}})
-		main.mods.Add(Mod{Name: "Damage", Type: "MORE", Value: ailmentMulti, Flags: mfAilment, Source: "Snipe", Tags: []map[string]any{tag}})
+		pm.mods.NewMod("Multiplier:SnipeStages", "BASE", stages, "Snipe")
+		pm.mods.Add(
+			Mod{
+				Name:   "Damage",
+				Type:   "MORE",
+				Value:  hitMulti,
+				Flags:  mfHit,
+				Source: "Snipe", //nolint:goconst // PoB source
+				Tags:   []map[string]any{tag},
+			},
+		)
+		pm.mods.Add(
+			Mod{
+				Name:   "Damage",
+				Type:   "MORE",
+				Value:  ailmentMulti,
+				Flags:  mfAilment,
+				Source: "Snipe",
+				Tags:   []map[string]any{tag},
+			},
+		)
 	}
-	if main.active.ge.Name == "Snipe" {
+	if pm.active.ge.Name == "Snipe" {
 		// max(1, stages) as other channelled ranged skills; the first stage
 		// takes half the time.
-		main.data.set("hitTimeMultiplier", math.Max(1, stages)-0.5) //nolint:mnd // PoB literal
+		pm.data.set("hitTimeMultiplier", math.Max(1, stages)-0.5) //nolint:mnd // PoB literal
 		if len(triggered) == 0 {
 			stageMods()
-			return
+			return nil
 		}
 		for _, t := range []string{"Lightning", "Cold", "Fire", "Chaos", "Physical"} {
-			main.mods.Add(Mod{Name: "DealNo" + t, Type: "FLAG", Value: true,
+			pm.mods.Add(Mod{Name: "DealNo" + t, Type: "FLAG", Value: true, //nolint:goconst // PoB mod type
 				Tags: []map[string]any{{"type": "SkillName", "skillName": "Snipe", "includeTransfigured": true}}})
 		}
-		return
+		return nil
 	}
 	idx := 0
 	for i, s := range triggered {
-		if s == main {
+		if s == pm {
 			idx = i + 1
 			break
 		}
 	}
 	if idx == 0 || float64(idx) > stages {
-		main.data.del("triggered")
-		return
+		pm.data.del("triggered")
+		return nil
 	}
 	stageMods()
-	var source *activeSkill
-	var sourceOut map[string]float64
-	trigRate := 0.0
+	cfg := &triggerConfig{}
 	for _, s := range db.activeSkills {
-		if s.active.ge.Name != "Snipe" || s.group == nil || slot(s) != slot(main) {
+		if s.active.ge.Name != "Snipe" || s.group == nil || slot(s) != slot(pm) {
 			continue
 		}
 		s.data.set("hitTimeMultiplier", stages-0.5) //nolint:mnd // PoB literal
 		o := c.offenceOnCopy(db, s, w1, w2)
 		speed, ok := o["HitSpeed"]
 		if !s.disabled && !s.cfg.SkillCond["usedByMirage"] && !s.types[stOtherThingUsesSkill] && ok &&
-			(source == nil || speed > trigRate) {
-			source, sourceOut, trigRate = s, o, speed
+			(cfg.source == nil || speed > cfg.trigRate) {
+			cfg.source, cfg.sourceOut, cfg.trigRate = s, o, speed
 			db.output["ChannelTimeToTrigger"] = o["HitTime"]
 		}
 	}
-	if source == nil {
-		main.data.del("triggered")
-		return
-	}
-	c.defaultTrigger(db, main, by, &triggerConfig{source: source, sourceOut: sourceOut, trigRate: trigRate}, w1, w2)
+	return cfg
 }
 
-// minionTriggerConfig is the configTable entry name for the minion mdb
-// when the entry names env.minion as its actor, else nil.
-func minionTriggerConfig(name string, mdb *ModDB) *triggerConfig {
-	if name == "nova" {
+// minionTriggerConfig is configTable[name](env) for calcs.triggers(env,
+// env.minion), with pm as env.player.mainSkill (the summoning skill) and
+// mdb as env.minion; nil when the entry returns nothing. The entries are
+// those a minion's main skill can reach (see minionTriggers): "nova" and
+// "snipe".
+func (c *Calculator) minionTriggerConfig(
+	name string,
+	db, mdb *ModDB,
+	pm *activeSkill,
+	w1 hitSource,
+	w2 *hitSource,
+) *triggerConfig {
+	var cfg *triggerConfig
+	switch name {
+	case "nova":
 		// CalcTriggers.lua:1188-1195: the Holy Relic's Nova, triggered by
 		// the player's attacks. Its triggeredSkills list is the minion's
 		// main skill alone and it has no triggeredSkillCond.
-		return &triggerConfig{actor: mdb, triggerName: "Summon Holy Relic",
+		cfg = &triggerConfig{triggerName: "Summon Holy Relic",
 			triggerSkillCond: func(_, s *activeSkill) bool { return s.types[stAttack] }}
+	case "snipe":
+		// CalcTriggers.lua:529-604 reads env.player.mainSkill only: the
+		// summoning skill is not supported by Snipe, so it loses
+		// skillData.triggered and the config returns nothing, unless it is
+		// one of Snipe's triggered skills; then the player's Snipe is the
+		// source of the minion's skill.
+		cfg = c.snipeConfig(db, pm, w1, w2)
 	}
-	return nil
+	if cfg != nil {
+		// config.actor = config.actor or actor (CalcTriggers.lua:743).
+		cfg.actor = mdb
+	}
+	return cfg
 }
 
-// minionTriggers is calcs.triggers(env, env.minion) (CalcPerform.lua:3844):
-// the minion's main skill ms looks its config up as the player's does; the
-// trigger sources are the player's skills (env.player.activeSkillList),
-// run with the player's weapons. Player configs a minion skill could
-// match are not ported for minions and leave the skill as it is.
-func (c *Calculator) minionTriggers(db, mdb *ModDB, ms *activeSkill, res *Result) {
+// minionTriggers is calcs.triggers(env, env.minion) (CalcPerform.lua:3844,
+// CalcTriggers.lua:727-752): the minion's main skill ms looks its config
+// up by its id, its name, its trigger support's name and its unique
+// item's name; the trigger sources are the player's skills
+// (env.player.activeSkillList), run with the player's weapons, and pm is
+// env.player.mainSkill, the summoning skill.
+//
+// Of the configTable entries only "nova" (RelicTriggeredNova) and "snipe"
+// (the Snipe of AtlasEyrieArcherSnipe and LegionKaruiArcherSnipe) match a
+// minion skill's id or name in Data/Minions.lua and Data/Spectres.lua. A
+// minion skill has no trigger support: calcLib.canGrantedEffectSupport-
+// ActiveSkill rejects isTrigger supports for an actor other than the
+// player (CalcTools.lua:114). Its unique item name would come from
+// skillData.triggerSource, which no minion skill has, or from a supportList
+// entry that is not a support, which CalcSetup.lua never adds (1705-1709,
+// 1752). Any other entry a name reaches is noted as not ported.
+func (c *Calculator) minionTriggers(db, mdb *ModDB, pm, ms *activeSkill, res *Result) {
 	if ms.disabled {
 		return
 	}
+	classID := -1
+	if b := db.theBuild(); b != nil && b.ActiveSpec() != nil {
+		classID = b.ActiveSpec().ClassID
+	}
+	w1, w2 := playerWeapons(db, db.gearMods, classID)
 	var cfg *triggerConfig
 	for _, n := range append([]string{ms.active.id}, triggerNames(ms)...) {
-		if cfg = minionTriggerConfig(n, mdb); cfg != nil {
-			break
+		if n == "nova" || n == "snipe" {
+			if pm == nil {
+				continue
+			}
+			if cfg = c.minionTriggerConfig(n, db, mdb, pm, w1, w2); cfg != nil {
+				break
+			}
+			continue
 		}
-		if triggerConfigs[n] != nil || n == "cast while channelling" || n == "snipe" {
+		if triggerConfigs[n] != nil || n == "cast while channelling" {
 			res.Incomplete = append(res.Incomplete, "minion skill trigger "+n+" is not ported")
 			return
 		}
@@ -784,13 +856,8 @@ func (c *Calculator) minionTriggers(db, mdb *ModDB, ms *activeSkill, res *Result
 		return
 	}
 	// config.triggerChance = config.triggerChance or srcInstance.triggerChance.
-	if ms.active.srcHasTriggerChance {
+	if !cfg.hasTriggerChance && ms.active.srcHasTriggerChance {
 		cfg.triggerChance, cfg.hasTriggerChance = ms.active.srcTriggerChance, true
 	}
-	classID := -1
-	if b := db.theBuild(); b != nil && b.ActiveSpec() != nil {
-		classID = b.ActiveSpec().ClassID
-	}
-	w1, w2 := playerWeapons(db, db.gearMods, classID)
 	c.defaultTrigger(db, ms, triggeredBy(ms), cfg, w1, w2)
 }

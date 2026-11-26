@@ -126,6 +126,7 @@ func (c *Calculator) applyFlasks(db *ModDB, res *Result, slots []flaskSlot) *fla
 				}
 			}
 		}
+		localInc := inc - effectInc // flaskData.effectInc
 		if stat := flaskTypeEffect[it.BaseName]; stat != "" {
 			inc += db.SumCfg(player, "INC", stat)
 		}
@@ -136,6 +137,7 @@ func (c *Calculator) applyFlasks(db *ModDB, res *Result, slots []flaskSlot) *fla
 		if strings.Contains(it.BaseName, "Silver Flask") {
 			st.silver = true
 			st.silverInc = math.Max(st.silverInc, inc/100)
+			db.silverFlasks = append(db.silverFlasks, silverFlask{localInc: localInc, magic: it.Rarity == "MAGIC"})
 		}
 		if recovery {
 			st.recovery = append(st.recovery, recoveryFlask(it, item, mods, scale))
