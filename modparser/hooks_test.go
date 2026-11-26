@@ -305,6 +305,53 @@ func TestHooks(t *testing.T) {
 			"value":{"mod":{"flags":0,"keywordFlags":0,"name":"MaximumActionSpeedReduction","type":"MAX","value":10}}}]`,
 		// "debuffs on you expire (%d+)%% slower" and the other negated single mods
 		"Poisons on you expire 50% slower": `[{"flags":0,"keywordFlags":0,"name":"SelfPoisonDebuffExpirationRate","type":"BASE","value":-50}]`,
+
+		// hooks_offence.go
+		// "(%d+)%% chance for bleeding inflicted with this weapon to deal (%d+)%% more damage"
+		"15% chance for Bleeding inflicted with this Weapon to deal 100% more Damage": `[{"@list":[{"type":"Condition","var":"{Hand}Attack"},
+			{"skillType":1,"type":"SkillType"}],"flags":0,"keywordFlags":4194304,"name":"Damage","type":"MORE","value":15}]`,
+		// "(%d+)%% chance to throw up to (%d+) additional traps? or mines?"
+		"10% chance to throw up to 1 additional Trap or Mine": `[{"flags":0,"keywordFlags":0,"name":"TrapThrowCount","type":"BASE","value":0.1},
+			{"flags":0,"keywordFlags":0,"name":"MineThrowCount","type":"BASE","value":0.1}]`,
+		// "traps and mines deal (%d+) to (%d+) additional physical damage"
+		"Traps and Mines deal 4 to 13 additional Physical Damage": `[{"flags":0,"keywordFlags":12288,"name":"PhysicalMin","type":"BASE","value":4},
+			{"flags":0,"keywordFlags":12288,"name":"PhysicalMax","type":"BASE","value":13}]`,
+		// "hits with prismatic skills always ?i?n?f?l?i?c?t? (%w+)"
+		"Hits with Prismatic Skills always inflict Brittle": `[{"@list":[{"skillType":102,"type":"SkillType"}],"flags":4,"keywordFlags":0,
+			"name":"EnemyBrittleChance","type":"BASE","value":100}]`,
+		// "inflict fire exposure on hit against enemies with (%d+) cinderflame, ..."
+		"Inflict Fire Exposure on Hit against Enemies with 5 Cinderflame, applying -25% to Fire Resistance": `[
+			{"@list":[{"type":"Condition","var":"Effective"},{"threshold":5,"type":"MultiplierThreshold","var":"CinderflameStacks"}],
+			"flags":0,"keywordFlags":0,"name":"FireExposureChance","type":"BASE","value":100},
+			{"@list":[{"type":"Condition","var":"Effective"},{"threshold":5,"type":"MultiplierThreshold","var":"CinderflameStacks"}],
+			"flags":0,"keywordFlags":0,"name":"EnemyModifier","type":"LIST","value":{"mod":{"flags":0,"keywordFlags":0,"name":"FireExposure","type":"BASE","value":-25}}}]`,
+		// "gain (%d+)%% of (%a+) damage as extra (%a+) damage for each of your hallowing flames ...": limit = limit / num
+		"Gain 10% of Physical Damage as Extra Lightning Damage for each of your Hallowing Flames that have been removed by an allied hit recently, up to 80%": `[
+			{"@list":[{"actor":"enemy","type":"ActorCondition","var":"HallowingFlame"},{"limit":8,"type":"Multiplier","var":"HallowingFlameStacksRemovedByAlly"}],
+			"flags":0,"keywordFlags":0,"name":"PhysicalDamageGainAsLightning","type":"BASE","value":10}]`,
+		// "enemies taunted by your warcries explode on death, ...": explodeFunc
+		"Enemies Taunted by your Warcries Explode on death, dealing 8% of their maximum Life as Chaos Damage": `[
+			{"@list":[{"actor":"enemy","type":"ActorCondition","var":"Taunted"},{"type":"Condition","var":"UsedWarcryRecently"}],"flags":0,"keywordFlags":0,
+			"name":"ExplodeMod","type":"LIST","value":{"amount":8,"chance":1,"keyOfScaledMod":"chance","type":"Chaos"}},
+			{"flags":0,"keywordFlags":0,"name":"CanExplode","type":"FLAG","value":true}]`,
+		// "travel skills other than ([%a%s]+) are disabled"
+		"Travel Skills other than Dash are Disabled": `[{"@list":[{"skillType":79,"type":"SkillType"}],"flags":0,"keywordFlags":0,"name":"DisableSkill","type":"FLAG","value":true},
+			{"@list":[{"skillId":"Dash","type":"SkillId"}],"flags":0,"keywordFlags":0,"name":"EnableSkill","type":"FLAG","value":true}]`,
+		// "(%d+)%% chance to ... socketed spells when you spend at least (%d+) life on an upfront cost ..."
+		"50% chance to Trigger Socketed Spells when you Spend at least 0 Life on an Upfront Cost to Use or Trigger a Skill, with a 0.1 second Cooldown": `[
+			{"flags":0,"keywordFlags":0,"name":"FoulbornKitavaTriggerChance","source":"Kitava's Thirst","type":"BASE","value":50},
+			{"flags":0,"keywordFlags":0,"name":"FoulbornKitavaRequiredLifeCost","source":"Kitava's Thirst","type":"BASE","value":0},
+			{"@list":[{"slotName":"{SlotName}","type":"SocketedIn"}],"flags":0,"keywordFlags":0,"name":"ExtraSupport","type":"LIST",
+			"value":{"level":1,"skillId":"SupportCastOnLifeSpent"}}]`,
+		// "base (%a+) duration is ([%d%.]+) seconds?"
+		"Base Ignite Duration is 1 second": `[{"flags":0,"keywordFlags":0,"name":"IgniteDurationBase","type":"OVERRIDE","value":1}]`,
+
+		// m_huge (ModParser.lua:12) resolves to +Inf, which ModCache writes as {"$ref":"math.huge"}.
+		"Your Hexes have infinite Duration": `[{"@list":[{"skillType":69,"type":"SkillType"}],"flags":0,"keywordFlags":0,"name":"Duration","type":"BASE",
+			"value":{"$ref":"math.huge"}}]`,
+		// "^+(%d+) to ...": a leading "+" in a Lua pattern is a plain character.
+		"+25 to maximum Life per Allocated Journey Tattoo of the Body": `[{"@list":[{"type":"Multiplier","var":"JourneyTattooBody"}],"flags":0,"keywordFlags":0,
+			"name":"Life","type":"BASE","value":25},{"flags":0,"keywordFlags":0,"name":"Multiplier:JourneyTattooBody","type":"BASE","value":1}]`,
 	}
 	p, err := PoE1()
 	if err != nil {
