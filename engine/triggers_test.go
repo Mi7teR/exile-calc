@@ -92,7 +92,8 @@ func TestTriggerChanceExplicitZero(t *testing.T) {
 		wantOff bool
 	}{{"zero", true, true}, {"unset", false, false}} {
 		withTestTriggerConfig(t, "test chance "+tc.name, func(*ModDB, *activeSkill) *triggerConfig {
-			return &triggerConfig{source: src, sourceOut: map[string]float64{}, trigRate: 2, hasTriggerChance: tc.has}
+			return &triggerConfig{source: src, sourceOut: map[string]float64{}, trigRate: 2, hasTrigRate: true,
+				hasTriggerChance: tc.has}
 		})
 		main := triggerTestSkill("Test Chance " + tc.name)
 		main.active.srcTriggerChance, main.active.srcHasTriggerChance = 50, true
@@ -106,7 +107,8 @@ func TestTriggerChanceExplicitZero(t *testing.T) {
 }
 
 // CalcTriggers.lua:1629: configTable[skillId] is tried first, with the id
-// as it is; no game skill id is also a name key of the Go table.
+// as it is; no game skill id is also a name key of the Go table, except
+// the id keys of PoB's table (1569, 1594, 1597).
 func TestTriggerConfigBySkillID(t *testing.T) {
 	withTestTriggerConfig(t, "TestSkillId", func(*ModDB, *activeSkill) *triggerConfig {
 		return &triggerConfig{selfSource: true, triggerName: "by id"}
@@ -119,8 +121,10 @@ func TestTriggerConfigBySkillID(t *testing.T) {
 		t.Errorf("trigger %q, want the id's config", main.infoTrigger)
 	}
 	calc := newCalc(t)
+	idKeys := map[string]bool{"BloodShrineUniqueTriggeredExplodingToad": true, "TriggeredMoltenStrike": true,
+		"FieryImpactHeistMaceImplicit": true}
 	for id := range calc.data.Skills.Effects {
-		if triggerConfigs[id] != nil {
+		if triggerConfigs[id] != nil && !idKeys[id] {
 			t.Errorf("skill id %q is also a trigger config name key", id)
 		}
 	}
@@ -284,7 +288,7 @@ func TestSkipEffectiveRate(t *testing.T) {
 		db.activeSkills = []*activeSkill{s}
 		cfg := triggerConfigs["spellslinger"](db, s)
 		src := triggerTestSkill("Power Siphon")
-		cfg.source, cfg.sourceOut, cfg.trigRate = src, map[string]float64{}, 2
+		cfg.source, cfg.sourceOut, cfg.trigRate, cfg.hasTrigRate = src, map[string]float64{}, 2, true
 		c.defaultTrigger(db, s, nil, cfg, hitSource{}, nil)
 		got := db.output["SkillTriggerRate"]
 		if skip := name == "Spellslinger"; skip != (got == 0) || s.flags["skipEffectiveRate"] != skip {

@@ -15,6 +15,20 @@ func warcryCastTime(actor *ModDB, v *activeSkill) float64 {
 	return 1 / math.Min(speed, serverTickRate)
 }
 
+// cryOutputKey names the cry outputs set whatever the skill
+// (CalcOffence.lua:2682-2684, 2831-2833); the other cries set theirs only
+// when they apply to the skill.
+var cryOutputKey = map[string]string{"Infernal Cry": "InfernalCry", "Battlemage's Cry": "BattleMageCry"}
+
+// setCryOutputs sets the cry's duration, cooldown and cast time outputs
+// (CalcOffence.lua:2659-2661 and the other cries' branches).
+func setCryOutputs(actor *ModDB, v *activeSkill, out map[string]float64, cry string) {
+	cd, _ := skillCooldown(v.mods, v.cfg, v.data)
+	out[cry+"Duration"] = skillDuration(v.mods, v.cfg, v.data, actor.enemy)
+	out[cry+"Cooldown"] = cd
+	out[cry+"CastTime"] = warcryCastTime(actor, v)
+}
+
 // warcries is the exerted attack part of calcs.offence's damage pass
 // (mode_buffs): each warcry's exert uptime, the offensive warcry effect
 // (Rallying Cry), Intimidating Cry's double damage and the exert damage
@@ -53,6 +67,12 @@ func warcries(actor *ModDB, s *activeSkill, cfg *Cfg, out map[string]float64) {
 			continue
 		}
 		var key, exerts string
+		// The Infernal and Battlemage's Cry outputs, which the Combust and
+		// Battlemage's Cry trigger rates read (CalcTriggers.lua:503-540).
+		if cry := cryOutputKey[name]; cry != "" {
+			done[name] = true
+			setCryOutputs(actor, v, out, cry)
+		}
 		switch name {
 		case "Ancestral Cry":
 			if s.types[stMeleeSingleTarget] {
@@ -83,7 +103,17 @@ func warcries(actor *ModDB, s *activeSkill, cfg *Cfg, out map[string]float64) {
 			continue
 		}
 		done[name] = true
-		r := uptime(v, player.Sum("BASE", exerts))
+		if cryOutputKey[name] == "" {
+			setCryOutputs(actor, v, out, key+"Cry")
+		}
+		count := player.Sum("BASE", exerts)
+		// BattleCryExertsCount is Battlemage's Cry's (CalcOffence.lua:2835).
+		if key == "Battlemage" {
+			out["BattleCryExertsCount"] = count
+		} else {
+			out[key+"ExertsCount"] = count
+		}
+		r := uptime(v, count)
 		ratios[key] = r
 		out[key+"UpTimeRatio"] = r
 		out["GlobalWarcryUptimeRatio"] += r
@@ -112,7 +142,10 @@ func warcries(actor *ModDB, s *activeSkill, cfg *Cfg, out map[string]float64) {
 	out["ExertedAttackUptimeRatio"] = exerted
 	out["AilmentWarcryEffect"] = out["OffensiveWarcryEffect"]
 	if maxHit {
+		// CalcOffence.lua:2858-2862: the max hit shows the average hit.
 		out["AilmentWarcryEffect"] = out["MaxOffensiveWarcryEffect"]
+		s.data.set("showAverage", true)
+		s.flags["showAverage"] = true
 	}
 	if exerted <= 0 {
 		return
