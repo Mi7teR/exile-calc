@@ -11,8 +11,8 @@ import (
 // calcs.offence (Modules/CalcOffence.lua): ailment chances, bleed, poison,
 // ignite, impale, skill DoT, culling and combined DPS (decay is in
 // offence_dps.go, the non-damaging ailments, knockback and stun in
-// ailments_nondmg.go). Not ported yet: preDotFunc, the legacy Perfect
-// Agony (CritMultiplierAppliesToDegen).
+// ailments_nondmg.go), with both the legacy (CritMultiplierAppliesToDegen)
+// and the current Perfect Agony; preDotFunc is a skill hook.
 
 // Data/Global.lua ModFlag and KeywordFlag bits for ailments.
 const (
@@ -55,8 +55,23 @@ func canDeal(s *activeSkill, t string) bool {
 
 // ailmentChances is the "Calculate chance to inflict secondary dots/status
 // effects" part of the ailment loop for one pass.
+//
+//nolint:goconst // mod, tag and pass names as CalcOffence.lua spells them
 func ailmentChances(actor *ModDB, s *activeSkill, p *hitPass) {
 	list, cfg, out, enemy := s.mods, p.cfg, p.out, actor.enemy
+	var handTag map[string]any
+	switch p.label {
+	case "Main Hand":
+		handTag = map[string]any{"type": "Condition", "var": "MainHandAttack"}
+	case "Off Hand":
+		handTag = map[string]any{"type": "Condition", "var": "OffHandAttack"}
+	}
+	// CalcOffence.lua:4219-4227, the legacy Perfect Agony: each crit
+	// multiplier mod but the base one also gives half its value, floored,
+	// as ailment DoT multiplier on crits.
+	if list.Sum("BASE", "CritMultiplierAppliesToDegen") > 0 {
+		legacyPerfectAgony(list, cfg, handTag)
+	}
 	// Perfect Agony.
 	if list.Flag("DotMultiplierIsCritMultiplier") {
 		mult, ok := list.OverrideCfg(cfg, "CritMultiplier")
@@ -66,11 +81,8 @@ func ailmentChances(actor *ModDB, s *activeSkill, p *hitPass) {
 			mult = list.SumCfg(cfg, "BASE", "CritMultiplier")
 		}
 		tags := []map[string]any{{"type": "Condition", "var": "CriticalStrike"}}
-		switch p.label {
-		case "Main Hand":
-			tags = append(tags, map[string]any{"type": "Condition", "var": "MainHandAttack"})
-		case "Off Hand":
-			tags = append(tags, map[string]any{"type": "Condition", "var": "OffHandAttack"})
+		if handTag != nil {
+			tags = append(tags, handTag)
 		}
 		list.Add(Mod{Name: "DotMultiplier", Type: "OVERRIDE", Value: mult + enemy.SumCfg(cfg, "BASE", "SelfCritMultiplier"),
 			Flags: mfAilment, Tags: tags, Source: "Perfect Agony"})
@@ -189,6 +201,40 @@ func ailmentChances(actor *ModDB, s *activeSkill, p *hitPass) {
 		}
 	}
 	cfg.SkillCond = cond
+}
+
+// legacyPerfectAgony is CalcOffence.lua:4221-4226: for each mod of
+// skillModList:Tabulate("BASE", cfg, "CritMultiplier") not from "Base",
+// NewMod("DotMultiplier", "BASE", floor(mod.value / 2), mod.source,
+// ModFlag.Ailment, { Condition CriticalStrike }, handCondition, unpack(mod)).
+// For a spell handCondition is nil: createMod's tag list then has a hole
+// after the crit tag, and EvalMod's ipairs never reads the mod's own tags.
+//
+//nolint:goconst // mod and source names as CalcOffence.lua spells them
+func legacyPerfectAgony(list *ModDB, cfg *Cfg, handTag map[string]any) {
+	var added []Mod
+	for d := list; d != nil; d = d.parent {
+		for i := range d.mods["CritMultiplier"] {
+			m := &d.mods["CritMultiplier"][i]
+			if !eligible(m, "BASE", cfg) || m.Source == "Base" {
+				continue
+			}
+			if _, ok := list.eval(m, cfg); !ok {
+				continue
+			}
+			v, _ := num(m.Value)
+			tags := []map[string]any{{"type": "Condition", "var": "CriticalStrike"}}
+			if handTag != nil {
+				tags = append(append(tags, handTag), m.Tags...)
+			}
+			half := math.Floor(v / 2) //nolint:mnd // m_floor(mod.value / 2)
+			added = append(added, Mod{Name: "DotMultiplier", Type: "BASE", Value: half, Flags: mfAilment,
+				Tags: tags, Source: m.Source})
+		}
+	}
+	for _, m := range added {
+		list.Add(m)
+	}
 }
 
 // ailmentModeCrit is env.configInput.ailmentMode == "CRIT".

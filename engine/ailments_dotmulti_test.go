@@ -125,3 +125,49 @@ func TestDualWieldAilmentCritChance(t *testing.T) {
 		}
 	}
 }
+
+// TestLegacyPerfectAgony: CalcOffence.lua:4219-4227 adds half of every
+// non-"Base" crit multiplier mod as ailment DoT multiplier on crits. The
+// want values are the oracle's (PoB v2.68.1) with the legacy Perfect Agony
+// line and "+31% to Global Critical Strike Multiplier" as custom mods. The
+// spells (-fxcKCnOf7D2, 8YoGqmeyF3HU, EdNBLqyOUdTp) take the nil
+// handCondition path; Ne3GCl-EkKEi is a dual-wield attack with hand tags.
+func TestLegacyPerfectAgony(t *testing.T) {
+	const legacy = "Modifiers to Critical Strike Multiplier also apply to Damage over Time " +
+		"Multiplier for Ailments from Critical Strikes at 50% of their value"
+	const crit = "+31% to Global Critical Strike Multiplier"
+	c := newCalc(t)
+	run := func(id string, text string) map[string]float64 {
+		b := corpusBuild(t, id)
+		cfg := b.ActiveConfig()
+		cfg.CustomMods = append(cfg.CustomMods, pobcode.CustomModBlock{Enabled: true, Text: text})
+		res, err := c.Calc(b)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return res.Stats
+	}
+	for _, x := range []struct {
+		id   string
+		want map[string]float64
+	}{
+		{"-fxcKCnOf7D2", map[string]float64{"CritIgniteDotMulti": 2.9, "IgniteDPS": 980.54459286322}},
+		{"8YoGqmeyF3HU", map[string]float64{
+			"CritIgniteDotMulti": 2.17, "CritPoisonDotMulti": 2.59,
+			"IgniteDPS": 14102.902454202, "PoisonDPS": 81907.58373525,
+		}},
+		{"EdNBLqyOUdTp", map[string]float64{"CritIgniteDotMulti": 2.94}},
+		{"Ne3GCl-EkKEi", map[string]float64{"PoisonDPS": 228452.15179476}},
+	} {
+		without := run(x.id, crit)
+		got := run(x.id, legacy+"\n"+crit)
+		for k, want := range x.want {
+			if !near(got[k], want, 1e-9) {
+				t.Errorf("%s %s %v, want %v", x.id, k, got[k], want)
+			}
+			if near(without[k], want, 1e-9) {
+				t.Errorf("%s %s is %v without the legacy line too", x.id, k, want)
+			}
+		}
+	}
+}
