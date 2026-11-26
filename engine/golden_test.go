@@ -57,7 +57,7 @@ const minPlayerDPSWithinTolerance = 139
 
 // Full DPS ratchet: builds whose FullDPS and FullDotDPS (calcs.calcFullDPS)
 // are both within tolerance.
-const minFullDPSWithinTolerance = 127
+const minFullDPSWithinTolerance = 129
 
 // playerOffenceStats are the main skill's hit, ignite and skill DoT stats.
 var playerOffenceStats = []string{"Speed", "HitChance", "CritChance", "CritMultiplier", "AverageDamage", "TotalDPS",
