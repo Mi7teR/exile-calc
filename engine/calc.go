@@ -23,6 +23,8 @@ type Calculator struct {
 
 	keystoneOnce sync.Once
 	keystones    map[string]keystone // PassiveTree.lua keystoneMap
+
+	grants grantCache // item.grantedSkills by item (grantedskills.go)
 }
 
 func New() (*Calculator, error) {

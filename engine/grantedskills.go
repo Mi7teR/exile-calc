@@ -6,6 +6,8 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
+	"sync/atomic"
 
 	"github.com/Mi7teR/poe-lib/gamedata"
 	"github.com/Mi7teR/poe-lib/pobcode"
@@ -214,7 +216,22 @@ func (c *Calculator) itemGrantedSkills(st *calcState) []grantedSkill {
 // (CalcSetup.lua:841-848): the item's ExtraSkill mods, baseList:List(nil,
 // "ExtraSkill"), where a mod with tags does not evaluate without a cfg.
 func (c *Calculator) itemGrants(si slotItem) []grantedSkill {
-	it, mods := c.itemMods(si.item, &Result{})
+	key := grantKey(si.item)
+	list, ok := c.grants.load(key)
+	if !ok {
+		list = c.parseItemGrants(si.item)
+		c.grants.store(key, list)
+	}
+	out := slices.Clone(list)
+	for i := range out {
+		out[i].slot = si.slot
+	}
+	return out
+}
+
+// parseItemGrants is itemGrants without the slot, from the parsed item.
+func (c *Calculator) parseItemGrants(item *pobcode.Item) []grantedSkill {
+	it, mods := c.itemMods(item, &Result{})
 	if it == nil {
 		return nil
 	}
@@ -224,7 +241,7 @@ func (c *Calculator) itemGrants(si slotItem) []grantedSkill {
 			continue
 		}
 		v, _ := m.Value.(map[string]any)
-		g := extraSkillGrant(v, itemSource(si.item, it), si.slot)
+		g := extraSkillGrant(v, itemSource(item, it), "")
 		if g.id == "" {
 			continue
 		}
@@ -235,6 +252,52 @@ func (c *Calculator) itemGrants(si slotItem) []grantedSkill {
 		out = append(out, g)
 	}
 	return out
+}
+
+// grantKey is what parseItemGrants reads of an item: its id (in the
+// source), variants, mod ranges and text.
+func grantKey(item *pobcode.Item) string {
+	var sb strings.Builder
+	fmt.Fprintf(&sb, "%d %d %v %v\n", item.ID, item.Variant, item.VariantAlt, item.ModRanges)
+	sb.WriteString(item.Raw)
+	return sb.String()
+}
+
+// grantCache maps grantKey to parseItemGrants' result. Every Calc reads
+// the grants of all the build's items, and FullDPS, CalcMinions and the
+// Comparer calculate the same items many times. Entries are never handed
+// out: itemGrants returns a copy.
+type grantCache struct {
+	m      sync.Map // string -> []grantedSkill
+	cached atomic.Int64
+}
+
+// grantCacheCap bounds the cache, as modparser's parseCacheCap does, for
+// a long-running consumer that sees arbitrary items.
+const grantCacheCap = 10_000
+
+func (gc *grantCache) load(key string) ([]grantedSkill, bool) {
+	v, ok := gc.m.Load(key)
+	if !ok {
+		return nil, false
+	}
+	list, _ := v.([]grantedSkill)
+	return list, true
+}
+
+// store caches list unless the cache is full; a slot is reserved before
+// the insert, so concurrent misses never take the count past the cap.
+func (gc *grantCache) store(key string, list []grantedSkill) {
+	if gc.cached.Load() >= grantCacheCap {
+		return
+	}
+	if gc.cached.Add(1) > grantCacheCap {
+		gc.cached.Add(-1)
+		return
+	}
+	if _, loaded := gc.m.LoadOrStore(key, list); loaded {
+		gc.cached.Add(-1)
+	}
 }
 
 // additionalRingSlot is env.initialNodeModDB:Flag(nil, "AdditionalRingSlot")
