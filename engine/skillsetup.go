@@ -605,10 +605,9 @@ type costKey struct {
 // before validateGemLevel. The level table is shared, so every skill of
 // that effect at that level costs nothing.
 //
-// Quirk (PoB mutates its skill data): the emptied cost lasts for the rest
-// of the PoB session, so it reaches later calculations and other builds
-// until PoB restarts; here it applies to the calculation whose granted
-// skills emptied it.
+// Unlike PoB, which mutates its shared skill data so the emptied cost
+// leaks into later calculations and builds until it restarts, the engine
+// empties it only for the calculation whose grants caused it.
 func wipedCosts(groups []pobcode.SocketGroup, grants []groupGrant) map[costKey]bool {
 	var out map[costKey]bool
 	for i := range groups {
