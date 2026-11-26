@@ -208,12 +208,31 @@ type skillEffect struct {
 	fromItem         bool // set on supports granted by items (ExtraSupport)
 	appliesToGranted bool
 	actorLevel       float64 // activeEffect.actorLevel: the minion's level for minion skills
-	// srcTriggered and srcTriggerChance are srcInstance.triggered and
-	// triggerChance: the ExtraSkill mod's fields for a skill granted by an
-	// item or a node (CalcSetup.lua:1556-1557).
+	// srcTriggered, srcTriggerChance and srcNoSupports are
+	// srcInstance.triggered, triggerChance and noSupports: what the granted
+	// skill block set on the gem (groupGrant; CalcSetup.lua:1555-1558,
+	// 1592-1599).
 	srcTriggered        bool
 	srcTriggerChance    float64
 	srcHasTriggerChance bool
+	srcNoSupports       bool
+	// groupSourceItem is socketGroup.sourceItem ~= nil: the group of a
+	// skill an item grants (CalcSetup.lua:1543).
+	groupSourceItem bool
+	// wipedCosts are the skill levels whose cost a triggered granted gem
+	// emptied (wipedCosts, SkillsTab.lua:1198-1202), shared by the
+	// calculation's skills.
+	wipedCosts map[costKey]bool
+}
+
+// levelCost is grantedEffectLevel.cost: the cost of the effect's level,
+// nil when a triggered granted gem emptied it.
+func (e *skillEffect) levelCost() map[string]float64 {
+	lv := e.ge.Levels[e.level]
+	if lv == nil || e.wipedCosts[costKey{e.id, e.level}] {
+		return nil
+	}
+	return lv.Cost
 }
 
 // skillBuff is an entry of activeSkill.buffList.

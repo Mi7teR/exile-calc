@@ -78,6 +78,9 @@ type Result struct {
 	callerGroups []int
 	// compared is calcState.compared, for the Full DPS passes.
 	compared int
+	// grants is calcState.grants: what the granted skill block set on
+	// build's groups, for the Full DPS passes.
+	grants []groupGrant
 }
 
 // callerGroup is the input build's index of build's group g (both

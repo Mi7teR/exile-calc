@@ -42,10 +42,7 @@ func skillCosts(actor *ModDB, s *activeSkill, out map[string]float64) {
 	for _, c := range order {
 		costs[c.name] = c
 	}
-	var lvCost map[string]float64
-	if lv := s.active.ge.Levels[s.active.level]; lv != nil {
-		lvCost = lv.Cost
-	}
+	lvCost := s.active.levelCost()
 	mult := floorTo(list.MoreCfg(cfg, "SupportManaMultiplier"), 4)
 	additionalLife := list.SumCfg(cfg, "BASE", "ManaCostAsLifeCost") / 100
 	additionalES := list.SumCfg(cfg, "BASE", "ManaCostAsEnergyShieldCost") / 100

@@ -32,6 +32,10 @@ type calcState struct {
 	// compared is the id of the Comparer's compared item (0 = none),
 	// whose grants are not cached (itemInfo).
 	compared int
+	// grants is what the granted skill block set on each socket group of
+	// b (groupGrant): computed in MAIN mode, given by calcOpts in
+	// CALCULATOR mode, whose groups the MAIN pass left as PoB keeps them.
+	grants []groupGrant
 
 	// Passive tree.
 	allocated    map[int]bool
@@ -127,15 +131,16 @@ func (c *Calculator) Calc(b *pobcode.Build) (*Result, error) {
 
 // calcOpts are the calcState settings Calc leaves at zero.
 type calcOpts struct {
-	calculator bool // calcState.calculator: CALCULATOR mode
-	compared   int  // calcState.compared
+	calculator bool         // calcState.calculator: CALCULATOR mode
+	compared   int          // calcState.compared
+	grants     []groupGrant // calcState.grants in CALCULATOR mode
 }
 
 // calc is Calc with opts: MAIN mode, or CALCULATOR mode with
 // opts.calculator.
 func (c *Calculator) calc(b *pobcode.Build, opts calcOpts) (*Result, error) {
 	// The steps of calcSteps run in order over a fresh calcState.
-	st := &calcState{b: b, calculator: opts.calculator, compared: opts.compared}
+	st := &calcState{b: b, calculator: opts.calculator, compared: opts.compared, grants: opts.grants}
 	for _, step := range calcSteps {
 		if err := step.run(c, st); err != nil {
 			return nil, err
@@ -680,10 +685,10 @@ func stepSkills(c *Calculator, st *calcState) error {
 	// read their source from it (enemyExplode).
 	db.explodeSources = c.explodeSources(st)
 	if !st.calculator {
-		st.b, res.callerGroups = c.withGrantedSkills(st, db.explodeSources)
+		st.b, res.callerGroups, st.grants = c.withGrantedSkills(st, db.explodeSources)
 	}
-	db.build, res.build, res.compared = st.b, st.b, st.compared
-	skills := c.setupSkills(db, st.b, st.useSwap, res)
+	db.build, res.build, res.compared, res.grants = st.b, st.b, st.compared, st.grants
+	skills := c.setupSkills(db, st.b, st.useSwap, res, st.grants)
 	db.activeSkills = skills
 	for _, s := range skills {
 		c.buildSkillMods(db, s, res)

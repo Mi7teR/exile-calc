@@ -147,23 +147,21 @@ func TestManaforgedCostCached(t *testing.T) {
 }
 
 // CalcSetup.lua:1556-1557: a skill granted by an item keeps its
-// ExtraSkill mod's triggered and triggerChance, and isTriggered sees it.
+// ExtraSkill mod's triggered and triggerChance on its gem (groupGrant),
+// and isTriggered sees it.
 func TestGrantedTrigger(t *testing.T) {
 	src := "Item:54:Lioneye's Paws, Bronzescale Boots"
-	db := NewModDB()
-	db.Add(Mod{Name: "ExtraSkill", Type: "LIST", Source: src,
-		Value: map[string]any{"skillId": "RainOfArrows", "level": 5.0, "triggered": true, "triggerChance": 30.0}})
-	g := &pobcode.SocketGroup{Source: src}
-	if tr, ch, has := grantedTrigger(db, g, "RainOfArrows"); !tr || ch != 30 || !has {
-		t.Errorf("got %v %v %v, want true 30 true", tr, ch, has)
+	v := map[string]any{"skillId": "RainOfArrows", "level": 5.0, "triggered": true, "triggerChance": 30.0}
+	g := extraSkillGrant(v, src, "Boots")
+	b := &pobcode.Build{SkillSets: []pobcode.SkillSet{{}}}
+	_, _, grants := applyGrantedSkills(b, []grantedSkill{g}, nil, nil)
+	if src := grantOf(grants, 0).gem(0); !src.triggered || src.triggerChance != 30 || !src.hasTriggerChance {
+		t.Errorf("got %+v, want triggered with chance 30", src)
 	}
-	if tr, _, _ := grantedTrigger(db, &pobcode.SocketGroup{Source: "Item:1:Other"}, "RainOfArrows"); tr {
-		t.Error("a mod of another source must not match")
-	}
-	db.Add(Mod{Name: "ExtraSkill", Type: "LIST", Source: "Item:2:Other",
-		Value: map[string]any{"skillId": "RainOfArrows", "level": 5.0, "triggered": true}})
-	if tr, _, has := grantedTrigger(db, &pobcode.SocketGroup{Source: "Item:2:Other"}, "RainOfArrows"); !tr || has {
-		t.Errorf("no triggerChance: got triggered %v set %v, want true false", tr, has)
+	delete(v, "triggerChance")
+	_, _, grants = applyGrantedSkills(b, []grantedSkill{extraSkillGrant(v, src, "Boots")}, nil, nil)
+	if src := grantOf(grants, 0).gem(0); !src.triggered || src.hasTriggerChance {
+		t.Errorf("no triggerChance: got %+v, want triggered without a chance", src)
 	}
 	s := triggerTestSkill("Rain of Arrows")
 	if isTriggered(s) {

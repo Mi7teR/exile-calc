@@ -85,7 +85,8 @@ func (c *Calculator) fullDPSFrom(base *Result) (*FullDPSResult, error) {
 		r := base
 		if !s.main {
 			cp := withMainSkill(b, base.buildGroup(info.Group), info.GroupSkill)
-			if r, err = c.calc(keepMainGroup(b, cp), calcOpts{calculator: true, compared: base.compared}); err != nil {
+			opts := calcOpts{calculator: true, compared: base.compared, grants: base.grants}
+			if r, err = c.calc(keepMainGroup(b, cp), opts); err != nil {
 				return nil, err
 			}
 		}

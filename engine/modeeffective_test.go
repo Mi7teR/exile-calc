@@ -18,6 +18,12 @@ type testMod struct {
 // COMBAT, BUFFED and UNBUFFED buff modes clear it).
 func calcEffective(t *testing.T, c *Calculator, b *pobcode.Build, effective bool, mods ...testMod) map[string]float64 {
 	t.Helper()
+	return calcWithMods(t, c, b, effective, mods...).res.Stats
+}
+
+// calcWithMods is calcEffective's calculation state.
+func calcWithMods(t *testing.T, c *Calculator, b *pobcode.Build, effective bool, mods ...testMod) *calcState {
+	t.Helper()
 	st := &calcState{b: b}
 	for _, step := range calcSteps {
 		if err := step.run(c, st); err != nil {
@@ -37,7 +43,7 @@ func calcEffective(t *testing.T, c *Calculator, b *pobcode.Build, effective bool
 			}
 		}
 	}
-	return st.res.Stats
+	return st
 }
 
 func flagMod(name string) Mod { return Mod{Name: name, Type: "FLAG", Value: true} }

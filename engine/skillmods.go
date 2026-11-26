@@ -430,7 +430,13 @@ func (c *Calculator) buildSkillMods(db *ModDB, s *activeSkill, res *Result) {
 		}
 		s.spectres = spectres // a fresh list on every build of the skill
 	}
-	if list.FlagCfg(s.cfg, "DisableSkill") && !list.FlagCfg(s.cfg, "EnableSkill") {
+	// CalcActiveSkill.lua:521-526: mods that apply curses (an item's
+	// triggered curse with noSupports) stay enabled with
+	// ForceEnableCurseApplication.
+	curseApplication := s.active.groupSourceItem && s.flags["curse"] && s.active.hasSrc &&
+		s.active.srcNoSupports && s.active.srcTriggered
+	enabled := list.FlagCfg(s.cfg, "EnableSkill") || (curseApplication && list.Flag("ForceEnableCurseApplication"))
+	if list.FlagCfg(s.cfg, "DisableSkill") && !enabled {
 		s.disabled = true
 	}
 	if s.disabled {

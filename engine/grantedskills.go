@@ -29,6 +29,56 @@ type grantedSkill struct {
 	// at least reqCount of the reqMult item multiplier (reqMult "" = none).
 	reqMult  string
 	reqCount float64
+	// noSupports, triggered and triggerChance are the ExtraSkill value's
+	// (Item.lua:2668-2675); a node's grant has none (CalcSetup.lua:255-259).
+	noSupports       bool
+	triggered        bool
+	triggerChance    float64
+	hasTriggerChance bool
+	// fromItem is grantedSkill.sourceItem ~= nil: an item's grant
+	// (CalcSetup.lua:846).
+	fromItem bool
+}
+
+// groupGrant is what the granted skill block sets on a socket group of
+// the calculated build and on its gems, none of which a saved build holds
+// (SkillsTab.lua saves none of it): group.noSupports, whether
+// group.sourceItem is set, and per gem index its noSupports, triggered and
+// triggerChance (CalcSetup.lua:1543-1558 for a grant's gem, 1592-1599 for
+// the Explode group's). A group the block does not touch has the zero
+// value.
+type groupGrant struct {
+	noSupports bool
+	sourceItem bool
+	gems       []gemGrant
+}
+
+// gemGrant is one gem's fields of groupGrant. level is the gem's level
+// when ProcessSocketGroup runs (SkillsTab.lua:1198), before its
+// validation: the level whose cost a triggered gem wipes.
+type gemGrant struct {
+	noSupports       bool
+	triggered        bool
+	triggerChance    float64
+	hasTriggerChance bool
+	level            int
+}
+
+// gem is groupGrant's gem gi (0-based), the zero value when none is set.
+func (g groupGrant) gem(gi int) gemGrant {
+	if gi < 0 || gi >= len(g.gems) {
+		return gemGrant{}
+	}
+	return g.gems[gi]
+}
+
+// grantOf is grants' entry for group i (0-based), the zero value when
+// there is none.
+func grantOf(grants []groupGrant, i int) groupGrant {
+	if i < 0 || i >= len(grants) {
+		return groupGrant{}
+	}
+	return grants[i]
 }
 
 // withGrantedSkills ports CalcSetup.lua's "Process extra skills granted by
@@ -37,8 +87,8 @@ type grantedSkill struct {
 // so does a non-empty explodeSources (the "Explode" group), and saved
 // groups with a source that nothing took are removed. It also returns
 // each resulting group's index in st.b (callerGroups), nil when b is
-// unchanged.
-func (c *Calculator) withGrantedSkills(st *calcState, explode []string) (*pobcode.Build, []int) {
+// unchanged, and what the block set on each resulting group.
+func (c *Calculator) withGrantedSkills(st *calcState, explode []string) (*pobcode.Build, []int, []groupGrant) {
 	return applyGrantedSkills(st.b, c.grantedSkills(st), explode, c.data.Skills.Effects)
 }
 
@@ -56,6 +106,8 @@ func (c *Calculator) grantedSkills(st *calcState) []grantedSkill {
 			continue
 		}
 		v, _ := e.Value.(map[string]any)
+		// copyTable(skill): the custom mod's fields, itemRequirement,
+		// noSupports and triggered included.
 		g := extraSkillGrant(v, "Config", "")
 		ge := c.data.Skills.Effects[g.id]
 		if g.reqMult == "" || ge == nil {
@@ -67,8 +119,26 @@ func (c *Calculator) grantedSkills(st *calcState) []grantedSkill {
 	// CalcSetup.lua:1500-1506: only while enough items of the required
 	// influence are equipped (env.itemModDB:GetMultiplier).
 	return slices.DeleteFunc(grants, func(g grantedSkill) bool {
-		return g.reqMult != "" && db.multipliers[g.reqMult] < g.reqCount
+		return g.reqMult != "" && itemMultiplier(db, g.reqMult) < g.reqCount
 	})
+}
+
+// itemMultiplier is env.itemModDB:GetMultiplier(name) (ModStore.lua:301-303)
+// at the granted skill block: the item multiplier (db.multipliers holds
+// itemModDB's, CalcSetup.lua:1240-1338), plus the BASE Multiplier:<name>
+// mods of the items, or their OVERRIDE. itemModDB holds only the item
+// mods (the gear and jewels of the item loop, CalcSetup.lua:1148-1235),
+// which in db are the mods with an "Item:" source; their tags are
+// evaluated against db, whose conditions include itemModDB's.
+func itemMultiplier(db *ModDB, name string) float64 {
+	items := NewModDB()
+	items.conditions, items.multipliers = db.conditions, db.multipliers
+	for _, m := range db.mods["Multiplier:"+name] {
+		if strings.HasPrefix(m.Source, "Item:") {
+			items.Add(m)
+		}
+	}
+	return items.GetMultiplier(name)
 }
 
 // treeGrantedSkills is env.grantedSkillsNodes (CalcSetup.lua:1478-1487):
@@ -94,7 +164,7 @@ func treeGrantedSkills(db *ModDB) []grantedSkill {
 		g := extraSkillGrant(v, e.Mod.Source, "")
 		// A node's grantedSkills entry copies only skillId, level and
 		// source (CalcSetup.lua:255-259).
-		g.reqMult, g.reqCount = "", 0
+		g = grantedSkill{source: g.source, id: g.id, level: g.level}
 		if g.id == "" {
 			continue
 		}
@@ -114,6 +184,9 @@ func extraSkillGrant(v map[string]any, source, slot string) grantedSkill {
 	g.id, _ = v["skillId"].(string)
 	lvl, _ := num(v["level"])
 	g.level = int(lvl)
+	g.noSupports, _ = v["noSupports"].(bool)
+	g.triggered, _ = v["triggered"].(bool)
+	g.triggerChance, g.hasTriggerChance = num(v["triggerChance"])
 	if r, ok := v["itemRequirement"].(map[string]any); ok {
 		g.reqMult, _ = r["multiplier"].(string)
 		g.reqCount, _ = num(r["count"])
@@ -271,30 +344,46 @@ func (c *Calculator) itemInfo(item *pobcode.Item, compared int) itemGrantInfo {
 }
 
 // parseItemInfo parses item for itemGrantInfo. item.grantedSkills is
-// Item.lua:2666-2679: baseList:List(nil, "ExtraSkill") (no item line PoB
-// parses gives ExtraSkill tags, so every one counts), with nameSpec the
-// skill's name (CalcSetup.lua:844).
+// Item.lua:2666-2679: baseList:List(nil, "ExtraSkill"), with nameSpec the
+// skill's name and sourceItem the item (CalcSetup.lua:844-846);
+// canExplode is item.baseModList:Flag(nil, "CanExplode") (CalcSetup.lua:
+// 851). Both evaluate the mods' tags against the item's own list, which
+// has no conditions or multipliers of its own.
 func (c *Calculator) parseItemInfo(item *pobcode.Item) itemGrantInfo {
 	it, mods := c.itemMods(item, &Result{})
 	if it == nil {
 		return itemGrantInfo{}
 	}
-	info := itemGrantInfo{source: itemSource(item, it)}
+	source := itemSource(item, it)
+	var list []Mod
 	for _, m := range mods {
-		switch m.Name {
-		case "CanExplode":
-			info.canExplode = info.canExplode || (m.Value == true && len(m.Tags) == 0)
-		case extraSkill:
-			v, _ := m.Value.(map[string]any)
-			g := extraSkillGrant(v, info.source, "")
-			if g.id == "" {
-				continue
-			}
-			if ge := c.data.Skills.Effects[g.id]; ge != nil {
-				g.nameSpec = ge.Name
-			}
-			info.grants = append(info.grants, g)
+		if m.Name == "CanExplode" || m.Name == extraSkill {
+			list = append(list, fromParsed(m, source))
 		}
+	}
+	return c.grantInfo(source, list)
+}
+
+// grantInfo is itemGrantInfo from an item's CanExplode and ExtraSkill
+// mods (parseItemInfo).
+func (c *Calculator) grantInfo(source string, mods []Mod) itemGrantInfo {
+	info := itemGrantInfo{source: source}
+	base := NewModDB()
+	for _, m := range mods {
+		base.Add(m)
+	}
+	info.canExplode = base.Flag("CanExplode")
+	for _, e := range base.List(nil, extraSkill) {
+		v, _ := e.Value.(map[string]any)
+		g := extraSkillGrant(v, info.source, "")
+		if g.id == "" {
+			continue
+		}
+		g.fromItem = true
+		if ge := c.data.Skills.Effects[g.id]; ge != nil {
+			g.nameSpec = ge.Name
+		}
+		info.grants = append(info.grants, g)
 	}
 	return info
 }
@@ -374,7 +463,8 @@ const explodeGroupLabel = "On Kill Monster Explosion"
 // The second result maps each resulting group to its index in b (both
 // 1-based, callerGroups[i-1] for group i): a kept group has its own index,
 // the k-th appended group len(b's groups)+k. It is nil when b is returned
-// unchanged (the identity).
+// unchanged (the identity). The third is what the block set on each
+// resulting group (groupGrant), also when b is unchanged.
 //
 // Quirk (follows the game, not PoB): b.MainSocketGroup is read in b's own
 // list, a kept group's index or len+k for the k-th appended group, and
@@ -390,13 +480,14 @@ func applyGrantedSkills(
 	grants []grantedSkill,
 	explode []string,
 	skills map[string]*gamedata.Skill,
-) (*pobcode.Build, []int) {
+) (*pobcode.Build, []int, []groupGrant) {
 	set := b.ActiveSkills()
 	if set == nil {
-		return b, nil
+		return b, nil, nil
 	}
 	n := len(set.Groups)
-	l := &groupList{groups: slices.Clone(set.Groups), marked: slices.Repeat([]bool{false}, n)}
+	l := &groupList{groups: slices.Clone(set.Groups), marked: slices.Repeat([]bool{false}, n),
+		grants: make([]groupGrant, n)}
 	for i := range n {
 		l.caller = append(l.caller, i+1)
 	}
@@ -410,24 +501,26 @@ func applyGrantedSkills(
 	newMain := b.MainSocketGroup
 	kept := make([]pobcode.SocketGroup, 0, len(l.groups))
 	caller := make([]int, 0, len(l.groups))
+	state := make([]groupGrant, 0, len(l.groups))
 	for i, g := range l.groups {
 		if g.Source != "" && !l.marked[i] {
 			continue
 		}
 		kept = append(kept, g)
 		caller = append(caller, l.caller[i])
+		state = append(state, l.grants[i])
 		if l.caller[i] == b.MainSocketGroup {
 			newMain = len(kept) // the quirk above
 		}
 	}
 	if !l.changed && len(kept) == n {
-		return b, nil
+		return b, nil, state
 	}
 	cp := *b
 	cp.SkillSets = slices.Clone(b.SkillSets)
 	cp.ActiveSkills().Groups = kept
 	cp.MainSocketGroup = newMain
-	return &cp, caller
+	return &cp, caller, state
 }
 
 // groupList is build.skillsTab.socketGroupList while applyGrantedSkills
@@ -435,7 +528,8 @@ func applyGrantedSkills(
 type groupList struct {
 	groups  []pobcode.SocketGroup
 	marked  []bool
-	caller  []int // each group's index in the input build
+	caller  []int        // each group's index in the input build
+	grants  []groupGrant // what the block set on each group
 	changed bool
 }
 
@@ -444,6 +538,7 @@ func (l *groupList) add(g pobcode.SocketGroup) int {
 	l.groups = append(l.groups, g)
 	l.marked = append(l.marked, true)
 	l.caller = append(l.caller, len(l.caller)+1)
+	l.grants = append(l.grants, groupGrant{})
 	return len(l.groups) - 1
 }
 
@@ -478,6 +573,14 @@ func (l *groupList) grant(gr grantedSkill, skills map[string]*gamedata.Skill) {
 		g.Gems = []pobcode.Gem{gem}
 		l.changed = true
 	}
+	// group.sourceItem, group.noSupports and the gem's noSupports,
+	// triggered and triggerChance (1544-1558), set by every grant that
+	// takes the group; the gem's level is grantedSkill.level until
+	// ProcessSocketGroup validates it.
+	l.grants[idx] = groupGrant{noSupports: gr.noSupports, sourceItem: gr.fromItem, gems: []gemGrant{{
+		noSupports: gr.noSupports, triggered: gr.triggered,
+		triggerChance: gr.triggerChance, hasTriggerChance: gr.hasTriggerChance, level: gr.level,
+	}}}
 }
 
 // explode is CalcSetup.lua:1564-1605 for n explode sources: the first
@@ -487,6 +590,9 @@ func (l *groupList) explode(n int) {
 	if idx < 0 {
 		// { label = "On Kill Monster Explosion", enabled = true, gemList = { }, source = "Explode", noSupports = true }
 		idx = l.add(pobcode.SocketGroup{Label: explodeGroupLabel, Enabled: true, Source: "Explode"})
+		// Only a group created here has noSupports: the block never sets
+		// it on a group it finds, and a saved build does not hold it.
+		l.grants[idx].noSupports = true
 	}
 	l.marked[idx] = true
 	// gemsBySource reuses gems by their explodeSource, which a saved build
@@ -498,6 +604,10 @@ func (l *groupList) explode(n int) {
 		l.groups[idx].Gems = gems
 		l.changed = true
 	}
+	// Each gem is a new instance with triggered = true. group.explodeSources
+	// is env.explodeSources (db.explodeSources); group.sourceItem is left
+	// as it was (nil for a group no grant took).
+	l.grants[idx].gems = slices.Repeat([]gemGrant{{triggered: true, level: 1}}, n)
 }
 
 // grantMatches is CalcSetup.lua:1527-1528: the group has the grant's source

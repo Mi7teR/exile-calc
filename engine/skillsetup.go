@@ -186,11 +186,12 @@ type groupCfg struct {
 
 // setupSkills ports the skill part of calcs.initEnv: it returns the
 // player's active skills with their supports.
-func (c *Calculator) setupSkills(db *ModDB, b *pobcode.Build, useSwap bool, res *Result) []*activeSkill {
+func (c *Calculator) setupSkills(db *ModDB, b *pobcode.Build, useSwap bool, res *Result, grants []groupGrant) []*activeSkill {
 	set := b.ActiveSkills()
 	if set == nil || len(set.Groups) == 0 {
 		return nil
 	}
+	wiped := wipedCosts(set.Groups, grants)
 	skills := c.data.Skills.Effects
 	mainGroup := min(max(len(set.Groups), 1), max(b.MainSocketGroup, 1))
 	// CalcSetup.lua crossLinkedSupportGroups: the slot of the item with
@@ -397,11 +398,18 @@ func (c *Calculator) setupSkills(db *ModDB, b *pobcode.Build, useSwap bool, res 
 					continue
 				}
 				eff := newEffect(gc, gi, gm, gem, eid, ge)
-				if g.Source != "" && gi == 0 {
-					eff.srcTriggered, eff.srcTriggerChance, eff.srcHasTriggerChance = grantedTrigger(db, g, eid)
+				gg := grantOf(grants, i)
+				src := gg.gem(gi)
+				eff.srcTriggered, eff.srcTriggerChance, eff.srcHasTriggerChance = src.triggered, src.triggerChance, src.hasTriggerChance
+				eff.srcNoSupports, eff.groupSourceItem = src.noSupports, gg.sourceItem
+				eff.wipedCosts = wiped
+				// CalcSetup.lua:1866-1867: a group with noSupports takes
+				// no supports at all.
+				var applied []*skillEffect
+				if !gg.noSupports {
+					applied = append(applied, supports[i]...)
 				}
-				applied := append([]*skillEffect(nil), supports[i]...)
-				if g.Source != "" && gc.cfg.SlotName != "" {
+				if !gg.noSupports && g.Source != "" && gc.cfg.SlotName != "" {
 					// Skills granted by an item take the supports of every group in its slot.
 					for j := range set.Groups {
 						if j != i && enabled[j] && cfgs[j].cfg.SlotName == gc.cfg.SlotName {
@@ -413,7 +421,7 @@ func (c *Calculator) setupSkills(db *ModDB, b *pobcode.Build, useSwap bool, res 
 				}
 				// Then the supports of cross-linked slots.
 				for _, src := range slices.Sorted(maps.Keys(crossLinked)) {
-					if !contains(crossLinked[src], gc.cfg.SlotName) {
+					if gg.noSupports || !contains(crossLinked[src], gc.cfg.SlotName) {
 						continue
 					}
 					for j := range set.Groups {
@@ -584,20 +592,34 @@ func (c *Calculator) createActiveSkill(active *skillEffect, supports []*skillEff
 	return s
 }
 
-// grantedTrigger is the triggered and triggerChance fields of the
-// ExtraSkill mod granting skill id to the group (grantedSkill.source ==
-// socketGroup.source, CalcSetup.lua:1527), and whether triggerChance is set.
-func grantedTrigger(db *ModDB, g *pobcode.SocketGroup, id string) (bool, float64, bool) {
-	for _, e := range db.List(nil, "ExtraSkill") {
-		if e.Mod.Source != g.Source {
-			continue
-		}
-		v, _ := e.Value.(map[string]any)
-		if sid, _ := v["skillId"].(string); sid == id {
-			t, _ := v["triggered"].(bool)
-			ch, hasCh := num(v["triggerChance"])
-			return t, ch, hasCh
+// costKey is a skill and a level of it.
+type costKey struct {
+	id    string
+	level int
+}
+
+// wipedCosts is SkillsTab.lua:1198-1202 for the granted skill block's
+// gems: ProcessSocketGroup empties grantedEffect.levels[level].cost of a
+// triggered gem given by skill id (gemData is never set for those:
+// data.gemForSkill is keyed by grantedEffect, not id), at the gem's level
+// before validateGemLevel. The level table is shared, so every skill of
+// that effect at that level costs nothing.
+//
+// Quirk (PoB mutates its skill data): the emptied cost lasts for the rest
+// of the PoB session, so it reaches later calculations and other builds
+// until PoB restarts; here it applies to the calculation whose granted
+// skills emptied it.
+func wipedCosts(groups []pobcode.SocketGroup, grants []groupGrant) map[costKey]bool {
+	var out map[costKey]bool
+	for i := range groups {
+		for gi, gm := range groups[i].Gems {
+			if src := grantOf(grants, i).gem(gi); src.triggered && gm.SkillID != "" {
+				if out == nil {
+					out = map[costKey]bool{}
+				}
+				out[costKey{gm.SkillID, src.level}] = true
+			}
 		}
 	}
-	return false, 0, false
+	return out
 }

@@ -657,7 +657,7 @@ func applyGranted(
 	explode []string,
 	skills map[string]*gamedata.Skill,
 ) *pobcode.Build {
-	got, _ := applyGrantedSkills(b, grants, explode, skills)
+	got, _, _ := applyGrantedSkills(b, grants, explode, skills)
 	return got
 }
 
@@ -666,7 +666,7 @@ func applyGranted(
 func TestMainSocketGroupAppended(t *testing.T) {
 	b := staleBuild("Tree:1", "") // stale, Arc, Fireball
 	b.MainSocketGroup = 4         // the first appended group
-	got, caller := applyGrantedSkills(b, []grantedSkill{{source: "Tree:2", id: "Frostbolt", level: 20}}, nil, nil)
+	got, caller, _ := applyGrantedSkills(b, []grantedSkill{{source: "Tree:2", id: "Frostbolt", level: 20}}, nil, nil)
 	groups := got.ActiveSkills().Groups
 	if len(groups) != 3 || groups[2].Gems[0].SkillID != "Frostbolt" || got.MainSocketGroup != 3 {
 		t.Fatalf("groups %+v, MainSocketGroup %d; want Arc, Fireball, Frostbolt and 3", groups, got.MainSocketGroup)

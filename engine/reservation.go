@@ -51,10 +51,10 @@ func reservations(db *ModDB, skills []*activeSkill, res *Result) {
 			"Life": {base("lifeReservationFlat", level.LifeReservationFlat), base("lifeReservationPercent", level.LifeReservationPercent)},
 		}
 		// Skills whose cost becomes a reservation (Minefield-like supports).
-		if level.Cost != nil {
+		if lc := s.active.levelCost(); lc != nil {
 			for _, name := range []string{"Mana", "Life"} {
 				if list.FlagCfg(cfg, name+"CostGainAsReservation") {
-					pools[name].flat = list.SumCfg(cfg, "BASE", name+"CostBase") + level.Cost[name]
+					pools[name].flat = list.SumCfg(cfg, "BASE", name+"CostBase") + lc[name]
 				}
 			}
 		}
