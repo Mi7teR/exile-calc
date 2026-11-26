@@ -47,7 +47,10 @@ func skillCosts(actor *ModDB, s *activeSkill, out map[string]float64) {
 	additionalLife := list.SumCfg(cfg, "BASE", "ManaCostAsLifeCost") / 100
 	additionalES := list.SumCfg(cfg, "BASE", "ManaCostAsEnergyShieldCost") / 100
 	hybridLife := list.SumCfg(cfg, "BASE", "HybridManaAndLifeCost_Life") / 100
-	zero := func(c *costResource) { c.baseCost, c.baseCostRaw, c.fin, c.noMult = 0, 0, 0, 0 }
+	// costs[type].baseCostRaw = 0 (CalcOffence.lua:1754, 1780, 1784) gives
+	// a cost table that had none a raw cost, so its <Resource>CostRaw is
+	// output too.
+	zero := func(c *costResource) { c.baseCost, c.baseCostRaw, c.fin, c.noMult, c.hasRaw = 0, 0, 0, 0, true }
 	for _, val := range order {
 		skillCost, has := list.OverrideCfg(cfg, "Base"+val.name+"CostOverride")
 		if !has {
@@ -185,4 +188,84 @@ func roundCost(v, mult float64) float64 {
 		return math.Max(0, math.Ceil(mult*v))
 	}
 	return math.Max(0, math.Floor(mult*v))
+}
+
+// perSecondCosts is CalcOffence.lua:5961-6010 "Calculates and displays
+// cost per second for skills that don't already have one": the upfront
+// costs times the rate the skill is used, as <Resource>PerSecondCost (ES
+// for mana with EnergyShieldProtectsMana), unless the skill already has
+// that per second cost.
+func perSecondCosts(actor *ModDB, s *activeSkill, out map[string]float64) {
+	list := s.mods
+	player := actor
+	if actor.player != nil {
+		player = actor.player
+	}
+	eb := player.Flag("EnergyShieldProtectsMana")
+	_, hasCD := out["Cooldown"]
+	for _, res := range []string{"Mana", "Life", "ES", "Soul", "Rage", "ManaPercent", "LifePercent"} {
+		perSecondSet := out[res+"PerSecondHasCost"] != 0
+		if out[res+"HasCost"] == 0 || !(out[res+"Cost"] > 0) ||
+			(perSecondSet && !(eb && list.SumCfg(s.cfg, "BASE", "ManaCostAsEnergyShieldCost") != 0)) ||
+			!(out["Speed"] > 0 || hasCD) {
+			continue
+		}
+		used := res
+		if eb && res == "Mana" {
+			used = "ES"
+		}
+		speed := costUseSpeed(player, s, out)
+		refund := 1.0
+		if used == "Mana" && list.FlagCfg(s.cfg, "Every2UseManaCostRefund") {
+			refund = 0.5
+		}
+		out[used+"PerSecondHasCost"] = 1
+		out[used+"PerSecondCost"] += out[res+"Cost"] * speed * refund
+	}
+}
+
+// costUseSpeed is useSpeed of perSecondCosts (CalcOffence.lua:5971-5991):
+// the rate the skill is used at.
+func costUseSpeed(player *ModDB, s *activeSkill, out map[string]float64) float64 {
+	cd, hasCD := out["Cooldown"]
+	repeats := 1.0
+	if r, ok := out["Repeats"]; ok {
+		repeats = r
+	}
+	// (cooldown > 0 and (rate > 0 and rate or 1 / cooldown) or rate)
+	rateOr := func(rate float64) float64 {
+		if hasCD && cd > 0 && !(rate > 0) {
+			return 1 / cd
+		}
+		return rate
+	}
+	switch {
+	case s.flags["trap"] || s.flags["mine"]:
+		pre, ok := out["TrapThrowingSpeed"]
+		if !ok {
+			pre = out["MineLayingSpeed"]
+		}
+		c, ok := out["TrapCooldown"]
+		if !ok {
+			c, ok = cd, hasCD
+		}
+		if ok && c > 0 {
+			return 1 / c
+		}
+		return pre
+	case s.flags["totem"]:
+		return rateOr(out["TotemPlacementSpeed"]) / repeats
+	case s.mods.Flag("HasSeals") && s.mods.Flag("UseMaxUnleash") && mainHitTimeOverride(player, s).set:
+		// env.player.mainSkill.skillData.hitTimeOverride
+		return mainHitTimeOverride(player, s).v / repeats
+	}
+	return rateOr(out["Speed"]) / repeats
+}
+
+// mainHitTimeOverride is env.player.mainSkill.skillData.hitTimeOverride.
+func mainHitTimeOverride(player *ModDB, s *activeSkill) optF {
+	if m := mainSkill(player.activeSkills); m != nil {
+		return m.data.hitTimeOverride
+	}
+	return s.data.hitTimeOverride
 }

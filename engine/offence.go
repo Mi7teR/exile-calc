@@ -151,6 +151,13 @@ func (c *Calculator) offence(actor *ModDB, s *activeSkill, w1 hitSource, w2 *hit
 		actor.output[k] = v
 		out[k] = v
 	}
+	// CalcOffence.lua:1903-1904: Eldritch Battery adds maximum Energy
+	// Shield to the Mana available for payable-cost damage.
+	pool := actor.output["ManaUnreserved"]
+	if actor.Flag("EnergyShieldProtectsMana") {
+		pool += actor.output["EnergyShield"]
+	}
+	actor.output["ManaCostPayablePool"], out["ManaCostPayablePool"] = pool, pool
 	// Sacrifice Support: added chaos damage from unreserved life.
 	if pct, ok := num(data.val("sacrificeLifePercent")); ok {
 		life := actor.output["LifeUnreserved"]
@@ -382,6 +389,7 @@ func (c *Calculator) offence(actor *ModDB, s *activeSkill, w1 hitSource, w2 *hit
 	dropsBurningGround(actor, s, out)
 	skillDot(actor, s, out, dpsMult, quantity)
 	combinedDPS(s, out, passes, dpsMult, quantity)
+	perSecondCosts(actor, s, out)
 	return out
 }
 

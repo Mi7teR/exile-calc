@@ -5,8 +5,9 @@ import "math"
 const lowPoolThreshold = 0.5 // Data.lua data.misc.LowPoolThreshold
 
 func floorTo(v float64, places int) float64 {
+	// Common.lua floor(val, dec): m_floor(val * mult + 0.0001) / mult.
 	p := math.Pow(10, float64(places))
-	return math.Floor(v*p) / p
+	return math.Floor(v*p+0.0001) / p //nolint:mnd // PoB literal
 }
 
 func dataNum(d *skillData, k string) (float64, bool) {

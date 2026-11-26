@@ -57,6 +57,9 @@ func oracleStats(t *testing.T, always bool, keys ...string) {
 		}
 		for _, k := range keys {
 			want, ok := exp[k].(float64)
+			if bv, isBool := exp[k].(bool); isBool {
+				want, ok = b2f(bv), true
+			}
 			got, has := res.Stats[k]
 			if !always && !ok && !has {
 				continue
@@ -65,5 +68,59 @@ func oracleStats(t *testing.T, always bool, keys ...string) {
 				t.Errorf("%s %s = %v (set %v), oracle %v", id, k, got, has, exp[k])
 			}
 		}
+	}
+}
+
+// TestPerSecondCosts: CalcOffence.lua:5961-6010, the upfront costs per
+// second, and the raw costs a cost conversion leaves on the converted
+// tables (1754, 1780, 1784), match the oracle on every corpus build.
+func TestPerSecondCosts(t *testing.T) {
+	oracleStats(
+		t,
+		false,
+		"ManaPerSecondCost",
+		"LifePerSecondCost",
+		"ESPerSecondCost",
+		"SoulPerSecondCost",
+		"ManaPercentPerSecondCost",
+		"LifePercentPerSecondCost",
+		"ESPercentPerSecondCost",
+		"ManaPerSecondHasCost",
+		"LifePerSecondHasCost",
+		"ESPerSecondHasCost",
+		"SoulPerSecondHasCost",
+		"ManaPercentPerSecondHasCost",
+		"LifePercentPerSecondHasCost",
+		"ESPercentPerSecondHasCost",
+		"ManaPerSecondCostRaw",
+		"ManaPercentPerSecondCostRaw",
+		"LifePerSecondCostRaw",
+		"LifePercentPerSecondCostRaw",
+		"ManaCostRaw",
+		"LifeCostRaw",
+		"ESCostRaw",
+		"ManaPercentCostRaw",
+		"LifePercentCostRaw",
+	)
+}
+
+// TestManaCostPayablePool: CalcOffence.lua:1903-1904, unreserved mana plus
+// energy shield with Eldritch Battery.
+func TestManaCostPayablePool(t *testing.T) {
+	c := newCalc(t)
+	b := corpusBuild(t, "-fxcKCnOf7D2")
+	st := calcWithMods(t, c, b, true)
+	out := st.res.Stats
+	if out["ManaCostPayablePool"] != out["ManaUnreserved"] || out["ManaCostPayablePool"] != 89 {
+		t.Errorf("pool %v, unreserved %v; oracle 89", out["ManaCostPayablePool"], out["ManaUnreserved"])
+	}
+	eb := calcWithMods(t, c, b, true, testMod{m: flagMod("EnergyShieldProtectsMana")}).res.Stats
+	if eb["ManaCostPayablePool"] != eb["ManaUnreserved"]+eb["EnergyShield"] {
+		t.Errorf(
+			"with Eldritch Battery: pool %v, want %v + %v",
+			eb["ManaCostPayablePool"],
+			eb["ManaUnreserved"],
+			eb["EnergyShield"],
+		)
 	}
 }
