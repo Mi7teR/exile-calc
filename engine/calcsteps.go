@@ -184,10 +184,23 @@ func stepBaseMods(_ *Calculator, st *calcState) error {
 	return nil
 }
 
+// legacyBuildChoice is the default of the bandit and pantheon config
+// inputs. Build.lua copies the Build element's bandit/pantheon attributes
+// into configTab.input ("Load legacy bandit and pantheon choices"), but
+// ConfigTab:Load then replaces the input with the active config set's, so
+// the attribute counts only for a build saved without a Config section;
+// otherwise a missing input is "None".
+func legacyBuildChoice(b *pobcode.Build, attr string) string {
+	if len(b.ConfigSets) == 0 {
+		return attr
+	}
+	return "None"
+}
+
 // stepBandit: CalcSetup.lua "Add bandit mods".
 func stepBandit(_ *Calculator, st *calcState) error {
 	db := st.db
-	switch bandit := configString(st.config, "bandit", st.b.Bandit); bandit {
+	switch bandit := configString(st.config, "bandit", legacyBuildChoice(st.b, st.b.Bandit)); bandit {
 	case "Alira":
 		db.NewMod("ElementalResist", "BASE", 15, "Bandit")
 	case "Kraityn":
@@ -203,7 +216,7 @@ func stepBandit(_ *Calculator, st *calcState) error {
 // soul.
 func stepPantheon(c *Calculator, st *calcState) error {
 	db, b, config := st.db, st.b, st.config
-	for _, x := range [][2]string{{"pantheonMajorGod", b.PantheonMajorGod}, {"pantheonMinorGod", b.PantheonMinorGod}} {
+	for _, x := range [][2]string{{"pantheonMajorGod", legacyBuildChoice(b, b.PantheonMajorGod)}, {"pantheonMinorGod", legacyBuildChoice(b, b.PantheonMinorGod)}} {
 		god := c.data.Pantheons[configString(config, x[0], x[1])]
 		if god == nil || len(god.Souls) == 0 {
 			continue
