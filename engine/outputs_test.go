@@ -45,3 +45,24 @@ func TestPerformOutputs(t *testing.T) {
 		"EnduranceChargesDuration", "HexDoomLimit", "LootQuantityNormalEnemies", "LootRarityMagicEnemies",
 		"GuardSkillActive", "GemHasLevel", "GemLevel", "GemHasQuality", "GemQuality")
 }
+
+// TestEHPOutputs: CalcDefence.lua:1519-1533, 1955, 2183-2293, 2353-2510,
+// 3008-3134, 3401-3546 (stun, bypass and mitigation flags, recoup over the
+// survival time, Petrified Blood, DoT EHP, degens, net regeneration).
+func TestEHPOutputs(t *testing.T) {
+	keys := []string{"AnyTakenReflect", "StunThreshold", "StunAvoidChance", "StunDuration", "BlockDuration",
+		"InterruptStunAvoidChance", "SelfStunChance", "CappingLife", "AnyBypass", "ehpSectionAnySpecificTypes",
+		"OnlySharedMindOverMatter", "AnySpecificMindOverMatter", "AnyGuard", "OnlySharedGuard", "AnyAegis",
+		"LifeLossLostMax", "LifeLossLostAvg", "netLifeRecoupAndLossLostOverTimeMax",
+		"netLifeRecoupAndLossLostOverTimeAvg", "showNetRecoup", "TotalBuildDegen", "NetLifeRegen", "NetManaRegen",
+		"NetEnergyShieldRegen", "TotalNetRegen"}
+	for _, d := range dmgTypes {
+		keys = append(keys, d+"DotEHP", d+"BuildDegen", d+"RecoupableDamageTaken")
+	}
+	for _, r := range recoupTypes {
+		keys = append(keys, "Total"+r+"RecoupRecovery", "Total"+r+"PseudoRecoup", r+"RecoupRecoveryMax",
+			r+"RecoupRecoveryAvg", "PhysicalDamageMitigated"+r+"PseudoRecoup",
+			"PhysicalDamageMitigated"+r+"PseudoRecoupDuration")
+	}
+	oracleStats(t, false, keys...)
+}

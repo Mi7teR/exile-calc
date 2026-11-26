@@ -34,6 +34,10 @@
       "reason": "Format-1 spec (no clusterHashFormatVersion): PoB maps the Watcher's Eye socket 16218 to 29712 (ApplyLegacyClusterNodeRemap), but the item slots have already written jewels[29712] = 0 and pairs order lets the 0 win, so PoB unequips the jewel. Value: the oracle on the same build with the jewel in 29712 and clusterHashFormatVersion 2.",
       "value": 704131.2102805
     },
+    "ChaosDotEHP": {
+      "reason": "Format-1 spec (no clusterHashFormatVersion): PoB maps the Watcher's Eye socket 16218 to 29712 (ApplyLegacyClusterNodeRemap), but the item slots have already written jewels[29712] = 0 and pairs order lets the 0 win, so PoB unequips the jewel. Value: the oracle on the same build with the jewel in 29712 and clusterHashFormatVersion 2.",
+      "value": 3463.2478632479
+    },
     "ChaosMaximumHitTaken": {
       "reason": "Format-1 spec (no clusterHashFormatVersion): PoB maps the Watcher's Eye socket 16218 to 29712 (ApplyLegacyClusterNodeRemap), but the item slots have already written jewels[29712] = 0 and pairs order lets the 0 win, so PoB unequips the jewel. Value: the oracle on the same build with the jewel in 29712 and clusterHashFormatVersion 2.",
       "value": 3463
@@ -41,6 +45,10 @@
     "ChaosTotalPool": {
       "reason": "Format-1 spec (no clusterHashFormatVersion): PoB maps the Watcher's Eye socket 16218 to 29712 (ApplyLegacyClusterNodeRemap), but the item slots have already written jewels[29712] = 0 and pairs order lets the 0 win, so PoB unequips the jewel. Value: the oracle on the same build with the jewel in 29712 and clusterHashFormatVersion 2.",
       "value": 4052
+    },
+    "ColdDotEHP": {
+      "reason": "Format-1 spec (no clusterHashFormatVersion): PoB maps the Watcher's Eye socket 16218 to 29712 (ApplyLegacyClusterNodeRemap), but the item slots have already written jewels[29712] = 0 and pairs order lets the 0 win, so PoB unequips the jewel. Value: the oracle on the same build with the jewel in 29712 and clusterHashFormatVersion 2.",
+      "value": 25717.391304348
     },
     "ColdMaximumHitTaken": {
       "reason": "Format-1 spec (no clusterHashFormatVersion): PoB maps the Watcher's Eye socket 16218 to 29712 (ApplyLegacyClusterNodeRemap), but the item slots have already written jewels[29712] = 0 and pairs order lets the 0 win, so PoB unequips the jewel. Value: the oracle on the same build with the jewel in 29712 and clusterHashFormatVersion 2.",
@@ -66,9 +74,17 @@
       "reason": "Format-1 spec (no clusterHashFormatVersion): PoB maps the Watcher's Eye socket 16218 to 29712 (ApplyLegacyClusterNodeRemap), but the item slots have already written jewels[29712] = 0 and pairs order lets the 0 win, so PoB unequips the jewel. Value: the oracle on the same build with the jewel in 29712 and clusterHashFormatVersion 2.",
       "value": 227
     },
+    "FireBuildDegen": {
+      "reason": "Format-1 spec (no clusterHashFormatVersion): PoB maps the Watcher's Eye socket 16218 to 29712 (ApplyLegacyClusterNodeRemap), but the item slots have already written jewels[29712] = 0 and pairs order lets the 0 win, so PoB unequips the jewel. Value: the oracle on the same build with the jewel in 29712 and clusterHashFormatVersion 2.",
+      "value": 239.292
+    },
     "FireCritAverage": {
       "reason": "Format-1 spec (no clusterHashFormatVersion): PoB maps the Watcher's Eye socket 16218 to 29712 (ApplyLegacyClusterNodeRemap), but the item slots have already written jewels[29712] = 0 and pairs order lets the 0 win, so PoB unequips the jewel. Value: the oracle on the same build with the jewel in 29712 and clusterHashFormatVersion 2.",
       "value": 843378.788772
+    },
+    "FireDotEHP": {
+      "reason": "Format-1 spec (no clusterHashFormatVersion): PoB maps the Watcher's Eye socket 16218 to 29712 (ApplyLegacyClusterNodeRemap), but the item slots have already written jewels[29712] = 0 and pairs order lets the 0 win, so PoB unequips the jewel. Value: the oracle on the same build with the jewel in 29712 and clusterHashFormatVersion 2.",
+      "value": 25717.391304348
     },
     "FireHitAverage": {
       "reason": "Format-1 spec (no clusterHashFormatVersion): PoB maps the Watcher's Eye socket 16218 to 29712 (ApplyLegacyClusterNodeRemap), but the item slots have already written jewels[29712] = 0 and pairs order lets the 0 win, so PoB unequips the jewel. Value: the oracle on the same build with the jewel in 29712 and clusterHashFormatVersion 2.",
@@ -101,6 +117,10 @@
     "LifeRegenRecovery": {
       "reason": "Format-1 spec (no clusterHashFormatVersion): PoB maps the Watcher's Eye socket 16218 to 29712 (ApplyLegacyClusterNodeRemap), but the item slots have already written jewels[29712] = 0 and pairs order lets the 0 win, so PoB unequips the jewel. Value: the oracle on the same build with the jewel in 29712 and clusterHashFormatVersion 2.",
       "value": 880.1
+    },
+    "LightningDotEHP": {
+      "reason": "Format-1 spec (no clusterHashFormatVersion): PoB maps the Watcher's Eye socket 16218 to 29712 (ApplyLegacyClusterNodeRemap), but the item slots have already written jewels[29712] = 0 and pairs order lets the 0 win, so PoB unequips the jewel. Value: the oracle on the same build with the jewel in 29712 and clusterHashFormatVersion 2.",
+      "value": 25717.391304348
     },
     "LightningMaximumHitTaken": {
       "reason": "Format-1 spec (no clusterHashFormatVersion): PoB maps the Watcher's Eye socket 16218 to 29712 (ApplyLegacyClusterNodeRemap), but the item slots have already written jewels[29712] = 0 and pairs order lets the 0 win, so PoB unequips the jewel. Value: the oracle on the same build with the jewel in 29712 and clusterHashFormatVersion 2.",
@@ -162,6 +182,14 @@
       "reason": "Format-1 spec (no clusterHashFormatVersion): PoB maps the Watcher's Eye socket 16218 to 29712 (ApplyLegacyClusterNodeRemap), but the item slots have already written jewels[29712] = 0 and pairs order lets the 0 win, so PoB unequips the jewel. Value: the oracle on the same build with the jewel in 29712 and clusterHashFormatVersion 2.",
       "value": 2607
     },
+    "NetLifeRegen": {
+      "reason": "Format-1 spec (no clusterHashFormatVersion): PoB maps the Watcher's Eye socket 16218 to 29712 (ApplyLegacyClusterNodeRemap), but the item slots have already written jewels[29712] = 0 and pairs order lets the 0 win, so PoB unequips the jewel. Value: the oracle on the same build with the jewel in 29712 and clusterHashFormatVersion 2.",
+      "value": 640.808
+    },
+    "NetManaRegen": {
+      "reason": "Format-1 spec (no clusterHashFormatVersion): PoB maps the Watcher's Eye socket 16218 to 29712 (ApplyLegacyClusterNodeRemap), but the item slots have already written jewels[29712] = 0 and pairs order lets the 0 win, so PoB unequips the jewel. Value: the oracle on the same build with the jewel in 29712 and clusterHashFormatVersion 2.",
+      "value": 326.1
+    },
     "NumberOfDamagingHits": {
       "reason": "Format-1 spec (no clusterHashFormatVersion): PoB maps the Watcher's Eye socket 16218 to 29712 (ApplyLegacyClusterNodeRemap), but the item slots have already written jewels[29712] = 0 and pairs order lets the 0 win, so PoB unequips the jewel. Value: the oracle on the same build with the jewel in 29712 and clusterHashFormatVersion 2.",
       "value": 1.2276855620826
@@ -170,6 +198,10 @@
       "reason": "Format-1 spec (no clusterHashFormatVersion): PoB maps the Watcher's Eye socket 16218 to 29712 (ApplyLegacyClusterNodeRemap), but the item slots have already written jewels[29712] = 0 and pairs order lets the 0 win, so PoB unequips the jewel. Value: the oracle on the same build with the jewel in 29712 and clusterHashFormatVersion 2.",
       "value": 1.5449936524624
     },
+    "PhysicalDotEHP": {
+      "reason": "Format-1 spec (no clusterHashFormatVersion): PoB maps the Watcher's Eye socket 16218 to 29712 (ApplyLegacyClusterNodeRemap), but the item slots have already written jewels[29712] = 0 and pairs order lets the 0 win, so PoB unequips the jewel. Value: the oracle on the same build with the jewel in 29712 and clusterHashFormatVersion 2.",
+      "value": 5915
+    },
     "PhysicalMaximumHitTaken": {
       "reason": "Format-1 spec (no clusterHashFormatVersion): PoB maps the Watcher's Eye socket 16218 to 29712 (ApplyLegacyClusterNodeRemap), but the item slots have already written jewels[29712] = 0 and pairs order lets the 0 win, so PoB unequips the jewel. Value: the oracle on the same build with the jewel in 29712 and clusterHashFormatVersion 2.",
       "value": 6577
@@ -177,6 +209,14 @@
     "PhysicalTotalPool": {
       "reason": "Format-1 spec (no clusterHashFormatVersion): PoB maps the Watcher's Eye socket 16218 to 29712 (ApplyLegacyClusterNodeRemap), but the item slots have already written jewels[29712] = 0 and pairs order lets the 0 win, so PoB unequips the jewel. Value: the oracle on the same build with the jewel in 29712 and clusterHashFormatVersion 2.",
       "value": 4732
+    },
+    "StunThreshold": {
+      "reason": "Format-1 spec (no clusterHashFormatVersion): PoB maps the Watcher's Eye socket 16218 to 29712 (ApplyLegacyClusterNodeRemap), but the item slots have already written jewels[29712] = 0 and pairs order lets the 0 win, so PoB unequips the jewel. Value: the oracle on the same build with the jewel in 29712 and clusterHashFormatVersion 2.",
+      "value": 4052
+    },
+    "TotalBuildDegen": {
+      "reason": "Format-1 spec (no clusterHashFormatVersion): PoB maps the Watcher's Eye socket 16218 to 29712 (ApplyLegacyClusterNodeRemap), but the item slots have already written jewels[29712] = 0 and pairs order lets the 0 win, so PoB unequips the jewel. Value: the oracle on the same build with the jewel in 29712 and clusterHashFormatVersion 2.",
+      "value": 239.292
     },
     "TotalDPS": {
       "reason": "Format-1 spec (no clusterHashFormatVersion): PoB maps the Watcher's Eye socket 16218 to 29712 (ApplyLegacyClusterNodeRemap), but the item slots have already written jewels[29712] = 0 and pairs order lets the 0 win, so PoB unequips the jewel. Value: the oracle on the same build with the jewel in 29712 and clusterHashFormatVersion 2.",
@@ -193,6 +233,10 @@
     "TotalMin": {
       "reason": "Format-1 spec (no clusterHashFormatVersion): PoB maps the Watcher's Eye socket 16218 to 29712 (ApplyLegacyClusterNodeRemap), but the item slots have already written jewels[29712] = 0 and pairs order lets the 0 win, so PoB unequips the jewel. Value: the oracle on the same build with the jewel in 29712 and clusterHashFormatVersion 2.",
       "value": 201881.85498
+    },
+    "TotalNetRegen": {
+      "reason": "Format-1 spec (no clusterHashFormatVersion): PoB maps the Watcher's Eye socket 16218 to 29712 (ApplyLegacyClusterNodeRemap), but the item slots have already written jewels[29712] = 0 and pairs order lets the 0 win, so PoB unequips the jewel. Value: the oracle on the same build with the jewel in 29712 and clusterHashFormatVersion 2.",
+      "value": 966.908
     },
     "WithBleedDPS": {
       "reason": "Format-1 spec (no clusterHashFormatVersion): PoB maps the Watcher's Eye socket 16218 to 29712 (ApplyLegacyClusterNodeRemap), but the item slots have already written jewels[29712] = 0 and pairs order lets the 0 win, so PoB unequips the jewel. Value: the oracle on the same build with the jewel in 29712 and clusterHashFormatVersion 2.",
@@ -246,9 +290,21 @@
       "reason": "PoB counts summoned totems in calcs.perform (CalcPerform.lua:1359-1376) before it computes attributes (doActorAttribsConditions, CalcPerform.lua:1978), so Replica Iron Commander's \"+1 to maximum number of Summoned Totems per 200 Strength\" is 0 there: TotemsSummoned is fewer than 20 for the defence and per-totem buffs, 20 in calcs.offence (CalcOffence.lua:1436). The engine counts the totems after the attributes. Value: the oracle on the same build with the config input TotemsSummoned = 20.",
       "value": 1.61
     },
+    "NetLifeRegen": {
+      "reason": "PoB counts summoned totems in calcs.perform (CalcPerform.lua:1359-1376) before it computes attributes (doActorAttribsConditions, CalcPerform.lua:1978), so Replica Iron Commander's \"+1 to maximum number of Summoned Totems per 200 Strength\" is 0 there: TotemsSummoned is fewer than 20 for the defence and per-totem buffs, 20 in calcs.offence (CalcOffence.lua:1436). The engine counts the totems after the attributes. Value: the oracle on the same build with the config input TotemsSummoned = 20.",
+      "value": 1575.56912
+    },
+    "NetManaRegen": {
+      "reason": "PoB counts summoned totems in calcs.perform (CalcPerform.lua:1359-1376) before it computes attributes (doActorAttribsConditions, CalcPerform.lua:1978), so Replica Iron Commander's \"+1 to maximum number of Summoned Totems per 200 Strength\" is 0 there: TotemsSummoned is fewer than 20 for the defence and per-totem buffs, 20 in calcs.offence (CalcOffence.lua:1436). The engine counts the totems after the attributes. Value: the oracle on the same build with the config input TotemsSummoned = 20.",
+      "value": 296.70768
+    },
     "TotalDPS": {
       "reason": "PoB counts summoned totems in calcs.perform (CalcPerform.lua:1359-1376) before it computes attributes (doActorAttribsConditions, CalcPerform.lua:1978), so Replica Iron Commander's \"+1 to maximum number of Summoned Totems per 200 Strength\" is 0 there: TotemsSummoned is fewer than 20 for the defence and per-totem buffs, 20 in calcs.offence (CalcOffence.lua:1436). The engine counts the totems after the attributes. Value: the oracle on the same build with the config input TotemsSummoned = 20.",
       "value": 117193.17898894
+    },
+    "TotalNetRegen": {
+      "reason": "PoB counts summoned totems in calcs.perform (CalcPerform.lua:1359-1376) before it computes attributes (doActorAttribsConditions, CalcPerform.lua:1978), so Replica Iron Commander's \"+1 to maximum number of Summoned Totems per 200 Strength\" is 0 there: TotemsSummoned is fewer than 20 for the defence and per-totem buffs, 20 in calcs.offence (CalcOffence.lua:1436). The engine counts the totems after the attributes. Value: the oracle on the same build with the config input TotemsSummoned = 20.",
+      "value": 1872.2768
     },
     "WithBleedDPS": {
       "reason": "PoB counts summoned totems in calcs.perform (CalcPerform.lua:1359-1376) before it computes attributes (doActorAttribsConditions, CalcPerform.lua:1978), so Replica Iron Commander's \"+1 to maximum number of Summoned Totems per 200 Strength\" is 0 there: TotemsSummoned is fewer than 20 for the defence and per-totem buffs, 20 in calcs.offence (CalcOffence.lua:1436). The engine counts the totems after the attributes. Value: the oracle on the same build with the config input TotemsSummoned = 20.",

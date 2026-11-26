@@ -53,6 +53,9 @@ func pools(db *ModDB) {
 			pct = lowPoolThreshold
 		}
 		out["LifeRecoverable"] = math.Min(out["Life"]*pct/100, out["LifeUnreserved"])
+		if out["LifeRecoverable"] < out["LifeUnreserved"] {
+			out["CappingLife"] = 1 // CalcDefence.lua:2293
+		}
 	}
 	if db.Flag("DamageInsteadReservesLife") {
 		out["LifeRecoverable"] = out["LifeCancellableReservation"] / 100 * out["Life"]
@@ -75,16 +78,25 @@ func pools(db *ModDB) {
 
 	// Energy shield bypass.
 	out["MinimumBypass"] = 100
+	out["AnyBypass"] = 0 // CalcDefence.lua:2353-2370
 	for _, t := range dmgTypes {
 		if db.Flag("UnblockedDamageDoesBypassES") {
 			out[t+"EnergyShieldBypass"] = 100
+			out["AnyBypass"] = 1
 		} else {
 			v, ok := db.Override(t + "EnergyShieldBypass")
 			if !ok {
 				v = db.Sum("BASE", t+"EnergyShieldBypass")
 			}
-			if t == "Chaos" && !db.Flag("ChaosNotBypassEnergyShield") {
-				v += 100
+			if v != 0 {
+				out["AnyBypass"] = 1
+			}
+			if t == "Chaos" {
+				if !db.Flag("ChaosNotBypassEnergyShield") {
+					v += 100
+				} else {
+					out["AnyBypass"] = 1
+				}
 			}
 			out[t+"EnergyShieldBypass"] = v
 		}
@@ -93,6 +105,8 @@ func pools(db *ModDB) {
 	}
 
 	// Mind over Matter.
+	out["ehpSectionAnySpecificTypes"] = 0
+	out["OnlySharedMindOverMatter"], out["AnySpecificMindOverMatter"] = 0, 0
 	out["sharedMindOverMatter"] = math.Min(db.Sum("BASE", "DamageTakenFromManaBeforeLife"), 100)
 	momPool := func(lifePool, effect, bypass float64) float64 {
 		mana := math.Max(out["ManaUnreserved"], 0)
@@ -120,6 +134,8 @@ func pools(db *ModDB) {
 	for _, t := range dmgTypes {
 		out[t+"MindOverMatter"] = math.Min(db.Sum("BASE", t+"DamageTakenFromManaBeforeLife"), 100-out["sharedMindOverMatter"])
 		if out[t+"MindOverMatter"] > 0 || (out[t+"EnergyShieldBypass"] > out["MinimumBypass"] && out["sharedMindOverMatter"] > 0) {
+			out["ehpSectionAnySpecificTypes"], out["AnySpecificMindOverMatter"] = 1, 1
+			out["OnlySharedMindOverMatter"] = 0
 			m := (out[t+"MindOverMatter"] + out["sharedMindOverMatter"]) / 100
 			bypass := out[t+"EnergyShieldBypass"] / 100
 			out[t+"ManaEffectiveLife"] = momPool(out["LifeRecoverable"], m, bypass)
@@ -131,13 +147,17 @@ func pools(db *ModDB) {
 	}
 
 	// Guard.
+	out["AnyGuard"] = 0
 	out["sharedGuardAbsorbRate"] = math.Min(db.Sum("BASE", "GuardAbsorbRate"), 100)
 	if out["sharedGuardAbsorbRate"] > 0 {
+		out["OnlySharedGuard"] = 1
 		out["sharedGuardAbsorb"] = calcVal(db, "GuardAbsorbLimit")
 	}
 	for _, t := range dmgTypes {
 		out[t+"GuardAbsorbRate"] = math.Min(db.Sum("BASE", t+"GuardAbsorbRate"), 100)
 		if out[t+"GuardAbsorbRate"] > 0 {
+			out["ehpSectionAnySpecificTypes"], out["AnyGuard"] = 1, 1
+			out["OnlySharedGuard"] = 0
 			out[t+"GuardAbsorb"] = calcVal(db, t+"GuardAbsorbLimit")
 		}
 	}
@@ -145,8 +165,15 @@ func pools(db *ModDB) {
 	// Aegis.
 	out["sharedAegis"], _ = maxSource(db, "", "AegisValue")
 	out["sharedElementalAegis"], _ = maxSource(db, "", "ElementalAegisValue")
+	out["AnyAegis"] = b2f(out["sharedAegis"] > 0 || out["sharedElementalAegis"] > 0)
+	if out["sharedElementalAegis"] > 0 {
+		out["ehpSectionAnySpecificTypes"] = 1
+	}
 	for _, t := range dmgTypes {
 		out[t+"Aegis"], _ = maxSource(db, "", t+"AegisValue")
+		if out[t+"Aegis"] > 0 {
+			out["ehpSectionAnySpecificTypes"], out["AnyAegis"] = 1, 1
+		}
 		if isElemental[t] {
 			out[t+"AegisDisplay"] = out[t+"Aegis"] + out["sharedElementalAegis"]
 		}

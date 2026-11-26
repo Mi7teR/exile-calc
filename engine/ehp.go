@@ -183,11 +183,14 @@ func buildDefenceEstimations(db *ModDB) *defenceEstimations {
 
 	takenMultipliers(db)
 	incomingHitMultipliers(db, category)
+	stun(db, category)
 	pools(db)
 	if category != "DamageOverTime" {
 		est.totalEHP(db, category)
 	}
+	recoupRecovery(db, category)
 	est.maximumHitTaken(db)
+	dotEHPAndDegens(db, est)
 	return est
 }
 
@@ -202,6 +205,9 @@ func elementalTaken(t, name, elementalName string) []string {
 // takenMultipliers is "Damage taken multipliers/Degen calculations".
 func takenMultipliers(db *ModDB) {
 	out := db.output
+	// CalcDefence.lua:1955, 1987-1989: set false, and "--true --this needs
+	// a rework" keeps it false.
+	out["AnyTakenReflect"] = 0
 	for _, t := range dmgTypes {
 		baseInc := db.Sum("INC", "DamageTaken", t+"DamageTaken")
 		baseMore := db.More("DamageTaken", t+"DamageTaken")

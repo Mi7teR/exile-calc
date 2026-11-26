@@ -84,6 +84,10 @@ func oracleStatsExcept(t *testing.T, always bool, skip map[string][]string, keys
 			if !always && !ok && !has {
 				continue
 			}
+			// oracle.lua leaves out non-finite numbers (PoB's inf/nan).
+			if !ok && has && (math.IsInf(got, 0) || math.IsNaN(got)) {
+				continue
+			}
 			if !ok || !has || !near(got, want, 1e-9) {
 				t.Errorf("%s %s = %v (set %v), oracle %v", id, k, got, has, exp[k])
 			}

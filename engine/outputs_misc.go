@@ -160,3 +160,238 @@ func totemResist(db *ModDB, elem string) {
 	out["Totem"+elem+"ResistOverCap"] = math.Max(0, total-maxRes)
 	out["MissingTotem"+elem+"Resist"] = math.Max(0, maxRes-final)
 }
+
+// The stun constants of data.misc (Data.lua:275-278).
+const (
+	minStunChanceNeeded    = 20
+	stunBaseMult           = 200
+	stunBaseDuration       = 0.35
+	stunNotMeleeDamageMult = 0.75
+)
+
+// stun is the "stun" block of buildDefenceEstimations (CalcDefence.lua:
+// 2183-2276).
+func stun(db *ModDB, category string) {
+	out := db.output
+	var base float64
+	switch {
+	case db.Flag("StunThresholdBasedOnEnergyShieldInsteadOfLife"):
+		base = out["EnergyShield"] * db.Sum("BASE", "StunThresholdEnergyShieldPercent") / 100
+	case db.Flag("StunThresholdBasedOnManaInsteadOfLife"):
+		base = out["Mana"] * db.Sum("BASE", "StunThresholdManaPercent") / 100
+	case db.Flag("ChaosInoculation"):
+		base = db.Sum("BASE", "Life")
+	default:
+		base = out["Life"]
+	}
+	if db.Flag("AddESToStunThreshold") {
+		base += out["EnergyShield"] * db.Sum("BASE", "ESToStunThresholdPercent") / 100
+	}
+	out["StunThreshold"] = base * (1 + db.Sum("INC", "StunThreshold")/100)
+	notAvoid := 100 - math.Min(db.Sum("BASE", "AvoidStun"), 100)
+	if db.Flag("StunImmune") {
+		notAvoid = 0
+	}
+	if out["EnergyShield"] > out["totalTakenHit"] && !db.Flag("EnergyShieldProtectsMana") {
+		notAvoid *= 0.5
+	}
+	out["StunAvoidChance"] = 100 - notAvoid
+	if out["StunAvoidChance"] >= 100 {
+		out["StunDuration"], out["BlockDuration"] = 0, 0
+	} else {
+		duration := 1 + db.Sum("INC", "StunDuration")/100
+		recovery := 1 + db.Sum("INC", "StunRecovery")/100
+		blockRecovery := 1 + db.Sum("INC", "StunRecovery", "BlockRecovery")/100
+		out["StunDuration"] = math.Ceil(stunBaseDuration*duration/recovery*serverTickRate) / serverTickRate
+		out["BlockDuration"] = math.Ceil(stunBaseDuration*duration/blockRecovery*serverTickRate) / serverTickRate
+	}
+	out["InterruptStunAvoidChance"] = math.Min(db.Sum("BASE", "AvoidInterruptStun"), 100)
+	damage := out["totalTakenHit"] + out["PhysicalTakenHit"]*0.25
+	// As PoB: "~= Average" first, so a Melee hit also takes the mixed
+	// factor and only Average reaches the second branch.
+	if category != "Average" {
+		damage *= (1 + stunNotMeleeDamageMult*3) / 4
+	} else if category != "Melee" {
+		damage *= stunNotMeleeDamageMult
+	}
+	chance := math.Min(stunBaseMult*damage/out["StunThreshold"], 100)
+	if chance <= minStunChanceNeeded {
+		chance = 0
+	}
+	out["SelfStunChance"] = chance * notAvoid / 100
+}
+
+// pseudoRecoup is CalcDefence.lua:1519-1533: physical damage mitigated
+// from hits regenerated as life, mana or energy shield.
+func pseudoRecoup(db *ModDB) {
+	out := db.output
+	for _, r := range leechPools {
+		if db.Flag("No"+r+"Regen") || db.Flag("CannotGain"+r) {
+			continue
+		}
+		v := db.Sum("BASE", "PhysicalDamageMitigated"+r+"PseudoRecoup")
+		if v <= 0 {
+			continue
+		}
+		dur := db.Sum("BASE", "PhysicalDamageMitigated"+r+"PseudoRecoupDuration")
+		if dur == 0 {
+			dur = 4
+		}
+		out["PhysicalDamageMitigated"+r+"PseudoRecoupDuration"] = dur
+		out["PhysicalDamageMitigated"+r+"PseudoRecoup"] = v * (1 + db.Sum("INC", r+"Regen")/100) * db.More(r+"Regen") *
+			out[r+"RecoveryRateMod"]
+		out["anyRecoup"] += out["PhysicalDamageMitigated"+r+"PseudoRecoup"]
+	}
+}
+
+// recoupTypes is recoupTypeList (CalcDefence.lua:3019).
+var recoupTypes = []string{"Life", "Mana", "EnergyShield"}
+
+// recoupRecovery is CalcDefence.lua:3008-3134: recoup and pseudo recoup
+// over the survival time, Petrified Blood's lost life and the net of the
+// two.
+func recoupRecovery(db *ModDB, category string) {
+	out := db.output
+	if out["anyRecoup"] > 0 && category != "DamageOverTime" {
+		recoupRates(db)
+	}
+	// Petrified Blood "degen".
+	_, lost := out["LifeLossLostOverTime"]
+	_, lostHalf := out["LifeBelowHalfLossLostOverTime"]
+	if out["preventedLifeLossTotal"] > 0 && lost && lostHalf {
+		below := db.Sum("BASE", "LifeLossBelowHalfLost") / 100
+		v := out["LifeLossLostOverTime"] + out["LifeBelowHalfLossLostOverTime"]*below
+		out["LifeLossLostMax"] = v / 4
+		out["LifeLossLostAvg"] = v / (out["EHPSurvivalTime"] + 4)
+	}
+	// Net recovery over time from enemy hits.
+	if out["LifeRecoupRecoveryAvg"] > 0 || out["preventedLifeLossTotal"] > 0 {
+		out["netLifeRecoupAndLossLostOverTimeMax"] = out["LifeRecoupRecoveryMax"] - out["LifeLossLostMax"]
+		out["netLifeRecoupAndLossLostOverTimeAvg"] = out["LifeRecoupRecoveryAvg"] - out["LifeLossLostAvg"]
+		if out["LifeRecoupRecoveryAvg"] > 0 && out["preventedLifeLossTotal"] > 0 {
+			out["showNetRecoup"] = 1
+		}
+	}
+}
+
+// recoupRates is the "recoup" block (CalcDefence.lua:3008-3094).
+func recoupRates(db *ModDB) {
+	out := db.output
+	var total, totalEle float64
+	mitigated := out["NumberOfMitigatedDamagingHits"] * (out["PhysicalTakenDamage"] - out["PhysicalTakenHit"])
+	for _, t := range dmgTypes {
+		total += out[t+"RecoupableDamageTaken"]
+		if isElemental[t] {
+			totalEle += out[t+"RecoupableDamageTaken"]
+		}
+	}
+	extra := map[string][2]float64{}
+	for i, r := range recoupTypes {
+		recoupTime := 4.0
+		if db.Flag("3Second"+r+"Recoup") || db.Flag("3SecondRecoup") {
+			recoupTime = 3
+		}
+		rec := recoupTotal(out, r, total, totalEle)
+		out["Total"+r+"RecoupRecovery"] = rec
+		pseudo := out["PhysicalDamageMitigated"+r+"PseudoRecoup"] / 100 * mitigated
+		duration := outOr(out, "PhysicalDamageMitigated"+r+"PseudoRecoupDuration", 4)
+		if pseudo != 0 {
+			piousPath(db, recoupTypes[i:], pseudo, duration, extra)
+		}
+		if db.Flag("UnaffectedBy" + r + "Regen") {
+			pseudo = 0
+		}
+		out["Total"+r+"PseudoRecoup"] = pseudo
+		surv := out["EHPSurvivalTime"]
+		maxRate := rec/recoupTime + pseudo/duration
+		avgRate := rec/(surv+recoupTime) + pseudo/(surv+duration)
+		if e, ok := extra[r]; ok {
+			maxRate += e[0] / e[1]
+			avgRate += e[0] / (surv + e[1])
+		}
+		out[r+"RecoupRecoveryMax"], out[r+"RecoupRecoveryAvg"] = maxRate, avgRate
+	}
+}
+
+// recoupTotal is Total<r>RecoupRecovery (CalcDefence.lua:3022-3030).
+func recoupTotal(out map[string]float64, r string, total, totalEle float64) float64 {
+	rec := out[r+"Recoup"] / 100 * total
+	if out["Elemental"+r+"Recoup"] > 0 && totalEle > 0 {
+		rec += out["Elemental"+r+"Recoup"] / 100 * totalEle
+	}
+	for _, t := range dmgTypes {
+		if out[t+r+"Recoup"] > 0 && out[t+"RecoupableDamageTaken"] > 0 {
+			rec += out[t+r+"Recoup"] / 100 * out[t+"RecoupableDamageTaken"]
+		}
+	}
+	return rec
+}
+
+// dotEHPAndDegens is CalcDefence.lua:3401-3546: the EHP against each
+// damage-over-time type, the build's own degens and the net regeneration.
+func dotEHPAndDegens(db *ModDB, est *defenceEstimations) {
+	out := db.output
+	for _, t := range dmgTypes {
+		out[t+"DotEHP"] = out[t+"TotalPool"] / out[t+"TakenDotMult"]
+	}
+	totalDegen := 0.0
+	degen := map[string]float64{}
+	for _, t := range dmgTypes {
+		base := db.Sum("BASE", t+"Degen")
+		if base <= 0 {
+			continue
+		}
+		// pairs over damageOverTimeShiftTable; the types in list order.
+		for _, to := range dmgTypes {
+			if pct := est.dotShift[t][to]; pct > 0 {
+				v := base * (pct / 100) * out[to+"TakenDotMult"]
+				degen[to] += v
+				out[to+"BuildDegen"] = degen[to]
+				totalDegen += v
+			}
+		}
+	}
+	if totalDegen == 0 {
+		return // TotalBuildDegen = nil
+	}
+	out["TotalBuildDegen"] = totalDegen
+	lifeNet, manaNet, esNet := out["LifeRegenRecovery"], out["ManaRegenRecovery"], out["EnergyShieldRegenRecovery"]
+	var lifeD, manaD, esD float64
+	for _, t := range dmgTypes {
+		d, ok := degen[t]
+		if !ok {
+			continue
+		}
+		fromMana := (out[t+"MindOverMatter"] + out["sharedMindOverMatter"]) / 100
+		bypass := out[t+"EnergyShieldBypass"] / 100
+		var l, m, e float64
+		if out["EnergyShieldRegenRecovery"] > 0 {
+			if db.Flag("EnergyShieldProtectsMana") {
+				l = d * (1 - fromMana)
+				e = d * (1 - bypass) * fromMana
+			} else {
+				l = d * bypass * (1 - fromMana)
+				e = d * (1 - bypass)
+			}
+			m = d * bypass * fromMana
+		} else {
+			l = d * (1 - fromMana)
+			m = d * fromMana
+		}
+		lifeD, manaD, esD = lifeD+l, manaD+m, esD+e
+	}
+	out["NetLifeRegen"], out["NetManaRegen"], out["NetEnergyShieldRegen"] = lifeNet-lifeD, manaNet-manaD, esNet-esD
+	out["TotalNetRegen"] = out["NetLifeRegen"] + out["NetManaRegen"] + out["NetEnergyShieldRegen"]
+}
+
+// piousPath is CalcDefence.lua:3034-3040: a pseudo recoup of rs[0] that
+// regeneration of a later type also recovers.
+func piousPath(db *ModDB, rs []string, pseudo, duration float64, extra map[string][2]float64) {
+	out, r := db.output, rs[0]
+	for _, r2 := range rs[1:] {
+		if db.Flag(r+"RegenerationRecovers"+r2) && !db.Flag("UnaffectedBy"+r2+"Regen") &&
+			!db.Flag("No"+r2+"Regen") && !db.Flag("CannotGain"+r2) {
+			extra[r2] = [2]float64{pseudo * out[r2+"RecoveryRateMod"] / out[r+"RecoveryRateMod"], duration}
+		}
+	}
+}

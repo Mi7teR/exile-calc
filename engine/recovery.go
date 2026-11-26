@@ -398,6 +398,7 @@ func recoup(db *ModDB) {
 			out["anyRecoup"] += out[name]
 		}
 	}
+	pseudoRecoup(db)
 }
 
 var dmgTypes = []string{"Physical", "Lightning", "Cold", "Fire", "Chaos"} // CalcDefence.lua dmgTypeList
