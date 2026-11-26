@@ -267,16 +267,31 @@ func (db *ModDB) eval(m *Mod, cfg *Cfg) (any, bool) {
 			}
 		case "Condition":
 			match := false
+			// ModStore.lua:635-657: with a countsAsAll1H weapon, a negated
+			// Using<type> condition that weapon added is ignored, and one it
+			// found already set fails.
+			neg := tagBool(t, "neg")
+			added := db.root().all1HAdded
 			if vars := tagList(t, "varList"); vars != nil {
 				for _, v := range vars {
-					if db.getCondition(v, cfg, false) || (cfg != nil && cfg.SkillCond[v]) {
+					if a, ok := added[v]; neg && ok {
+						if !a {
+							return nil, false
+						}
+					} else if db.getCondition(v, cfg, false) || (cfg != nil && cfg.SkillCond[v]) {
 						match = true
 						break
 					}
 				}
 			} else {
 				v := tagStr(t, "var")
-				match = db.getCondition(v, cfg, false) || (cfg != nil && cfg.SkillCond[v])
+				if a, ok := added[v]; neg && ok {
+					if !a {
+						return nil, false
+					}
+				} else {
+					match = db.getCondition(v, cfg, false) || (cfg != nil && cfg.SkillCond[v])
+				}
 			}
 			if tagBool(t, "neg") {
 				match = !match

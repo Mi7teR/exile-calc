@@ -232,7 +232,10 @@ func (c *Calculator) offenceStatConversions(actor *ModDB, s *activeSkill, w1 hit
 		}
 	}
 	if pct, ok := num(data.val("gainPercentBaseDaggerDamageToSpells")); ok {
-		d1, d2 := s.weapons[0] == "Dagger", s.weapons[1] == "Dagger" && w2 != nil
+		// CalcOffence.lua:933-934: weaponData.AddedUsingDagger counts too.
+		added := addedUsingDagger(s.weapons, s.all1H)
+		//nolint:goconst // PoB weapon type
+		d1, d2 := s.weapons[0] == "Dagger" || added[0], (s.weapons[1] == "Dagger" || added[1]) && w2 != nil
 		mult := pct / 100
 		if d1 && d2 {
 			mult *= 0.5

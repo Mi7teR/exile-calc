@@ -45,7 +45,7 @@ func TestMinionEquipmentConditions(t *testing.T) {
 			[]string{"DualWielding", "UsingClaw", "UsingDagger", "UsingMeleeWeapon", "UsingOneHandedWeapon", "WieldingDifferentWeaponTypes"}},
 	} {
 		cond := map[string]bool{}
-		minionEquipmentConditions(cond, c.items, c.w1, c.w2)
+		minionEquipmentConditions(cond, c.items, c.w1, c.w2, [2]bool{})
 		if got := slices.Sorted(maps.Keys(cond)); !slices.Equal(got, c.want) {
 			t.Errorf("%s: %v, want %v", c.name, got, c.want)
 		}

@@ -237,7 +237,7 @@ func (c *Calculator) copyActiveSkill(db *ModDB, s *activeSkill, res *Result) *ac
 		return cloneSkill(s)
 	}
 	eff := *s.active
-	m := c.createActiveSkill(&eff, s.supportList, s.group, s.weapons, s.summon)
+	m := c.createActiveSkill(&eff, s.supportList, s.group, s.weapons, s.all1H, s.summon)
 	m.cfg, m.gem, m.main = &Cfg{SlotName: s.cfg.SlotName}, s.gem, s.main
 	c.buildSkillMods(db, m, res)
 	if m.mods != nil {

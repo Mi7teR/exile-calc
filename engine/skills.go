@@ -256,6 +256,8 @@ type activeSkill struct {
 	// is the summoning skill of a minion's skill (activeSkill.summonSkill).
 	supportList []*skillEffect
 	summon      *activeSkill
+	// all1H is each hand's weaponData.countsAsAll1H, beside weapons.
+	all1H [2]bool
 	// weapon1Cfg and weapon2Cfg are the skill cfgs of main and off hand
 	// attacks (weapon flags).
 	weapon1Cfg, weapon2Cfg *Cfg

@@ -51,6 +51,9 @@ type hitSource struct {
 	// (unarmed, shield, monster without attackRange).
 	rng, rangeBonus float64
 	hasRange        bool
+	// all1H is weaponData.countsAsAll1H (Varunastra's "counts as all one
+	// handed melee weapon types").
+	all1H bool
 }
 
 type passShared struct {

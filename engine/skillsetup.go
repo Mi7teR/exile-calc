@@ -219,6 +219,7 @@ func (c *Calculator) setupSkills(db *ModDB, b *pobcode.Build, useSwap bool, res 
 			weapons[i] = it.Base.Type
 		}
 	}
+	all1H := playerAll1H(db)
 
 	slotOf := func(g *pobcode.SocketGroup) string {
 		if g.Slot != "" {
@@ -424,7 +425,7 @@ func (c *Calculator) setupSkills(db *ModDB, b *pobcode.Build, useSwap bool, res 
 						}
 					}
 				}
-				s := c.createActiveSkill(eff, applied, g, weapons, nil)
+				s := c.createActiveSkill(eff, applied, g, weapons, all1H, nil)
 				s.cfg = &Cfg{SlotName: gc.cfg.SlotName}
 				s.gem = gm
 				out = append(out, s)
@@ -443,7 +444,7 @@ func (c *Calculator) setupSkills(db *ModDB, b *pobcode.Build, useSwap bool, res 
 	} else if ge := skills["Melee"]; ge != nil {
 		// Add a default main skill if none are specified (CalcSetup.lua):
 		// level 1 Default Attack with no supports.
-		s := c.createActiveSkill(&skillEffect{id: "Melee", ge: ge, level: 1}, nil, nil, weapons, nil)
+		s := c.createActiveSkill(&skillEffect{id: "Melee", ge: ge, level: 1}, nil, nil, weapons, all1H, nil)
 		s.cfg = &Cfg{}
 		s.main = true
 		out = append(out, s)
@@ -525,7 +526,6 @@ func canSupport(sup *skillEffect, s *activeSkill) bool {
 		return false // triggers support only the player's skills
 	}
 	if len(ge.WeaponTypes) > 0 {
-		// Varunastra's countsAsAll1H is not ported.
 		have := map[string]bool{}
 		if len(s.active.ge.WeaponTypes) > 0 {
 			for _, t := range s.active.ge.WeaponTypes {
@@ -536,6 +536,16 @@ func canSupport(sup *skillEffect, s *activeSkill) bool {
 				if t != "" {
 					have[t] = true
 				}
+			}
+		}
+		if len(have) == 0 {
+			return false
+		}
+		// CalcTools.lua:119, 140-147: Varunastra counts as every one handed
+		// melee weapon type (not Wand or Shield).
+		if s.all1H[0] || s.all1H[1] {
+			for _, t := range oneHandMeleeTypes {
+				have[t] = true
 			}
 		}
 		match := false
@@ -550,8 +560,10 @@ func canSupport(sup *skillEffect, s *activeSkill) bool {
 }
 
 // createActiveSkill is calcs.createActiveSkill.
-func (c *Calculator) createActiveSkill(active *skillEffect, supports []*skillEffect, g *pobcode.SocketGroup, weapons [2]string, summon *activeSkill) *activeSkill {
-	s := &activeSkill{active: active, group: g, weapons: weapons, supportList: supports, summon: summon, data: &skillData{},
+func (c *Calculator) createActiveSkill(
+	active *skillEffect, supports []*skillEffect, g *pobcode.SocketGroup, weapons [2]string, all1H [2]bool, summon *activeSkill,
+) *activeSkill {
+	s := &activeSkill{active: active, group: g, weapons: weapons, all1H: all1H, supportList: supports, summon: summon, data: &skillData{},
 		types: typeSet(active.ge.SkillTypes), minionTypes: typeSet(active.ge.MinionSkillTypes), flags: map[string]bool{}}
 	for _, f := range active.ge.BaseFlags {
 		s.flags[f] = true

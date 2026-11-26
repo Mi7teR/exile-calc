@@ -499,7 +499,7 @@ func (c *Calculator) earlyMinionEnemyMods(db *ModDB, skills []*activeSkill, char
 // stepActorMisc (3527-3528), and its defence, triggers and offence after
 // the player's offence (minionOffence, 3836-3845).
 //
-//nolint:funlen // calcs.perform's env.minion steps in their order
+//nolint:gocognit // calcs.perform's env.minion steps in their order
 func (c *Calculator) minionInit(
 	db *ModDB, skills []*activeSkill, curses []*enemyCurse, charLevel int, res *Result,
 ) *minionCalc {
@@ -534,12 +534,23 @@ func (c *Calculator) minionInit(
 			weapon.attackRate = pw.attackRate
 		}
 	}
-	mskills := c.createMinionSkills(mdb, s, m, [2]string{weaponType, weapon2Type}, res)
+	all1H := [2]bool{weapon.all1H}
+	if weapon2 != nil {
+		all1H[1] = weapon2.all1H
+	}
+	mskills := c.createMinionSkills(mdb, s, m, [2]string{weaponType, weapon2Type}, all1H, res)
 	ms := mskills[minionSkillIndex(s, len(mskills))]
 	mdb.activeSkills = mskills
 	addMinionModifiers(mdb, s.minionModifiers, m.typ)
 	c.mergeKeystones(mdb, map[string]bool{}, res)
-	minionEquipmentConditions(mdb.conditions, mdb.items, weaponType, weapon2Type)
+	minionEquipmentConditions(mdb.conditions, mdb.items, weaponType, weapon2Type, all1H)
+	var names [2]string
+	for i, slot := range []string{"Weapon 1", "Weapon 2"} {
+		if it := mdb.items[slot]; it != nil {
+			names[i] = it.Name
+		}
+	}
+	mdb.all1HAdded = all1HAdded([2]string{weaponType, weapon2Type}, all1H, names)
 	// CalcPerform.lua:246-296, 400-410 for env.minion: its main skill's
 	// conditions, with env.player.mainSkill (the summoning skill s) for
 	// the ailment and exposure checks.
@@ -723,7 +734,11 @@ func withMainSkill(b *pobcode.Build, g, n int) *pobcode.Build {
 // mods) at the highest level its level allows, supported by the summoning
 // skill's supports, with mod lists on the minion's ModDB. The main skill
 // is minionSkillIndex.
-func (c *Calculator) createMinionSkills(mdb *ModDB, s *activeSkill, m *skillMinion, weapons [2]string, res *Result) []*activeSkill {
+//
+//nolint:gocognit // the Lua function's loops
+func (c *Calculator) createMinionSkills(
+	mdb *ModDB, s *activeSkill, m *skillMinion, weapons [2]string, all1H [2]bool, res *Result,
+) []*activeSkill {
 	skills := c.data.Skills.Effects
 	var ids []string
 	for _, id := range m.data.SkillList {
@@ -763,7 +778,7 @@ func (c *Calculator) createMinionSkills(mdb *ModDB, s *activeSkill, m *skillMini
 			}
 		}
 		eff := &skillEffect{id: id, ge: ge, level: level, actorLevel: float64(m.level)}
-		ms := c.createActiveSkill(eff, s.supportList, nil, weapons, s)
+		ms := c.createActiveSkill(eff, s.supportList, nil, weapons, all1H, s)
 		ms.cfg = &Cfg{}
 		c.buildSkillMods(mdb, ms, res)
 		ms.flags["minion"], ms.flags["minionSkill"], ms.flags["haveMinion"] = true, true, true
@@ -913,7 +928,7 @@ func (c *Calculator) castingMinionSkills(
 		mods = s.mods.List(s.cfg, "MinionModifier")
 	}
 	addMinionModifiers(casting, mods, m.typ)
-	l := c.createMinionSkills(casting, s, m, [2]string{m.data.WeaponType1}, res)
+	l := c.createMinionSkills(casting, s, m, [2]string{m.data.WeaponType1}, [2]bool{}, res)
 	db.minionSkillCache[s] = l
 	return casting, l
 }

@@ -244,8 +244,8 @@ func (c *Calculator) buildSkillMods(db *ModDB, s *activeSkill, res *Result) {
 	// Weapon flags (CalcActiveSkill.lua "Set weapon flags"): each hand's
 	// weapon type must be in the active skill's and its supports'
 	// weaponTypes; an empty main hand is unarmed ("None"); minion skills
-	// ignore weapon types. Shield attacks, forced source weapons,
-	// countsAsAll1H and "as though" weapon types are not ported.
+	// ignore weapon types. Shield attacks, forced source weapons and "as
+	// though" weapon types are not ported.
 	var w1Flags, w2Flags uint64
 	w1Attack, w2Attack := false, false
 	weaponTypes := [][]string{}
@@ -257,16 +257,23 @@ func (c *Calculator) buildSkillMods(db *ModDB, s *activeSkill, res *Result) {
 			weaponTypes = append(weaponTypes, e.ge.WeaponTypes)
 		}
 	}
-	handFlags := func(typ string) (uint64, bool, bool) {
+	// getWeaponFlags (CalcActiveSkill.lua:212-244): a countsAsAll1H weapon
+	// fits weapon types that hold a one handed melee type, and has all
+	// their flags.
+	handFlags := func(typ string, all1H bool) (uint64, bool, bool) {
 		if _, known := weaponTypeInfo[typ]; !known {
 			return 0, false, false
 		}
 		for _, l := range weaponTypes {
-			if !contains(l, typ) {
+			if !contains(l, typ) && !(all1H && slices.ContainsFunc(oneHandMeleeTypes, func(t string) bool { return contains(l, t) })) {
 				return 0, false, true
 			}
 		}
 		f, _ := weaponFlags(typ)
+		if all1H {
+			f = f&^modFlagByName[weaponTypeInfo[typ].flag] | modFlagByName["Axe"] | modFlagByName["Claw"] |
+				modFlagByName["Dagger"] | modFlagByName["Mace"] | modFlagByName["Sword"]
+		}
 		return f, true, true
 	}
 	attackLike := flags["attack"] || flags["dotFromAttack"]
@@ -285,7 +292,7 @@ func (c *Calculator) buildSkillMods(db *ModDB, s *activeSkill, res *Result) {
 	if main == "" {
 		main = "None"
 	}
-	f, ok, known := handFlags(main)
+	f, ok, known := handFlags(main, s.all1H[0])
 	if flags["shieldAttack"] {
 		ok, known = false, false
 	}
@@ -308,8 +315,8 @@ func (c *Calculator) buildSkillMods(db *ModDB, s *activeSkill, res *Result) {
 	}
 	if flags["shieldAttack"] {
 		// weapon2Flags = 0
-	} else if f2, ok2, known2 := handFlags(s.weapons[1]); ok2 && s.weapons[1] != "" {
-		if types[stDualWieldRequiresDifferentTypes] && s.weapons[0] == s.weapons[1] {
+	} else if f2, ok2, known2 := handFlags(s.weapons[1], s.all1H[1]); ok2 && s.weapons[1] != "" {
+		if types[stDualWieldRequiresDifferentTypes] && s.weapons[0] == s.weapons[1] && !s.all1H[0] && !s.all1H[1] {
 			s.disabled = true
 		} else if attackLike {
 			w2Flags, w2Attack = f2, true
