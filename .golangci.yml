@@ -472,7 +472,7 @@ linters:
       # why: the skill hook files hold ported PoB skill formulas: PoB's literal numbers (skill parts, tick
       # values) and mod name/type strings stay inline like the rest of the port, and each group file registers
       # its hooks from init() into the package-level skillHookRegistry (switchCases is the test's fixture).
-      - path: 'engine/(skills_(brands|channel|projectile|melee|misc)|skillhooks(_test)?)\.go'
+      - path: 'engine/(skills_(brands|channel|projectile|melee|misc|traps)|skillhooks(_test)?)\.go'
         linters: [ mnd, goconst, gochecknoinits, gochecknoglobals ]
       # why: the themed modparser hook files port ModParser.lua specialModList functions: PoB's literal numbers
       # and mod name/type strings stay inline like hooks.go, and each file registers its ports from init() into

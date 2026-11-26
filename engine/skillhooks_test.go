@@ -28,6 +28,7 @@ var switchCases = map[string][]string{
 		"Shrapnel Ballista", "Shrapnel Ballista of Steel",
 		"Bodyswap", "Bodyswap of Sacrifice",
 		"Ball Lightning of Orbiting", "Ball Lightning", "Eye of Winter",
+		"Seismic Trap", "Seismic Trap of Swells",
 		"Arcanist Brand", "Armageddon Brand", "Armageddon Brand of Recall", "Penance Brand",
 		"Penance Brand of Dissipation", "Penance Brand of Conduction", "Storm Brand", "Storm Brand of Indecision",
 		"Wintertide Brand",

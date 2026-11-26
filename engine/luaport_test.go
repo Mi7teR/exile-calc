@@ -173,6 +173,24 @@ func luaPortCases() []luaPortCase {
 			output: map[string]float64{"AreaOfEffectRadius": 22},
 		},
 		{
+			skill: "Seismic Trap", hook: "preDamageFunc", part: 5,
+			stats: []luaPortMod{
+				{"MaximumWaves", "BASE", 5, "Gem"},
+				{"EnemyRadius", "BASE", 5, "Config"},
+				{"SeismicPulseFrequency", "INC", 20, "Gem"},
+				{"TrapThrowingSpeed", "MORE", 10, "Support"},
+				{"Duration", "INC", 30, "Tree"},
+			},
+			data:   map[string]any{"repeatInterval": 0.9, "duration": 3.5},
+			output: map[string]float64{"TrapCooldown": 4, "AreaOfEffectRadius": 18, "AreaOfEffectRadiusSecondary": 9},
+		},
+		{
+			skill: "Seismic Trap of Swells", hook: "preDamageFunc", part: 2,
+			stats:  []luaPortMod{{"MaximumWaves", "BASE", 3, "Gem"}},
+			data:   map[string]any{},
+			output: map[string]float64{"AreaOfEffectRadius": 20, "AreaOfEffectRadiusSecondary": 10},
+		},
+		{
 			skill: "Blood Sacrament", hook: "initialFunc",
 			data:   map[string]any{"LifeReservedPercent": 4.5, "LifeReservedBase": 312.0},
 			output: map[string]float64{"LifeReservedPercent": 40},
