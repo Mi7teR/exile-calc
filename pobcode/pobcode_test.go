@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"regexp"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -439,5 +440,43 @@ func TestClusterHashFormatVersionRoundTrip(t *testing.T) {
 	}
 	if !strings.Contains(string(out), `clusterHashFormatVersion="2"`) {
 		t.Error("a new spec (version 0) must be written as version 2")
+	}
+}
+
+func TestSpectreListRoundTrip(t *testing.T) {
+	x := string(readFile(t, "testdata/modern.xml"))
+	x = strings.Replace(x, `<PlayerStat stat="Life"`,
+		`<Spectre id="Metadata/Monsters/Axis/AxisCaster"/><Spectre id="Metadata/Monsters/KitavaDemon/KitavaDemon"/><PlayerStat stat="Life"`, 1)
+	x = strings.Replace(x, `<Gem `, `<Gem skillMinionSkill="3" `, 1)
+	want := []string{"Metadata/Monsters/Axis/AxisCaster", "Metadata/Monsters/KitavaDemon/KitavaDemon"}
+	b, err := Parse([]byte(x))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for round := range 2 {
+		if !slices.Equal(b.SpectreList, want) {
+			t.Errorf("round %d: spectres %q, want %q", round, b.SpectreList, want)
+		}
+		if got := b.SkillSets[0].Groups[0].Gems[0].SkillMinionSkill; got != 3 {
+			t.Errorf("round %d: skillMinionSkill %d, want 3", round, got)
+		}
+		out, xerr := b.XML()
+		if xerr != nil {
+			t.Fatal(xerr)
+		}
+		// Build.lua Save writes the spectres before the player stats.
+		if i, j := strings.Index(string(out), "<Spectre "), strings.Index(string(out), "<PlayerStat "); i < 0 || i > j {
+			t.Errorf("round %d: <Spectre> missing or after <PlayerStat>", round)
+		}
+		if b, err = Parse(out); err != nil {
+			t.Fatal(err)
+		}
+	}
+	none, err := Parse(readFile(t, "testdata/modern.xml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if none.SpectreList != nil || none.SkillSets[0].Groups[0].Gems[0].SkillMinionSkill != 0 {
+		t.Error("a build without spectres must parse to none")
 	}
 }

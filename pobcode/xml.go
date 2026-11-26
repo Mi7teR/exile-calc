@@ -39,15 +39,22 @@ type xPartyBuffs struct {
 }
 
 type xBuild struct {
-	Level            string  `xml:"level,attr"`
-	TargetVersion    string  `xml:"targetVersion,attr,omitempty"`
-	ClassName        string  `xml:"className,attr"`
-	AscendClassName  string  `xml:"ascendClassName,attr"`
-	MainSocketGroup  string  `xml:"mainSocketGroup,attr"`
-	Bandit           string  `xml:"bandit,attr,omitempty"`
-	PantheonMajorGod string  `xml:"pantheonMajorGod,attr,omitempty"`
-	PantheonMinorGod string  `xml:"pantheonMinorGod,attr,omitempty"`
-	PlayerStats      []xStat `xml:"PlayerStat"`
+	Level            string `xml:"level,attr"`
+	TargetVersion    string `xml:"targetVersion,attr,omitempty"`
+	ClassName        string `xml:"className,attr"`
+	AscendClassName  string `xml:"ascendClassName,attr"`
+	MainSocketGroup  string `xml:"mainSocketGroup,attr"`
+	Bandit           string `xml:"bandit,attr,omitempty"`
+	PantheonMajorGod string `xml:"pantheonMajorGod,attr,omitempty"`
+	PantheonMinorGod string `xml:"pantheonMinorGod,attr,omitempty"`
+	// Spectres come before PlayerStat, as Build.lua Save writes them.
+	Spectres    []xSpectre `xml:"Spectre"`
+	PlayerStats []xStat    `xml:"PlayerStat"`
+}
+
+// xSpectre is a <Spectre id="..."/> of Modules/Build.lua Save/Load.
+type xSpectre struct {
+	ID string `xml:"id,attr"`
 }
 
 type xStat struct {
@@ -156,6 +163,7 @@ type xGem struct {
 	SkillMineCount     string `xml:"skillMineCount,attr,omitempty"`
 	SkillMinion        string `xml:"skillMinion,attr,omitempty"`
 	SkillMinionItemSet string `xml:"skillMinionItemSet,attr,omitempty"`
+	SkillMinionSkill   string `xml:"skillMinionSkill,attr,omitempty"`
 }
 
 type xConfig struct {
@@ -273,6 +281,13 @@ func Parse(data []byte) (*Build, error) {
 		PantheonMajorGod: x.Build.PantheonMajorGod,
 		PantheonMinorGod: x.Build.PantheonMinorGod,
 	}
+	// Build.lua Load keeps only ids in data.minions; pobcode has no game
+	// data, so every id is kept and the engine skips unknown ones.
+	for _, sp := range x.Build.Spectres {
+		if sp.ID != "" {
+			b.SpectreList = append(b.SpectreList, sp.ID)
+		}
+	}
 	for _, s := range x.Build.PlayerStats {
 		// PoB sometimes saves a Lua table reference ("table: 0x...") as a value;
 		// such stats carry no number and are skipped.
@@ -384,6 +399,7 @@ func Parse(data []byte) (*Build, error) {
 					SkillMineCount:     p.int("Gem.skillMineCount", gm.SkillMineCount, 0),
 					SkillMinion:        gm.SkillMinion,
 					SkillMinionItemSet: p.int("Gem.skillMinionItemSet", gm.SkillMinionItemSet, 0),
+					SkillMinionSkill:   p.int("Gem.skillMinionSkill", gm.SkillMinionSkill, 0),
 				})
 			}
 			set.Groups = append(set.Groups, g)
@@ -507,6 +523,9 @@ func (b *Build) XML() ([]byte, error) {
 		Config:  xConfig{ActiveConfigSet: itoa(b.ActiveConfigSetID)},
 		XMLName: xml.Name{Local: "PathOfBuilding"},
 	}
+	for _, id := range b.SpectreList {
+		x.Build.Spectres = append(x.Build.Spectres, xSpectre{ID: id})
+	}
 	for _, s := range b.PlayerStats {
 		x.Build.PlayerStats = append(x.Build.PlayerStats, xStat{Stat: s.Stat, Value: ftoa(s.Value)})
 	}
@@ -592,6 +611,7 @@ func (b *Build) XML() ([]byte, error) {
 					SkillMineCount:     itoaOpt(gm.SkillMineCount),
 					SkillMinion:        gm.SkillMinion,
 					SkillMinionItemSet: itoaOpt(gm.SkillMinionItemSet),
+					SkillMinionSkill:   itoaOpt(gm.SkillMinionSkill),
 				})
 			}
 			xs.Skills = append(xs.Skills, xk)

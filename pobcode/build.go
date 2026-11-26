@@ -13,6 +13,11 @@ type Build struct {
 	PantheonMajorGod string
 	PantheonMinorGod string
 
+	// SpectreList is the build's spectre library (<Spectre id> under
+	// <Build>, Modules/Build.lua): monster ids from Data/Spectres.lua that
+	// Raise Spectre can raise, in order.
+	SpectreList []string
+
 	// PlayerStats are the stats PoB computed when it saved the build.
 	PlayerStats []PlayerStat
 
@@ -161,6 +166,9 @@ type Gem struct {
 	// SkillMinionItemSet is the item set id an Animate Guardian-style
 	// minion wears (0 = not set: the first item set).
 	SkillMinionItemSet int
+	// SkillMinionSkill is the minion's main skill, a 1-based index into
+	// its skill list (0 = not set: the first).
+	SkillMinionSkill int
 }
 
 type ConfigSet struct {
