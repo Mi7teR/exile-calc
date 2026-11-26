@@ -7,7 +7,7 @@ package modparser
 // cap5 is the fifth capture's position in a hook's arguments (see cap1).
 const cap5 = 5
 
-// ModFlag, KeywordFlag and SkillType values (Modules/Common.lua,
+// ModFlag, KeywordFlag and SkillType values (all in
 // Data/Global.lua) used by the themed hooks.
 const (
 	modFlagAttack     = 0x1
