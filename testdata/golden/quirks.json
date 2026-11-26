@@ -136,6 +136,14 @@
       "reason": "Mirage copy keeps +gem levels from items, and a stronger mirage ignite/bleed counts in CombinedDPS (PoB: raw gem level; drops it from CombinedDPS).",
       "value": 30540903.612148564
     },
+    "FullDPS": {
+      "reason": "Mirage copy keeps +gem levels from items, and a stronger mirage ignite/bleed counts in CombinedDPS (PoB: raw gem level; drops it from CombinedDPS). Full DPS: the oracle value with its Toxic Rain mirage's hit DPS (876.715) and DoT (3603515.574) replaced by that mirage's (975.034, 6917819.680), times the culling multiplier.",
+      "value": 36012035.7872192
+    },
+    "FullDotDPS": {
+      "reason": "Mirage copy keeps +gem levels from items, and a stronger mirage ignite/bleed counts in CombinedDPS (PoB: raw gem level; drops it from CombinedDPS). Full DPS: the oracle value with its Toxic Rain mirage's DoT (3603515.574) replaced by that mirage's (6917819.680).",
+      "value": 32401230.83085399
+    },
     "MirageDPS": {
       "reason": "Mirage copy keeps +gem levels from items, and a stronger mirage ignite/bleed counts in CombinedDPS (PoB: raw gem level; drops it from CombinedDPS).",
       "value": 6918794.71397955

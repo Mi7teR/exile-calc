@@ -25,8 +25,8 @@ of 140 real 3.30 builds (135 public, 5 synthetic: two Party-tab, one
 linked-minion and two Oak-bandit variants of public builds). Every compared
 defence stat matches within 0.5% on all 140; the main skill's DPS stats on
 139 (the miss is a tree-granted skill group), minion stats on all 213 oracle
-minions, and Full DPS on 139 (the miss follows a quirk below). The remaining
-gaps are listed in the corpus README. Where PoB is wrong
+minions, and Full DPS on all 140. The remaining gap is listed in the corpus
+README. Where PoB is wrong
 and the engine follows the game instead, the difference is recorded in
 [quirks.json](testdata/golden/quirks.json).
 
