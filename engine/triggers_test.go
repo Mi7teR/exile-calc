@@ -174,3 +174,31 @@ func TestGrantedTrigger(t *testing.T) {
 		t.Error("srcInstance.triggered does not count")
 	}
 }
+
+// TestMinionTriggers: a minion's main skill with no trigger config is not
+// triggered (CalcTriggers.lua:1640-1642), and the Holy Relic's Nova takes
+// its rate from the player's attacks (configTable["nova"]): a2nRZLW9ZVuu's
+// Holy Relic, 2.8876 as in PoB.
+func TestMinionTriggers(t *testing.T) {
+	c := &Calculator{}
+	ms := triggerTestSkill("Minion Melee")
+	ms.data.set("triggered", true)
+	c.minionTriggers(NewModDB(), NewModDB(), ms, &Result{})
+	if _, ok := ms.data.get("triggered"); ok {
+		t.Error("a minion skill without a trigger config stays triggered")
+	}
+
+	mins, err := newCalc(t).CalcMinions(corpusBuild(t, "a2nRZLW9ZVuu"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, m := range mins {
+		if m.Minion == "Holy Relic" {
+			if got := m.Stats["Speed"]; !near(got, 2.88760368, 1e-6) {
+				t.Errorf("Holy Relic Nova speed %v, want 2.88760368", got)
+			}
+			return
+		}
+	}
+	t.Fatal("no Holy Relic")
+}

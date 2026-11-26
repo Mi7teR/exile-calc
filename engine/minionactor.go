@@ -568,6 +568,7 @@ func (c *Calculator) mainMinion(db *ModDB, skills []*activeSkill, buffs map[stri
 		if debugEnemy != nil && debugMinionOffence {
 			debugEnemy(mdb)
 		}
+		c.minionTriggers(db, mdb, ms, res)
 		out = c.offence(mdb, ms, weapon, weapon2)
 		for k, v := range out {
 			if contains(minionOffenceStats, k) || debugMinionOffence {

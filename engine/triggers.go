@@ -50,6 +50,10 @@ type triggerConfig struct {
 	// the triggered skill with its trigger limited (manaforgedRate).
 	preTriggered    any
 	hasPreTriggered bool
+	// actor is config.actor when it is env.minion (the "nova" config): its
+	// output takes the rates and its ModDB the HaveTriggerBots flag; nil
+	// is the player.
+	actor *ModDB
 }
 
 // withChance is the config with config.triggerChance = v when v is set.
@@ -280,13 +284,12 @@ func rotationImpact(main *activeSkill, rotation []*simSkill, sourceRate, trigger
 
 // triggers is calcs.triggers for the player's main skill: the trigger rate
 // in skillData.triggerRate, or the skill counts as self-cast.
-func (c *Calculator) triggers(db *ModDB, main *activeSkill, w1 hitSource, w2 *hitSource) {
-	if main.disabled {
-		return
-	}
-	by := triggeredBy(main)
+// triggerNames are the configTable keys calcs.triggers tries after the
+// skill id (CalcTriggers.lua:1620-1632): the skill's name, its trigger
+// support's name with and without "awakened ", and the unique item's.
+func triggerNames(main *activeSkill) []string {
 	names := []string{strings.ToLower(main.active.ge.Name)}
-	if by != nil {
+	if by := triggeredBy(main); by != nil {
 		n := strings.ToLower(by.ge.Name)
 		names = append(names, n, strings.TrimPrefix(n, "awakened "))
 	}
@@ -295,6 +298,15 @@ func (c *Calculator) triggers(db *ModDB, main *activeSkill, w1 hitSource, w2 *hi
 			names = append(names, strings.ToLower(u))
 		}
 	}
+	return names
+}
+
+func (c *Calculator) triggers(db *ModDB, main *activeSkill, w1 hitSource, w2 *hitSource) {
+	if main.disabled {
+		return
+	}
+	by := triggeredBy(main)
+	names := triggerNames(main)
 	for _, n := range names {
 		if n == "cast while channelling" {
 			c.cwcTrigger(db, main)
@@ -330,7 +342,11 @@ func (c *Calculator) triggers(db *ModDB, main *activeSkill, w1 hitSource, w2 *hi
 }
 
 func (c *Calculator) defaultTrigger(db *ModDB, main *activeSkill, by *skillEffect, cfg *triggerConfig, w1 hitSource, w2 *hitSource) {
-	out := db.output
+	actor := db
+	if cfg.actor != nil {
+		actor = cfg.actor
+	}
+	out := actor.output
 	var source *activeSkill
 	var sourceOut map[string]float64
 	trigRate := 0.0
@@ -471,7 +487,7 @@ func (c *Calculator) defaultTrigger(db *ModDB, main *activeSkill, by *skillEffec
 			cd = triggeredCD
 		}
 		skillRate = rotationImpact(main, rot, out["EffectiveSourceRate"], cd, chance)
-		if db.Flag("HaveTriggerBots") && main.types[stSpell] {
+		if actor.Flag("HaveTriggerBots") && main.types[stSpell] {
 			skillRate *= 2
 		}
 	}
@@ -729,4 +745,52 @@ func (c *Calculator) snipeTrigger(db *ModDB, main *activeSkill, by *skillEffect,
 		return
 	}
 	c.defaultTrigger(db, main, by, &triggerConfig{source: source, sourceOut: sourceOut, trigRate: trigRate}, w1, w2)
+}
+
+// minionTriggerConfig is the configTable entry name for the minion mdb
+// when the entry names env.minion as its actor, else nil.
+func minionTriggerConfig(name string, mdb *ModDB) *triggerConfig {
+	if name == "nova" {
+		// CalcTriggers.lua:1188-1195: the Holy Relic's Nova, triggered by
+		// the player's attacks. Its triggeredSkills list is the minion's
+		// main skill alone and it has no triggeredSkillCond.
+		return &triggerConfig{actor: mdb, triggerName: "Summon Holy Relic",
+			triggerSkillCond: func(_, s *activeSkill) bool { return s.types[stAttack] }}
+	}
+	return nil
+}
+
+// minionTriggers is calcs.triggers(env, env.minion) (CalcPerform.lua:3844):
+// the minion's main skill ms looks its config up as the player's does; the
+// trigger sources are the player's skills (env.player.activeSkillList),
+// run with the player's weapons. Player configs a minion skill could
+// match are not ported for minions and leave the skill as it is.
+func (c *Calculator) minionTriggers(db, mdb *ModDB, ms *activeSkill, res *Result) {
+	if ms.disabled {
+		return
+	}
+	var cfg *triggerConfig
+	for _, n := range append([]string{ms.active.id}, triggerNames(ms)...) {
+		if cfg = minionTriggerConfig(n, mdb); cfg != nil {
+			break
+		}
+		if triggerConfigs[n] != nil || n == "cast while channelling" || n == "snipe" {
+			res.Incomplete = append(res.Incomplete, "minion skill trigger "+n+" is not ported")
+			return
+		}
+	}
+	if cfg == nil {
+		ms.data.del("triggered")
+		return
+	}
+	// config.triggerChance = config.triggerChance or srcInstance.triggerChance.
+	if ms.active.srcHasTriggerChance {
+		cfg.triggerChance, cfg.hasTriggerChance = ms.active.srcTriggerChance, true
+	}
+	classID := -1
+	if b := db.theBuild(); b != nil && b.ActiveSpec() != nil {
+		classID = b.ActiveSpec().ClassID
+	}
+	w1, w2 := playerWeapons(db, db.gearMods, classID)
+	c.defaultTrigger(db, ms, triggeredBy(ms), cfg, w1, w2)
 }
