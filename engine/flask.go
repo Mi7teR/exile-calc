@@ -67,6 +67,24 @@ func (c *Calculator) activeFlasks(db *ModDB, slots []flaskSlot) []*pobcode.Item 
 	return out
 }
 
+// flaskBreakdown is CalcPerform.lua's "flask breakdown" (1617-1637): the
+// flask outputs PoB sets only with a breakdown, which MAIN mode always
+// has. used is the number of active flasks (env.flasks).
+func flaskBreakdown(db *ModDB, effectInc float64, used int) {
+	out := db.output
+	generated := db.Sum("BASE", "FlaskChargesGenerated")
+	const flaskSlots = 5
+	perFlask := db.Sum("BASE", "FlaskChargesGeneratedPerEmptyFlask") * float64(flaskSlots-used)
+	total := generated + perFlask
+	out["FlaskEffect"] = effectInc
+	out["FlaskChargeGen"] = total
+	out["LifeFlaskChargeGen"] = total + db.Sum("BASE", "LifeFlaskChargesGenerated")
+	out["ManaFlaskChargeGen"] = total + db.Sum("BASE", "ManaFlaskChargesGenerated")
+	out["UtilityFlaskChargeGen"] = total + db.Sum("BASE", "UtilityFlaskChargesGenerated")
+	const chanceCap = 100
+	out["FlaskChargeOnCritChance"] = math.Min(chanceCap, db.Sum("BASE", "FlaskChargeOnCritChance"))
+}
+
 // It returns what later steps need: the Silver Flask's effect for
 // Onslaught (actorMisc) and the recovery flasks (flaskRecovery).
 func (c *Calculator) applyFlasks(db *ModDB, res *Result, slots []flaskSlot) *flaskState {
@@ -77,6 +95,7 @@ func (c *Calculator) applyFlasks(db *ModDB, res *Result, slots []flaskSlot) *fla
 	effectInc := db.SumCfg(player, "INC", "FlaskEffect")
 	st.effectInc = effectInc
 	effectIncMagic := db.SumCfg(player, "INC", "MagicUtilityFlaskEffect")
+	flaskBreakdown(db, effectInc, len(flasks))
 	merged := map[string][]Mod{}
 	var keys []string
 	add := func(key string, m Mod) {

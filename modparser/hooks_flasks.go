@@ -39,6 +39,13 @@ func init() {
 			"LifeFlaskChargesGenerated",
 			condTag("LowLife"),
 		),
+		// ModParser.lua:5897 ["life flasks gain (%d+) charges? every (%d+) seconds if you haven't used a life flask recently"] =
+		//   function(num, _, div) return { mod("LifeFlaskChargesGenerated", "BASE", num / div,
+		//   { type = "Condition", var = "UsingLifeFlask", neg = true }) } end
+		"life flasks gain (%d+) charges? every (%d+) seconds if you haven't used a life flask recently": chargesEvery(
+			"LifeFlaskChargesGenerated",
+			map[string]any{"type": "Condition", "var": "UsingLifeFlask", "neg": true},
+		),
 		// ModParser.lua:5304 ["mana flasks gain (%d+) charges? every (%d+) seconds"]: ManaFlaskChargesGenerated, num / div
 		"mana flasks gain (%d+) charges? every (%d+) seconds": chargesEvery("ManaFlaskChargesGenerated"),
 		// ModParser.lua:5307 ["flasks gain (%d+) charges? per empty flask slot every (%d+) seconds"] = function(num, _, div) return {

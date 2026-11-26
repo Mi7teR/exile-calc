@@ -132,6 +132,9 @@ func TestHooks(t *testing.T) {
 		"Flasks gain 2 Charges every 3 seconds": `[{"flags":0,"keywordFlags":0,"name":"FlaskChargesGenerated","type":"BASE","value":0.66666666666667}]`,
 		"While on Low Life, Life Flasks gain 6 Charges every 3 seconds": `[{"@list":[{"type":"Condition","var":"LowLife"}],
 			"flags":0,"keywordFlags":0,"name":"LifeFlaskChargesGenerated","type":"BASE","value":2}]`,
+		// "... if you haven't used a life flask recently": UsingLifeFlask negated (Soul of Ryslatha)
+		"Life Flasks gain 3 Charges every 3 seconds if you haven't used a Life Flask Recently": `[{"@list":[{"neg":true,
+			"type":"Condition","var":"UsingLifeFlask"}],"flags":0,"keywordFlags":0,"name":"LifeFlaskChargesGenerated","type":"BASE","value":1}]`,
 		// "(%d+)%% less flask charges gained from kills": source "from Kills"
 		"80% less Flask Charges gained from Kills": `[{"flags":0,"keywordFlags":0,"name":"FlaskChargesGained","source":"from Kills","type":"MORE","value":-80}]`,
 		// "tinctures have (%d+)%% increased effect while at or above (%d+) stacks of mana burn": varList

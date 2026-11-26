@@ -707,6 +707,9 @@ func stepFlasks(c *Calculator, st *calcState) error {
 		db.NewMod("FlaskChargesGained", "INC", math.Floor(20*effect), "Alchemist's Genius")
 	}
 	st.tinctures = readTinctureEffect(db)
+	// CalcPerform.lua:1876-1880 "tincture breakdown": outputs PoB sets only
+	// with a breakdown, which MAIN mode always has.
+	db.output["TinctureEffect"], db.output["TinctureLimit"] = st.tinctures.inc, st.tinctures.limit
 	st.flaskSt = c.applyFlasks(db, res, st.flasks)
 	c.mergeKeystones(db, st.keystones, res)
 	return nil
