@@ -221,7 +221,7 @@ go run ./cmd/enginediff -combat -builds ID1                # combat DPS report
 (no Lua runs). Not exported: `Data/Uniques/Special/Generated.lua` (a program
 that builds Megalomaniac, Forbidden jewels and similar uniques). The
 reference stats come from headless PoB in
-[poe-pob-oracle](https://github.com/Mi7teR/exile-oracle).
+[exile-oracle](https://github.com/Mi7teR/exile-oracle).
 
 ## License
 

@@ -36,7 +36,7 @@ func pobSrcDir(t *testing.T) string {
 	dir := os.Getenv("POB_SRC")
 	if dir == "" {
 		home, _ := os.UserHomeDir()
-		dir = filepath.Join(home, "GoProjects", "poe-pob-oracle", ".pob", "v2.68.1", "src")
+		dir = filepath.Join(home, "GoProjects", "exile-oracle", ".pob", "v2.68.1", "src")
 	}
 	if _, err := os.Stat(filepath.Join(dir, "Data", "Global.lua")); err != nil {
 		t.Fatalf("PoB source not found: %s/Data/Global.lua is missing (set POB_SRC to PoB's src directory): %v",

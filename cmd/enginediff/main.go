@@ -2,7 +2,7 @@
 // It runs both on golden builds and prints, per stat and source, the sum of
 // each mod type where they differ.
 //
-//	go run ./cmd/enginediff -builds ID1,ID2 -stats Dex,Life [-oracle ../poe-pob-oracle/run.sh]
+//	go run ./cmd/enginediff -builds ID1,ID2 -stats Dex,Life [-oracle ../exile-oracle/run.sh]
 //	go run ./cmd/enginediff -combat -builds ID1,ID2
 package main
 
@@ -26,7 +26,7 @@ import (
 func main() {
 	builds := flag.String("builds", "", "comma-separated golden build ids (default: all)")
 	stats := flag.String("stats", "Str,Dex,Int,Life,Mana", "comma-separated mod names")
-	oracle := flag.String("oracle", "../poe-pob-oracle/run.sh", "oracle run.sh")
+	oracle := flag.String("oracle", "../exile-oracle/run.sh", "oracle run.sh")
 	source := flag.String("source", "", "only sources with this prefix (e.g. Item:)")
 	conds := flag.Bool("conditions", false, "compare conditions and multipliers instead of mods")
 	skills := flag.Bool("skills", false, "compare active skills (level, quality, buffs, aura effect) instead of mods")

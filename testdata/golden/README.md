@@ -43,7 +43,7 @@ on poebuilds.cc picks Oak.
   links and UI state removed). `sources.tsv`: id, public link, ascendancy,
   tree, level.
 - `expected/*.json` — `mainOutput` of headless PoB v2.68.1 from
-  [poe-pob-oracle](https://github.com/Mi7teR/exile-oracle) at commit b266ae7.
+  [exile-oracle](https://github.com/Mi7teR/exile-oracle) at commit b266ae7.
 - `quirks.json` — expected values that deliberately differ from PoB, where
   the engine fixes a PoB bug (build → stat → value and reason). The test
   applies them over `expected/`, so regenerating keeps them.
@@ -52,7 +52,7 @@ Regenerate:
 
 ```bash
 go run ./cmd/goldencorpus input > /tmp/builds.jsonl
-../poe-pob-oracle/run.sh v2.68.1 < /tmp/builds.jsonl > /tmp/results.jsonl
+../exile-oracle/run.sh v2.68.1 < /tmp/builds.jsonl > /tmp/results.jsonl
 go run ./cmd/goldencorpus expected < /tmp/results.jsonl
 ```
 

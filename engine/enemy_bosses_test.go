@@ -16,7 +16,7 @@ func TestBossStatsMatchBossesLua(t *testing.T) {
 	src := os.Getenv("POB_SRC")
 	if src == "" {
 		home, _ := os.UserHomeDir()
-		src = filepath.Join(home, "GoProjects/poe-pob-oracle/.pob/v2.68.1/src")
+		src = filepath.Join(home, "GoProjects/exile-oracle/.pob/v2.68.1/src")
 	}
 	raw, err := os.ReadFile(filepath.Join(src, "Data/Bosses.lua"))
 	if err != nil {
