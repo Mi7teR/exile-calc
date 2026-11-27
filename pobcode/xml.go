@@ -266,8 +266,10 @@ func boolAttr(s string, def bool) bool {
 
 var masteryRe = regexp.MustCompile(`\{(\d+),(\d+)\}`)
 
-// normaliseItemText drops XML indentation and blank lines.
-func normaliseItemText(s string) string {
+// NormaliseItemText is the form of Item.Raw: item text without
+// indentation, surrounding spaces or blank lines. Parse stores items so;
+// an item added to a Build by hand should be normalised the same way.
+func NormaliseItemText(s string) string {
 	var lines []string
 	for _, l := range strings.Split(s, "\n") {
 		if l = strings.TrimSpace(l); l != "" {
@@ -344,7 +346,7 @@ func Parse(data []byte) (*Build, error) {
 		item := Item{
 			ID:      p.int("Item.id", it.ID, 0),
 			Variant: p.int("Item.variant", it.Variant, 0),
-			Raw:     normaliseItemText(it.Text),
+			Raw:     NormaliseItemText(it.Text),
 		}
 		for i, v := range []string{it.VariantAlt, it.VariantAlt2, it.VariantAlt3, it.VariantAlt4, it.VariantAlt5} {
 			item.VariantAlt[i] = p.int("Item.variantAlt", v, 0)

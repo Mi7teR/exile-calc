@@ -1,7 +1,6 @@
 package engine
 
 import (
-	"encoding/xml"
 	"errors"
 	"maps"
 	"reflect"
@@ -55,7 +54,7 @@ func editSlots(b *pobcode.Build, texts map[string]string) *pobcode.Build {
 		set.Slots[i].ItemID = 0
 		if text != "" {
 			id := 1000 + len(cp.Items)
-			cp.Items = append(cp.Items, pobcode.Item{ID: id, Raw: normaliseItemText(text)})
+			cp.Items = append(cp.Items, pobcode.Item{ID: id, Raw: pobcode.NormaliseItemText(text)})
 			set.Slots[i].ItemID = id
 		}
 	}
@@ -379,24 +378,6 @@ Implicits: 1
 			g.Unparsed,
 			p.Unparsed,
 		)
-	}
-}
-
-// normaliseItemText gives the Raw pobcode makes from the same XML text.
-func TestNormaliseItemTextMatchesPobcode(t *testing.T) {
-	text := "\n\t\tRarity: RARE\n  Doom Crown  \n\n\tHubris Circlet\n \nImplicits: 0\n\t+80 to maximum Energy Shield\n\t"
-	var esc strings.Builder
-	if err := xml.EscapeText(&esc, []byte(text)); err != nil {
-		t.Fatal(err)
-	}
-	doc := `<PathOfBuilding><Build level="1"/><Tree activeSpec="1"><Spec/></Tree><Items activeItemSet="1">` +
-		`<Item id="1">` + esc.String() + `</Item></Items></PathOfBuilding>`
-	b, err := pobcode.Parse([]byte(doc))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(b.Items) != 1 || b.Items[0].Raw != normaliseItemText(text) {
-		t.Errorf("pobcode items %+v, engine Raw %q", b.Items, normaliseItemText(text))
 	}
 }
 

@@ -6,6 +6,8 @@ import (
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
+
+	"github.com/Mi7teR/exile-calc/internal/boundcache"
 )
 
 // testLines mixes plain stats, tagged mods, table (LIST) values and a line
@@ -109,18 +111,19 @@ func TestParseConcurrent(t *testing.T) {
 	for e := range errs {
 		t.Error(e)
 	}
-	if n := p.cached.Load(); n != int64(len(lines)) {
+	if n := p.cache.Len(); n != len(lines) {
 		t.Errorf("cached %d entries, want %d", n, len(lines))
 	}
 }
 
-// TestParseCacheCap: past the cap, lines are still parsed correctly but not
-// stored, and the count never exceeds the cap, also under concurrency.
+// TestParseCacheCap: past the cap, lines are still parsed correctly, old
+// ones age out, and the cache never holds more than the cap, also under
+// concurrency.
 func TestParseCacheCap(t *testing.T) {
 	lines := testLines()
 	ref := freshParser(t)
 	p := freshParser(t)
-	p.cacheCap = 3
+	p.cache = boundcache.New[Result](4)
 	var wg sync.WaitGroup
 	for g := range 4 {
 		wg.Add(1)
@@ -135,10 +138,8 @@ func TestParseCacheCap(t *testing.T) {
 		}(g)
 	}
 	wg.Wait()
-	stored := 0
-	p.cache.Range(func(_, _ any) bool { stored++; return true })
-	if n := p.cached.Load(); n != 3 || stored != 3 {
-		t.Errorf("count %d, stored %d, want 3", n, stored)
+	if n := p.cache.Len(); n > 4 {
+		t.Errorf("cache holds %d lines, want at most 4", n)
 	}
 }
 

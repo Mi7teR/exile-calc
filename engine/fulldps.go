@@ -55,7 +55,10 @@ type fullDPSAcc struct {
 // (the skill giving the best bleed, ignite or ground) is not exposed; and
 // Trigger is set only by the ported default trigger handler (no Saviour,
 // Focus, or unported trigger configs).
-func (c *Calculator) FullDPS(b *pobcode.Build) (*FullDPSResult, error) {
+//
+//nolint:nonamedreturns // recoverErr sets err on a panic
+func (c *Calculator) FullDPS(b *pobcode.Build) (_ *FullDPSResult, err error) {
+	defer recoverErr(&err)
 	base, err := c.Calc(b)
 	if err != nil {
 		return nil, err

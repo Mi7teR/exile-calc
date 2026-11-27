@@ -119,7 +119,10 @@ var kindNames = map[deliveryKind]string{
 // Combat computes combat DPS for the build's main skill. The boss run is
 // Calc on the build as it is; the pack run is Calc with enemyIsBoss set to
 // "None" on a copy of the active config set. b is not modified.
-func (c *Calculator) Combat(b *pobcode.Build, opts CombatOptions) (*CombatResult, error) {
+//
+//nolint:nonamedreturns // recoverErr sets err on a panic
+func (c *Calculator) Combat(b *pobcode.Build, opts CombatOptions) (_ *CombatResult, err error) {
+	defer recoverErr(&err)
 	bossRes, err := c.Calc(b)
 	if err != nil {
 		return nil, err

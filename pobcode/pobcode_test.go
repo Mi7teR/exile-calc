@@ -3,6 +3,7 @@ package pobcode
 import (
 	"bytes"
 	"encoding/base64"
+	"encoding/xml"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -516,5 +517,24 @@ func TestCalcsRoundTrip(t *testing.T) {
 		if b, err = Parse(out); err != nil {
 			t.Fatal(err)
 		}
+	}
+}
+
+// TestNormaliseItemTextMatchesParse: NormaliseItemText gives the Raw Parse
+// makes from the same XML text.
+func TestNormaliseItemTextMatchesParse(t *testing.T) {
+	text := "\n\t\tRarity: RARE\n  Doom Crown  \n\n\tHubris Circlet\n \nImplicits: 0\n\t+80 to maximum Energy Shield\n\t"
+	var esc strings.Builder
+	if err := xml.EscapeText(&esc, []byte(text)); err != nil {
+		t.Fatal(err)
+	}
+	doc := `<PathOfBuilding><Build level="1"/><Tree activeSpec="1"><Spec/></Tree><Items activeItemSet="1">` +
+		`<Item id="1">` + esc.String() + `</Item></Items></PathOfBuilding>`
+	b, err := Parse([]byte(doc))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(b.Items) != 1 || b.Items[0].Raw != NormaliseItemText(text) {
+		t.Errorf("pobcode items %+v, NormaliseItemText %q", b.Items, NormaliseItemText(text))
 	}
 }

@@ -715,7 +715,7 @@ func applyDmgTakenConversion(actor *ModDB, s *activeSkill, src string, base floa
 }
 
 // lifeFlaskData is a Life flask's flaskData.lifeTotal and chargesMax
-// (Item.lua:2466-2484), cached per Calculator by item (bounded like the
+// (Item.lua:2466-2484), cached per Calculator by item (the bounded
 // requirement cache); ok is false for other items.
 func (c *Calculator) lifeFlaskData(item *pobcode.Item) ([2]float64, bool) {
 	key := "lifeflask\x00" + grantKey(item)
@@ -733,14 +733,10 @@ func (c *Calculator) lifeFlaskData(item *pobcode.Item) ([2]float64, bool) {
 		d = [2]float64{base*instant/100 + float64(base*(1-instant/100)),
 			float64(f.ChargesMax) + calcLocal(mods, "FlaskCharges", "BASE")}
 	}
-	if c.reqCount.Load() < grantCacheCap {
-		var v any = false
-		if isLife {
-			v = d
-		}
-		if _, loaded := c.reqs.LoadOrStore(key, v); !loaded {
-			c.reqCount.Add(1)
-		}
+	var v any = false
+	if isLife {
+		v = d
 	}
+	c.reqs.Store(key, v)
 	return d, isLife
 }

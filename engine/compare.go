@@ -70,7 +70,10 @@ type ItemComparison struct {
 
 // NewComparer computes b once (Calc, and Full DPS when b has skills in
 // it) as the base of later Item calls. b is not modified.
-func (c *Calculator) NewComparer(b *pobcode.Build) (*Comparer, error) {
+//
+//nolint:nonamedreturns // recoverErr sets err on a panic
+func (c *Calculator) NewComparer(b *pobcode.Build) (_ *Comparer, err error) {
+	defer recoverErr(&err)
 	res, err := c.Calc(b)
 	if err != nil {
 		return nil, err
@@ -114,6 +117,13 @@ func (cp *Comparer) stats(res *Result, full *FullDPSResult) map[string]float64 {
 // weapon set, an unallocated jewel socket, an abyssal socket the item in
 // its parent slot does not have) gives no change, as in PoB.
 //
+// Cost: one Calc, and when the build uses Full DPS one more per other
+// skill in its Full DPS, as PoB's tooltip computes it (getMiscCalculator
+// with usedFullDPS). A build with six Full DPS skills costs about seven
+// Calcs per item, whatever the item changes; a caller comparing many items
+// (a trade page) should run them on a few goroutines and drop the ones
+// the user no longer looks at.
+//
 // The item must fit the slot as in PoB's slot lists
 // (ItemsTab.lua IsItemValidForSlot), or Item returns an error wrapping
 // ErrItemNotValidForSlot: the item type names the slot ("Ring" for
@@ -145,8 +155,11 @@ func (cp *Comparer) stats(res *Result, full *FullDPSResult) map[string]float64 {
 // As CalcSetup.lua's override.repSlotName/repItem (calcs.initEnv), a
 // Staff or two-handed sword, axe or mace in a "Weapon 1" slot empties the
 // set's "Weapon 2", and so does a bow unless "Weapon 2" holds a quiver.
-func (cp *Comparer) Item(slot string, itemText string) (*ItemComparison, error) {
-	if err := cp.checkSlot(slot); err != nil {
+//
+//nolint:nonamedreturns // recoverErr sets err on a panic
+func (cp *Comparer) Item(slot string, itemText string) (_ *ItemComparison, err error) {
+	defer recoverErr(&err)
+	if err = cp.checkSlot(slot); err != nil {
 		return nil, err
 	}
 	text := strings.ReplaceAll(itemText, "\r", "")
@@ -160,7 +173,7 @@ func (cp *Comparer) Item(slot string, itemText string) (*ItemComparison, error) 
 	if !cp.itemValidForSlot(it, slot) {
 		return nil, fmt.Errorf("%w: %s in %q", ErrItemNotValidForSlot, it.BaseName, slot)
 	}
-	b, replaced, err := cp.compareBuild(slot, normaliseItemText(text), it.Base.Type)
+	b, replaced, err := cp.compareBuild(slot, pobcode.NormaliseItemText(text), it.Base.Type)
 	if err != nil {
 		return nil, err
 	}
@@ -227,12 +240,10 @@ func newEntries(after, base []string) []string {
 // the same skill.
 func (cp *Comparer) compareBuild(slot, raw, baseType string) (*pobcode.Build, []string, error) {
 	var old *pobcode.Item
-	if node, ok := strings.CutPrefix(slot, "Jewel "); ok {
+	if node := cp.socketNode(slot); node != nil {
 		if spec := cp.b.ActiveSpec(); spec != nil {
-			for _, s := range spec.Sockets {
-				if strconv.Itoa(s.NodeID) == node {
-					old = cp.b.Item(s.ItemID)
-				}
+			if i := slices.IndexFunc(spec.Sockets, func(s pobcode.Socket) bool { return s.NodeID == node.ID }); i >= 0 {
+				old = cp.b.Item(spec.Sockets[i].ItemID)
 			}
 		}
 	} else if set := cp.b.ActiveItems(); set != nil {
@@ -259,21 +270,21 @@ func (cp *Comparer) withItem(slot, raw, baseType string) (*pobcode.Build, []stri
 	nb.Items = make([]pobcode.Item, len(b.Items), len(b.Items)+1)
 	copy(nb.Items, b.Items)
 	nb.Items = append(nb.Items, pobcode.Item{ID: id, Raw: raw})
-	if node, ok := strings.CutPrefix(slot, "Jewel "); ok {
-		replaced, err := cp.putJewel(&nb, slot, node, id)
+	if strings.HasPrefix(slot, "Jewel ") {
+		node := cp.socketNode(slot)
+		if node == nil {
+			return nil, nil, fmt.Errorf("engine: unknown item slot %q", slot)
+		}
+		replaced, err := cp.putJewel(&nb, slot, node.ID, id)
 		return &nb, replaced, err
 	}
 	replaced, err := cp.putGear(&nb, slot, id, baseType)
 	return &nb, replaced, err
 }
 
-// putJewel puts item id in the tree jewel socket node of nb's active
-// spec, a copy of the base build's.
-func (cp *Comparer) putJewel(nb *pobcode.Build, slot, node string, id int) ([]string, error) {
-	n, err := strconv.Atoi(node)
-	if tn := cp.c.data.Tree.Nodes[n]; err != nil || tn == nil || !tn.IsJewelSocket {
-		return nil, fmt.Errorf("engine: unknown item slot %q", slot)
-	}
+// putJewel puts item id in the tree jewel socket n (socketNode's) of
+// nb's active spec, a copy of the base build's.
+func (cp *Comparer) putJewel(nb *pobcode.Build, slot string, n, id int) ([]string, error) {
 	if nb.ActiveSpec() == nil {
 		return nil, errors.New("engine: build has no passive tree")
 	}
@@ -578,18 +589,4 @@ func (cp *Comparer) offhandValid(typ, slot string) bool {
 		return typ == "Shield" || (oneHand(typ) && (mainType == "Wand") == (typ == "Wand"))
 	}
 	return false
-}
-
-// normaliseItemText is a copy of pobcode's normaliseItemText
-// (pobcode/xml.go), which builds Item.Raw from the XML text: no
-// indentation and no blank lines. TestNormaliseItemTextMatchesPobcode
-// keeps the two the same.
-func normaliseItemText(s string) string {
-	var lines []string
-	for l := range strings.SplitSeq(s, "\n") {
-		if l = strings.TrimSpace(l); l != "" {
-			lines = append(lines, l)
-		}
-	}
-	return strings.Join(lines, "\n")
 }

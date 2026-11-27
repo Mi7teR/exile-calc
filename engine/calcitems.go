@@ -387,17 +387,12 @@ func (c *Calculator) mergeTwoLineMods(it *itemtext.Item, group []itemtext.ModLin
 	}
 	merges := func(l, next itemtext.ModLine) bool {
 		key := fmt.Sprintf("%s\x00%s\x00%g", l.Text, next.Text, catalystScalar(it, l))
-		if v, ok := c.merges.Load(key); ok {
-			m, _ := v.(bool)
+		if m, ok := c.merges.Load(key); ok {
 			return m
 		}
 		m := !c.parser.Parse(ranged(l.Text, l)).Parsed() &&
 			c.parser.Parse(ranged(l.Text+" "+next.Text, l)).Parsed()
-		if c.mergeCount.Load() < grantCacheCap {
-			if _, loaded := c.merges.LoadOrStore(key, m); !loaded {
-				c.mergeCount.Add(1)
-			}
-		}
+		c.merges.Store(key, m)
 		return m
 	}
 	for i := 0; i < len(group); i++ {

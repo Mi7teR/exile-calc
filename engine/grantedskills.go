@@ -6,8 +6,6 @@ import (
 	"sort"
 	"strconv"
 	"strings"
-	"sync"
-	"sync/atomic"
 
 	"github.com/Mi7teR/exile-calc/gamedata"
 	"github.com/Mi7teR/exile-calc/pobcode"
@@ -335,11 +333,11 @@ func (c *Calculator) itemInfo(item *pobcode.Item, compared int) itemGrantInfo {
 		return c.parseItemInfo(item)
 	}
 	key := grantKey(item)
-	if info, ok := c.grants.load(key); ok {
+	if info, ok := c.grants.Load(key); ok {
 		return info
 	}
 	info := c.parseItemInfo(item)
-	c.grants.store(key, info)
+	c.grants.Store(key, info)
 	return info
 }
 
@@ -395,42 +393,6 @@ func grantKey(item *pobcode.Item) string {
 	fmt.Fprintf(&sb, "%d %d %v %v\n", item.ID, item.Variant, item.VariantAlt, item.ModRanges)
 	sb.WriteString(item.Raw)
 	return sb.String()
-}
-
-// grantCache maps grantKey to parseItemInfo's result. Every Calc reads
-// all the build's items, and FullDPS, CalcMinions and the Comparer
-// calculate the same items many times.
-type grantCache struct {
-	m      sync.Map // string -> itemGrantInfo
-	cached atomic.Int64
-}
-
-// grantCacheCap bounds the cache, as modparser's parseCacheCap does, for
-// a long-running consumer that sees arbitrary items.
-const grantCacheCap = 10_000
-
-func (gc *grantCache) load(key string) (itemGrantInfo, bool) {
-	v, ok := gc.m.Load(key)
-	if !ok {
-		return itemGrantInfo{}, false
-	}
-	info, _ := v.(itemGrantInfo)
-	return info, true
-}
-
-// store caches info unless the cache is full; a slot is reserved before
-// the insert, so concurrent misses never take the count past the cap.
-func (gc *grantCache) store(key string, info itemGrantInfo) {
-	if gc.cached.Load() >= grantCacheCap {
-		return
-	}
-	if gc.cached.Add(1) > grantCacheCap {
-		gc.cached.Add(-1)
-		return
-	}
-	if _, loaded := gc.m.LoadOrStore(key, info); loaded {
-		gc.cached.Add(-1)
-	}
 }
 
 // additionalRingSlot is env.initialNodeModDB:Flag(nil, "AdditionalRingSlot")

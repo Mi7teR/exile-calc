@@ -171,7 +171,7 @@ func (c *Calculator) attributeRequirements(db *ModDB, b *pobcode.Build, compared
 		_, mods := c.itemMods(item, &Result{}) // its unparsed lines are reported by the item step
 		r := itemRequirements(it, mods)
 		if compared == 0 || item.ID != compared {
-			c.storeReq(key, r)
+			c.reqs.Store(key, r)
 		}
 		table = append(table, r)
 	}
@@ -213,20 +213,5 @@ func (c *Calculator) attributeRequirements(db *ModDB, b *pobcode.Build, compared
 			}
 			db.output["Req"+target] = best
 		}
-	}
-}
-
-// storeReq caches a jewel's requirements unless the cache is full (the
-// grantCacheCap bound of the item grant cache).
-func (c *Calculator) storeReq(key string, r requirements) {
-	if c.reqCount.Load() >= grantCacheCap {
-		return
-	}
-	if c.reqCount.Add(1) > grantCacheCap {
-		c.reqCount.Add(-1)
-		return
-	}
-	if _, loaded := c.reqs.LoadOrStore(key, r); loaded {
-		c.reqCount.Add(-1)
 	}
 }

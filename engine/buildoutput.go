@@ -38,7 +38,10 @@ type CostWarnings map[string][]string
 // Calc sets the stats this check gives (<Cost>Warning for the main
 // skill's name, EnergyShieldProtectsMana) from the skills that can set
 // them; this method also calculates the others, for the lists.
-func (c *Calculator) CostWarnings(b *pobcode.Build) (CostWarnings, error) {
+//
+//nolint:nonamedreturns // recoverErr sets err on a panic
+func (c *Calculator) CostWarnings(b *pobcode.Build) (_ CostWarnings, err error) {
+	defer recoverErr(&err)
 	base, err := c.Calc(b)
 	if err != nil {
 		return nil, err

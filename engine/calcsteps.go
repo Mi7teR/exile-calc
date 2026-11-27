@@ -141,7 +141,10 @@ var calcSteps = []calcStep{
 }
 
 // Calc computes a build (PoB's calcs.initEnv and calcs.perform).
-func (c *Calculator) Calc(b *pobcode.Build) (*Result, error) {
+//
+//nolint:nonamedreturns // recoverErr sets err on a panic
+func (c *Calculator) Calc(b *pobcode.Build) (_ *Result, err error) {
+	defer recoverErr(&err)
 	res, err := c.calc(b, calcOpts{})
 	if err != nil {
 		return nil, err

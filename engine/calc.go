@@ -6,9 +6,9 @@ import (
 	"sort"
 	"strings"
 	"sync"
-	"sync/atomic"
 
 	"github.com/Mi7teR/exile-calc/gamedata"
+	"github.com/Mi7teR/exile-calc/internal/boundcache"
 	"github.com/Mi7teR/exile-calc/itemtext"
 	"github.com/Mi7teR/exile-calc/modparser"
 	"github.com/Mi7teR/exile-calc/pobcode"
@@ -37,16 +37,20 @@ type Calculator struct {
 	clusterNotablesOnce sync.Once
 	clusterNotables     map[string]*gamedata.Node // clusterNotableMap (clusterNotablesByName)
 
-	grants grantCache // item.grantedSkills by item (grantedskills.go)
+	// The caches below are bounded (itemCacheCap) and drop what is not used
+	// lately, for a long-running consumer that sees arbitrary items.
+	grants *boundcache.Cache[itemGrantInfo] // item.grantedSkills by grantKey (grantedskills.go)
 	// reqs caches the attribute requirements of jewels by grantKey
-	// (requirements.go); reqCount bounds it.
-	reqs sync.Map
-	// merges caches mergeTwoLineMods decisions by line pair (bounded like
-	// reqs): whether a line and the next parse only together.
-	merges     sync.Map
-	mergeCount atomic.Int64
-	reqCount   atomic.Int64
+	// (requirements.go) and Life flask data (lifeFlaskData).
+	reqs *boundcache.Cache[any]
+	// merges caches mergeTwoLineMods decisions by line pair: whether a line
+	// and the next parse only together.
+	merges *boundcache.Cache[bool]
 }
+
+// itemCacheCap bounds each of the Calculator's item caches, as
+// modparser's parseCacheCap bounds the parse cache.
+const itemCacheCap = 10_000
 
 func New() (*Calculator, error) {
 	// The two loads are independent: the mod tables load while the game
@@ -65,7 +69,9 @@ func New() (*Calculator, error) {
 	if pErr != nil {
 		return nil, pErr
 	}
-	return &Calculator{data: d, parser: p, items: itemtext.New(d), luts: newTimelessLUTs(), gemIdx: newGemIndex(d)}, nil
+	return &Calculator{data: d, parser: p, items: itemtext.New(d), luts: newTimelessLUTs(), gemIdx: newGemIndex(d),
+		grants: boundcache.New[itemGrantInfo](itemCacheCap), reqs: boundcache.New[any](itemCacheCap),
+		merges: boundcache.New[bool](itemCacheCap)}, nil
 }
 
 // Result is the computed output. Unparsed lists mod lines the parser did

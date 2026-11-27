@@ -751,7 +751,10 @@ func (c *Calculator) minionOffence(db *ModDB, mc *minionCalc, res *Result) {
 // CalcMinions calculates the build once per enabled minion skill with that
 // skill as the main skill, as PoB does when you select it, and returns
 // each skill's minion.
-func (c *Calculator) CalcMinions(b *pobcode.Build) ([]MinionResult, error) {
+//
+//nolint:nonamedreturns // recoverErr sets err on a panic
+func (c *Calculator) CalcMinions(b *pobcode.Build) (_ []MinionResult, err error) {
+	defer recoverErr(&err)
 	res, err := c.Calc(b)
 	if err != nil {
 		return nil, err
